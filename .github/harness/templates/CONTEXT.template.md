@@ -10,9 +10,9 @@
 Define every project-specific or ambiguous term. One line each: the term, then what it means **in
 this project** (which may differ from its general meaning).
 
-| Term | Meaning in this project |
-| ---- | ----------------------- |
-| _e.g. Tenant_ | _An organization; the unit of data isolation. Not an individual user._ |
+| Term            | Meaning in this project                                                             |
+| --------------- | ----------------------------------------------------------------------------------- |
+| _e.g. Tenant_   | _An organization; the unit of data isolation. Not an individual user._              |
 | _e.g. Activity_ | _A scheduled, joinable event with a roster and lifecycle. Not a generic log entry._ |
 
 ## Naming conventions

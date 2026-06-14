@@ -72,56 +72,94 @@ export function classifyGitCommand(command) {
   const sub = rest.find((t) => !t.startsWith("-")) ?? "";
   const flags = rest.filter((t) => t.startsWith("-"));
   const has = (...names) => names.some((n) => flags.includes(n));
-  const hasNoVerify = has("--no-verify") || flags.includes("-n") && sub === "commit";
+  const hasNoVerify =
+    has("--no-verify") || (flags.includes("-n") && sub === "commit");
 
   // --- history rewrite that is effectively unrecoverable -------------------------------------
   if (sub === "filter-branch" || sub === "filter-repo") {
-    return block("filter-branch", "rewrites the entire history of the repository");
+    return block(
+      "filter-branch",
+      "rewrites the entire history of the repository",
+    );
   }
   if (sub === "reflog" && rest.includes("expire")) {
-    return block("reflog-expire", "expires reflog entries — removes the safety net for recovery");
+    return block(
+      "reflog-expire",
+      "expires reflog entries — removes the safety net for recovery",
+    );
   }
   if (sub === "update-ref" && has("-d", "--delete")) {
-    return block("update-ref-delete", "deletes a ref directly, bypassing normal branch tooling");
+    return block(
+      "update-ref-delete",
+      "deletes a ref directly, bypassing normal branch tooling",
+    );
   }
 
   // --- force push / remote deletion -----------------------------------------------------------
   if (sub === "push") {
     if (has("--force-with-lease")) {
-      return warn("push-force-with-lease", "rewrites the remote branch (safer lease variant) — confirm intent");
+      return warn(
+        "push-force-with-lease",
+        "rewrites the remote branch (safer lease variant) — confirm intent",
+      );
     }
     if (has("--force", "-f")) {
-      return block("push-force", "force-push overwrites remote history and can destroy others' commits");
+      return block(
+        "push-force",
+        "force-push overwrites remote history and can destroy others' commits",
+      );
     }
     if (has("--delete") || rest.some((t) => /^:.+/.test(t))) {
       return block("push-delete", "deletes a remote branch");
     }
     if (hasNoVerify) {
-      return block("push-no-verify", "--no-verify bypasses pre-push hooks (e.g. secret scanning)");
+      return block(
+        "push-no-verify",
+        "--no-verify bypasses pre-push hooks (e.g. secret scanning)",
+      );
     }
     return allow("push", "normal push");
   }
 
   // --- working-tree / index destruction -------------------------------------------------------
   if (sub === "reset" && has("--hard")) {
-    return block("reset-hard", "discards all uncommitted changes in the working tree and index");
+    return block(
+      "reset-hard",
+      "discards all uncommitted changes in the working tree and index",
+    );
   }
   if (sub === "clean" && has("-f", "-fd", "-fdx", "-df", "-xfd", "--force")) {
-    return block("clean-force", "permanently deletes untracked files (and dirs/ignored with -d/-x)");
+    return block(
+      "clean-force",
+      "permanently deletes untracked files (and dirs/ignored with -d/-x)",
+    );
   }
   if (sub === "checkout" && has("-f", "--force")) {
     return block("checkout-force", "discards local changes when switching");
   }
-  if (sub === "checkout" && rest.includes("--") && rest[rest.length - 1] === ".") {
-    return warn("checkout-discard", "discards changes to the current path tree");
+  if (
+    sub === "checkout" &&
+    rest.includes("--") &&
+    rest[rest.length - 1] === "."
+  ) {
+    return warn(
+      "checkout-discard",
+      "discards changes to the current path tree",
+    );
   }
   if (sub === "restore" && (rest.includes(".") || has("--worktree", "-W"))) {
     return warn("restore-discard", "discards working-tree changes");
   }
 
   // --- branch / stash deletion ----------------------------------------------------------------
-  if (sub === "branch" && (flags.includes("-D") || (has("-d", "--delete") && has("-f", "--force")))) {
-    return block("branch-force-delete", "force-deletes a branch even if unmerged");
+  if (
+    sub === "branch" &&
+    (flags.includes("-D") || (has("-d", "--delete") && has("-f", "--force")))
+  ) {
+    return block(
+      "branch-force-delete",
+      "force-deletes a branch even if unmerged",
+    );
   }
   if (sub === "branch" && has("-d", "--delete")) {
     return warn("branch-delete", "deletes a branch");
@@ -132,42 +170,78 @@ export function classifyGitCommand(command) {
 
   // --- history-rewriting on local commits -----------------------------------------------------
   if (sub === "commit" && hasNoVerify) {
-    return block("commit-no-verify", "--no-verify bypasses pre-commit hooks (lint, types, secret scan)");
+    return block(
+      "commit-no-verify",
+      "--no-verify bypasses pre-commit hooks (lint, types, secret scan)",
+    );
   }
   if (sub === "commit" && has("--amend")) {
-    return warn("commit-amend", "rewrites the last commit — dangerous if it was already pushed");
+    return warn(
+      "commit-amend",
+      "rewrites the last commit — dangerous if it was already pushed",
+    );
   }
   if (sub === "rebase") {
-    return warn("rebase", "rewrites commit history — coordinate before rebasing shared branches");
+    return warn(
+      "rebase",
+      "rewrites commit history — coordinate before rebasing shared branches",
+    );
   }
   if (sub === "gc" && rest.some((t) => /^--prune=now$/.test(t))) {
-    return warn("gc-prune-now", "prunes unreachable objects immediately — removes recovery window");
+    return warn(
+      "gc-prune-now",
+      "prunes unreachable objects immediately — removes recovery window",
+    );
   }
 
-  return allow("safe", `git ${sub || "(no subcommand)"} is not a guarded action`);
+  return allow(
+    "safe",
+    `git ${sub || "(no subcommand)"} is not a guarded action`,
+  );
 }
 
 const RULES_DOC = [
-  ["block", "filter-branch / filter-repo / reflog expire / update-ref -d", "unrecoverable history/ref rewrite"],
+  [
+    "block",
+    "filter-branch / filter-repo / reflog expire / update-ref -d",
+    "unrecoverable history/ref rewrite",
+  ],
   ["block", "push --force / -f", "overwrites remote history"],
   ["block", "push --delete / push <remote> :branch", "remote branch deletion"],
-  ["block", "push/commit --no-verify", "bypasses hooks (secret scan, lint, types)"],
+  [
+    "block",
+    "push/commit --no-verify",
+    "bypasses hooks (secret scan, lint, types)",
+  ],
   ["block", "reset --hard", "discards working tree + index"],
   ["block", "clean -f[dx]", "deletes untracked files"],
   ["block", "checkout -f", "discards local changes"],
   ["block", "branch -D", "force-deletes an unmerged branch"],
   ["warn", "push --force-with-lease", "safer force, still rewrites remote"],
   ["warn", "commit --amend / rebase", "rewrites local history"],
-  ["warn", "branch -d / stash clear|drop / restore . / checkout -- .", "deletes/discards local work"],
+  [
+    "warn",
+    "branch -d / stash clear|drop / restore . / checkout -- .",
+    "deletes/discards local work",
+  ],
   ["warn", "gc --prune=now", "removes object recovery window"],
-  ["allow", "everything else", "status, add, commit, fetch, pull, push (no force), branch, switch, …"],
+  [
+    "allow",
+    "everything else",
+    "status, add, commit, fetch, pull, push (no force), branch, switch, …",
+  ],
 ];
 
 function parseArgs(argv) {
   const flags = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--self-test" || a === "--json" || a === "--explain" || a === "--help") {
+    if (
+      a === "--self-test" ||
+      a === "--json" ||
+      a === "--explain" ||
+      a === "--help"
+    ) {
       flags[a.slice(2)] = true;
     } else if (a === "--command") {
       flags.command = argv[++i];
@@ -182,7 +256,11 @@ function runSelfTest({ json }) {
   const cases = [
     ["git push --force origin main", "block", "push-force"],
     ["git push -f", "block", "push-force"],
-    ["git push --force-with-lease origin feature", "warn", "push-force-with-lease"],
+    [
+      "git push --force-with-lease origin feature",
+      "warn",
+      "push-force-with-lease",
+    ],
     ["git push origin :feature", "block", "push-delete"],
     ["git push --delete origin feature", "block", "push-delete"],
     ["git push --no-verify origin main", "block", "push-no-verify"],
@@ -218,13 +296,19 @@ function runSelfTest({ json }) {
   });
   const passed = checks.every((c) => c.ok);
   if (json) {
-    process.stdout.write(`${JSON.stringify({ ok: passed, mode: "self-test", checks }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ok: passed, mode: "self-test", checks }, null, 2)}\n`,
+    );
   } else {
     process.stdout.write(`[git-guard] self-test — ${checks.length} case(s)\n`);
     for (const c of checks) {
-      process.stdout.write(`  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`);
+      process.stdout.write(
+        `  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`,
+      );
     }
-    process.stdout.write(`[git-guard] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`);
+    process.stdout.write(
+      `[git-guard] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`,
+    );
   }
   process.exit(passed ? 0 : 1);
 }
@@ -232,12 +316,24 @@ function runSelfTest({ json }) {
 function explain({ json }) {
   if (json) {
     process.stdout.write(
-      `${JSON.stringify(RULES_DOC.map(([severity, pattern, reason]) => ({ severity, pattern, reason })), null, 2)}\n`,
+      `${JSON.stringify(
+        RULES_DOC.map(([severity, pattern, reason]) => ({
+          severity,
+          pattern,
+          reason,
+        })),
+        null,
+        2,
+      )}\n`,
     );
   } else {
-    process.stdout.write(`[git-guard] rules (first match wins, most-destructive first):\n`);
+    process.stdout.write(
+      `[git-guard] rules (first match wins, most-destructive first):\n`,
+    );
     for (const [severity, pattern, reason] of RULES_DOC) {
-      process.stdout.write(`  ${severity.toUpperCase().padEnd(5)}  ${pattern}  —  ${reason}\n`);
+      process.stdout.write(
+        `  ${severity.toUpperCase().padEnd(5)}  ${pattern}  —  ${reason}\n`,
+      );
     }
   }
 }
@@ -246,8 +342,13 @@ function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
       {
-        usage: 'node scripts/harness/git-guard.mjs (check "<git cmd>" | --self-test | --explain) [--json]',
-        severities: { block: "exit 1 — refuse", warn: "exit 0 — allowed but surfaced", allow: "exit 0" },
+        usage:
+          'node scripts/harness/git-guard.mjs (check "<git cmd>" | --self-test | --explain) [--json]',
+        severities: {
+          block: "exit 1 — refuse",
+          warn: "exit 0 — allowed but surfaced",
+          allow: "exit 0",
+        },
         hook: 'pre-exec hook: node scripts/harness/git-guard.mjs check "$CMD" || exit 1',
         note: "Deterministic classifier; never runs git. Override a block by running the raw command yourself, deliberately.",
       },
@@ -270,16 +371,24 @@ function main() {
     (idx >= 0 ? flags._[idx + 1] : undefined) ??
     (flags._[0] !== "check" ? flags._.join(" ") : undefined);
   if (!command) {
-    fail('nothing to check. Use: check "<git command>" (or --self-test / --explain).');
+    fail(
+      'nothing to check. Use: check "<git command>" (or --self-test / --explain).',
+    );
   }
 
   const verdict = classifyGitCommand(command);
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify({ command, ...verdict }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ command, ...verdict }, null, 2)}\n`,
+    );
   } else if (verdict.severity === "block") {
-    process.stderr.write(`[git-guard] BLOCK (${verdict.rule}): ${verdict.reason}\n  ${command}\n`);
+    process.stderr.write(
+      `[git-guard] BLOCK (${verdict.rule}): ${verdict.reason}\n  ${command}\n`,
+    );
   } else if (verdict.severity === "warn") {
-    process.stderr.write(`[git-guard] WARN (${verdict.rule}): ${verdict.reason}\n  ${command}\n`);
+    process.stderr.write(
+      `[git-guard] WARN (${verdict.rule}): ${verdict.reason}\n  ${command}\n`,
+    );
   } else {
     process.stdout.write(`[git-guard] allow: ${command}\n`);
   }

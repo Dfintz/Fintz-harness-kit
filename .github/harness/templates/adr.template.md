@@ -2,7 +2,7 @@
 
 > Architecture Decision Record. Template from the harness-kit `grill` skill. Copy to
 > `docs/adr/NNNN-<kebab-title>.md` (zero-padded sequential number). One decision per file. Keep it
-> short — an ADR captures *why*, so a future session doesn't relitigate a settled choice. Lightweight
+> short — an ADR captures _why_, so a future session doesn't relitigate a settled choice. Lightweight
 > [MADR](https://adr.github.io/madr/)-style.
 
 - **Status:** proposed | accepted | superseded by [ADR-NNNN](./NNNN-...md)

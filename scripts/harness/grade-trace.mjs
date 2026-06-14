@@ -124,7 +124,8 @@ export function gradeTrajectory(journal, opts = {}) {
     };
   }
 
-  const direction = journal?.metric?.direction === "minimize" ? "minimize" : "maximize";
+  const direction =
+    journal?.metric?.direction === "minimize" ? "minimize" : "maximize";
   const metricName = safe(journal?.metric?.name ?? loop);
   const n = iterations.length;
 
@@ -304,7 +305,13 @@ function parseArgs(argv) {
   const flags = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--self-test" || a === "--latest" || a === "--all" || a === "--json" || a === "--help") {
+    if (
+      a === "--self-test" ||
+      a === "--latest" ||
+      a === "--all" ||
+      a === "--json" ||
+      a === "--help"
+    ) {
       flags[a.slice(2)] = true;
     } else if (a === "--file") {
       flags.file = argv[++i];
@@ -360,9 +367,21 @@ function runSelfTest({ json }) {
       { iteration: 4, metric: 14, best: 14, kept: true },
     ],
   });
-  expect("monotonic improve → grade A", monotonic.letter === "A", `got ${monotonic.letter}`);
-  expect("monotonic improve → 0 wasted", monotonic.earlyStop.wastedIterations === 0, `got ${monotonic.earlyStop.wastedIterations}`);
-  expect("monotonic improve → 0 oscillation", monotonic.signals.oscillation === 0, `got ${monotonic.signals.oscillation}`);
+  expect(
+    "monotonic improve → grade A",
+    monotonic.letter === "A",
+    `got ${monotonic.letter}`,
+  );
+  expect(
+    "monotonic improve → 0 wasted",
+    monotonic.earlyStop.wastedIterations === 0,
+    `got ${monotonic.earlyStop.wastedIterations}`,
+  );
+  expect(
+    "monotonic improve → 0 oscillation",
+    monotonic.signals.oscillation === 0,
+    `got ${monotonic.signals.oscillation}`,
+  );
 
   const plateau = gradeTrajectory({
     kind: "experiment",
@@ -379,10 +398,26 @@ function runSelfTest({ json }) {
       { iteration: 8, metric: 11, best: 14, kept: false },
     ],
   });
-  expect("plateau-exhausted → improved", plateau.improved === true, `got ${plateau.improved}`);
-  expect("plateau-exhausted → wasted >= 4", plateau.earlyStop.wastedIterations >= 4, `got ${plateau.earlyStop.wastedIterations}`);
-  expect("plateau-exhausted → recommends small stop", plateau.earlyStop.recommendedNoImprovementStop <= 2, `got ${plateau.earlyStop.recommendedNoImprovementStop}`);
-  expect("plateau-exhausted → below A/B", plateau.score < 0.8, `got ${plateau.score}`);
+  expect(
+    "plateau-exhausted → improved",
+    plateau.improved === true,
+    `got ${plateau.improved}`,
+  );
+  expect(
+    "plateau-exhausted → wasted >= 4",
+    plateau.earlyStop.wastedIterations >= 4,
+    `got ${plateau.earlyStop.wastedIterations}`,
+  );
+  expect(
+    "plateau-exhausted → recommends small stop",
+    plateau.earlyStop.recommendedNoImprovementStop <= 2,
+    `got ${plateau.earlyStop.recommendedNoImprovementStop}`,
+  );
+  expect(
+    "plateau-exhausted → below A/B",
+    plateau.score < 0.8,
+    `got ${plateau.score}`,
+  );
 
   const neverImproves = gradeTrajectory({
     kind: "experiment",
@@ -397,8 +432,16 @@ function runSelfTest({ json }) {
       { iteration: 6, metric: 9, best: 10, kept: false },
     ],
   });
-  expect("never-improves → not improved", neverImproves.improved === false, `got ${neverImproves.improved}`);
-  expect("never-improves → grade F", neverImproves.letter === "F", `got ${neverImproves.letter}`);
+  expect(
+    "never-improves → not improved",
+    neverImproves.improved === false,
+    `got ${neverImproves.improved}`,
+  );
+  expect(
+    "never-improves → grade F",
+    neverImproves.letter === "F",
+    `got ${neverImproves.letter}`,
+  );
 
   const stuckEarly = gradeTrajectory({
     kind: "experiment",
@@ -411,8 +454,16 @@ function runSelfTest({ json }) {
       { iteration: 4, metric: 12, best: 14, kept: false },
     ],
   });
-  expect("stuck-early → 0 wasted (detector worked)", stuckEarly.earlyStop.wastedIterations === 0, `got ${stuckEarly.earlyStop.wastedIterations}`);
-  expect("stuck-early → grade >= B", stuckEarly.score >= 0.8, `got ${stuckEarly.score}`);
+  expect(
+    "stuck-early → 0 wasted (detector worked)",
+    stuckEarly.earlyStop.wastedIterations === 0,
+    `got ${stuckEarly.earlyStop.wastedIterations}`,
+  );
+  expect(
+    "stuck-early → grade >= B",
+    stuckEarly.score >= 0.8,
+    `got ${stuckEarly.score}`,
+  );
 
   const oscillating = gradeTrajectory({
     kind: "experiment",
@@ -426,14 +477,22 @@ function runSelfTest({ json }) {
       { iteration: 5, metric: 9, best: 9, kept: false },
     ],
   });
-  expect("oscillating → detects thrash (>=3)", oscillating.signals.oscillation >= 3, `got ${oscillating.signals.oscillation}`);
+  expect(
+    "oscillating → detects thrash (>=3)",
+    oscillating.signals.oscillation >= 3,
+    `got ${oscillating.signals.oscillation}`,
+  );
 
   const convergence = gradeTrajectory({
     kind: "convergence",
     terminalState: "converged",
     iterations: [{ iteration: 1, checks: [] }],
   });
-  expect("convergence journal → not gradeable", convergence.gradeable === false, "should decline non-experiment journals");
+  expect(
+    "convergence journal → not gradeable",
+    convergence.gradeable === false,
+    "should decline non-experiment journals",
+  );
 
   // Determinism: same input → identical score.
   const repeat = gradeTrajectory({
@@ -447,7 +506,11 @@ function runSelfTest({ json }) {
       { iteration: 4, metric: 14, best: 14, kept: true },
     ],
   });
-  expect("deterministic → identical score on re-grade", repeat.score === monotonic.score, `${repeat.score} vs ${monotonic.score}`);
+  expect(
+    "deterministic → identical score on re-grade",
+    repeat.score === monotonic.score,
+    `${repeat.score} vs ${monotonic.score}`,
+  );
 
   // Injection defang: a malicious loop name must not survive verbatim into output.
   const injected = gradeTrajectory({
@@ -457,17 +520,29 @@ function runSelfTest({ json }) {
     metric: { name: "score", direction: "maximize", baseline: 1, best: 2 },
     iterations: [{ iteration: 1, metric: 2, best: 2, kept: true }],
   });
-  expect("defang → loop name neutralized", injected.loop.includes("⟪defanged⟫"), `got ${injected.loop}`);
+  expect(
+    "defang → loop name neutralized",
+    injected.loop.includes("⟪defanged⟫"),
+    `got ${injected.loop}`,
+  );
 
   const passed = checks.every((c) => c.ok);
   if (json) {
-    process.stdout.write(`${JSON.stringify({ ok: passed, mode: "self-test", checks }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ ok: passed, mode: "self-test", checks }, null, 2)}\n`,
+    );
   } else {
-    process.stdout.write(`[grade-trace] self-test — ${checks.length} check(s)\n`);
+    process.stdout.write(
+      `[grade-trace] self-test — ${checks.length} check(s)\n`,
+    );
     for (const c of checks) {
-      process.stdout.write(`  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`);
+      process.stdout.write(
+        `  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`,
+      );
     }
-    process.stdout.write(`[grade-trace] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`);
+    process.stdout.write(
+      `[grade-trace] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`,
+    );
   }
   process.exit(passed ? 0 : 1);
 }
@@ -482,23 +557,38 @@ function summarizeAll({ json, stallAllowance }) {
       continue;
     }
     const result = gradeTrajectory(journal, { stallAllowance });
-    if (result.gradeable) graded.push({ file: abs.split(/[\\/]/).pop(), ...result });
+    if (result.gradeable)
+      graded.push({ file: abs.split(/[\\/]/).pop(), ...result });
   }
   if (graded.length === 0) {
-    if (json) process.stdout.write(`${JSON.stringify({ count: 0, graded: [] }, null, 2)}\n`);
-    else process.stdout.write(`[grade-trace] no gradeable experiment journals in ${runsDir}\n`);
+    if (json)
+      process.stdout.write(
+        `${JSON.stringify({ count: 0, graded: [] }, null, 2)}\n`,
+      );
+    else
+      process.stdout.write(
+        `[grade-trace] no gradeable experiment journals in ${runsDir}\n`,
+      );
     return;
   }
   const avgScore = Number(
     (graded.reduce((s, g) => s + g.score, 0) / graded.length).toFixed(4),
   );
-  const totalWasted = graded.reduce((s, g) => s + g.earlyStop.wastedIterations, 0);
+  const totalWasted = graded.reduce(
+    (s, g) => s + g.earlyStop.wastedIterations,
+    0,
+  );
   const worst = graded.reduce((w, g) => (g.score < w.score ? g : w), graded[0]);
   const summary = {
     count: graded.length,
     avgScore,
     totalWastedIterations: totalWasted,
-    worst: { file: worst.file, loop: worst.loop, score: worst.score, letter: worst.letter },
+    worst: {
+      file: worst.file,
+      loop: worst.loop,
+      score: worst.score,
+      letter: worst.letter,
+    },
     graded: graded.map((g) => ({
       file: g.file,
       loop: g.loop,
@@ -515,9 +605,13 @@ function summarizeAll({ json, stallAllowance }) {
         `${totalWasted} wasted iteration(s) total\n`,
     );
     for (const g of summary.graded) {
-      process.stdout.write(`  ${g.letter} ${g.score}  ${g.loop}  (wasted ${g.wastedIterations})  ${g.file}\n`);
+      process.stdout.write(
+        `  ${g.letter} ${g.score}  ${g.loop}  (wasted ${g.wastedIterations})  ${g.file}\n`,
+      );
     }
-    process.stdout.write(`  worst: ${summary.worst.loop} ${summary.worst.letter} (${summary.worst.score})\n`);
+    process.stdout.write(
+      `  worst: ${summary.worst.loop} ${summary.worst.letter} (${summary.worst.score})\n`,
+    );
   }
 }
 
@@ -529,9 +623,11 @@ function showHelp() {
           "node scripts/harness/grade-trace.mjs [--self-test | --latest | --file <path> | --all] [--json] [--min-grade n] [--stall-allowance n]",
         modes: {
           "--self-test": "validate the grader deterministically (no journals)",
-          "--latest": "grade the newest experiment journal in .github/harness/runs/",
+          "--latest":
+            "grade the newest experiment journal in .github/harness/runs/",
           "--file <path>": "grade a specific journal",
-          "--all": "summarize every experiment journal (avg grade, total wasted iterations)",
+          "--all":
+            "summarize every experiment journal (avg grade, total wasted iterations)",
         },
         gating:
           "--min-grade <0..1> is opt-in: exit 1 when the process score is below the floor. Advisory (exit 0) otherwise.",
@@ -577,7 +673,9 @@ function main() {
   const result = gradeTrajectory(journal, { stallAllowance });
   printGrade(result, { json });
 
-  const minGrade = Number.isFinite(flags.minGrade) ? flags.minGrade : defaults.minGrade;
+  const minGrade = Number.isFinite(flags.minGrade)
+    ? flags.minGrade
+    : defaults.minGrade;
   if (
     result.gradeable &&
     typeof minGrade === "number" &&
