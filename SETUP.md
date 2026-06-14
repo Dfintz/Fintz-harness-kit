@@ -3,6 +3,19 @@
 The harness is configuration-driven: you copy two directories and edit one JSON file. No script edits
 are required for the core loops.
 
+## Install paths
+
+| Path | Command | What you get |
+| ---- | ------- | ------------ |
+| **Agent Skill** (70+ agents) | `npx skills add <owner>/harness-kit -g` | The harness **playbook** (`skills/harness/SKILL.md`) — agent guidance on stages/gates/loops |
+| **Claude Code plugin** | `/plugin marketplace add <owner>/harness-kit` then `/plugin install harness-kit` | The plugin bundle (playbook + engine files) |
+| **Copy the scaffold** (below) | manual | The full runnable **engine** dropped into your repo |
+
+The skill teaches an agent *how* to drive the harness; the **engine** (the `scripts/harness/*.mjs`
+runners, dashboard, MCP server, loop definitions) is what actually runs loops. The copy-the-scaffold
+steps below give you that engine in your own repo — do this when you want the loops, experiments,
+dashboard, and MCP server runnable from your project.
+
 ## 1. Copy the kit into your repo
 
 Copy these into your project root (merge, don't overwrite your own files):

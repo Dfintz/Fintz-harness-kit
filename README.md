@@ -7,6 +7,36 @@ LLM**, and a live metrics dashboard.
 
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on.
 
+## Install
+
+The kit is packaged as an [Agent Skill](https://agentskills.io/) and a Claude Code plugin, so it
+installs into 70+ agents (Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI, Windsurf, Cline, …)
+without copying folders by hand.
+
+```bash
+# Any of 70+ agents, via the open Agent Skills CLI (-g installs globally for your user):
+npx skills add <owner>/harness-kit -g
+
+# A specific agent (or several):
+npx skills add <owner>/harness-kit -g -a github-copilot -a claude-code
+
+# Or from a local checkout of this kit:
+npx skills add ./harness-kit --list      # discover, then add --skill harness to install
+```
+
+```text
+# Claude Code, via the native plugin marketplace (auto-updates):
+/plugin marketplace add <owner>/harness-kit
+/plugin install harness-kit
+```
+
+**Two layers, on purpose.** The skill above is the **playbook** — it teaches the agent the harness
+contract (stages, gates, loops, memory) and is enough for guidance in any repo. The **runnable
+engine** (the `scripts/harness/*.mjs` loop runners, dashboard, and MCP server) ships with the kit
+files; get it by either installing the Claude Code **plugin** (bundles everything) or adopting the
+kit scaffold per [`SETUP.md`](SETUP.md). Replace `<owner>/harness-kit` with wherever you publish this
+kit.
+
 ## What's inside
 
 | Capability                                | Where                                                                                                                      | Notes                                                                                              |
