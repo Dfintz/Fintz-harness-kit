@@ -184,12 +184,20 @@ async function runSelfTest({ json }) {
 }
 
 // Run an agent command against a prepared sandbox. The task prompt is piped on stdin; when
-// withHarness, the harness contract files are referenced so the agent can load them.
+// withHarness, the harness contract files are referenced so the agent can load them. If an
+// evolvable candidate-instructions file exists, its content is included in the harness arm — this
+// is what closes the meta-loop: harness-evolve edits that file, and the eval score reflects it.
 function invokeAgent(agentCmd, task, sandbox, withHarness) {
-  const harnessNote = withHarness
-    ? '\n\n(Harness context: load skills/harness/SKILL.md and .github/harness/HARNESS.md for the ' +
-      'stage machine, gates, and guardrails before acting.)'
-    : '';
+  let harnessNote = '';
+  if (withHarness) {
+    harnessNote =
+      '\n\n(Harness context: load skills/harness/SKILL.md and .github/harness/HARNESS.md for the ' +
+      'stage machine, gates, and guardrails before acting.)';
+    const candidatePath = join(repoRoot, '.github', 'harness', 'evolve', 'candidate-instructions.md');
+    if (existsSync(candidatePath)) {
+      harnessNote += `\n\n## Harness guidance\n${readFileSync(candidatePath, 'utf8')}`;
+    }
+  }
   const prompt = `${task.prompt}${harnessNote}`;
   const result = spawnSync(agentCmd, {
     cwd: sandbox,

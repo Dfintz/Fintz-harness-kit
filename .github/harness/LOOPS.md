@@ -261,6 +261,37 @@ node scripts/harness/experiment-loop.mjs --experiments lint-debt-experiment \
 It never edits code itself — it only schedules the runner, which owns the measure → apply →
 keep-if-improved → journal protocol.
 
+#### Meta-evolution: improving the harness itself (`harness-evolve`)
+
+The experiment machinery can be pointed at a **harness artifact** instead of app code — evolving the
+harness's own guidance and keeping an edit only if the **eval score** (the fitness function) rises.
+This is the most dangerous loop, so it runs through a dedicated guarded runner, not `run-experiment`
+directly:
+
+```bash
+# Validate the guards with NO agent (deterministic): safe target + healthy eval suite.
+node scripts/harness/harness-evolve.mjs --check
+
+# Evolve (autonomy OFF — improvements stay on disk for review, nothing is committed or pushed):
+node scripts/harness/harness-evolve.mjs --agent "<your agent CLI>"
+
+# Opt into committing each eval-verified improvement (only the target file, after integrity checks):
+node scripts/harness/harness-evolve.mjs --agent "<cmd>" --commit --max-iterations 3
+```
+
+Two hard rules are enforced by [`evolve-guard.mjs`](../../scripts/harness/evolve-guard.mjs):
+
+1. **RULE 1 — forbidden targets.** The loop's `target` may never resolve to the eval suite, any
+   guardrail/security file, memory, config, or the evolve machinery itself. Checked at config time;
+   the run fails fast. *A loop that can edit its own scorer reward-hacks in one iteration.*
+2. **RULE 2 — integrity tripwire.** The eval suite + every forbidden file is hashed before the run
+   and re-checked before AND after every iteration. Any change aborts the run — that means the agent
+   touched the scorer or a guardrail, which is exactly the tampering the guard exists to stop.
+
+`run-eval --self-test` must pass before a run starts (no evolving against a broken scorer). Autonomy
+is **off by default**; a real run also needs a live agent for both the edit and the eval scoring
+(deterministic `--check` validates the safety machinery without one).
+
 ---
 
 ## Creating a Loop
