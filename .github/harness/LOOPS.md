@@ -159,12 +159,21 @@ to the agent command's stdin, re-runs the checks, and stops early when two conse
 fail identically. Each run writes a JSON journal (baseline, per-iteration check results and
 durations, terminal state) to `.github/harness/runs/` (gitignored) for audit.
 
-Local Ollama example (optional):
+Local model example (optional) — works with **Ollama** (default) or **LM Studio**:
 
 ```bash
+# Ollama (default, http://localhost:11434):
 node scripts/harness/run-loop.mjs build-fix \
    --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"
+
+# LM Studio (OpenAI-compatible, http://localhost:1234) — load a model in LM Studio first:
+node scripts/harness/run-loop.mjs build-fix \
+   --agent "node scripts/harness/ollama-agent.mjs --provider lmstudio --model <loaded-model-id>"
 ```
+
+Provider also via env: `HARNESS_LLM_PROVIDER=lmstudio` (host `HARNESS_LLM_HOST`, model
+`HARNESS_LLM_MODEL`). The same `--provider` flag works on `ollama-apply-agent.mjs` and
+`vector-search.mjs`.
 
 Exit codes: `0` converged · `1` exhausted · `2` configuration error · `3` stuck (no progress).
 
@@ -220,14 +229,19 @@ runner re-measures files on disk and keeps the edit only if the metric improved.
 adapter so a local model actually rewrites the single declared `target`:
 
 ```bash
-# One bounded experiment, edits driven by local qwen2.5-coder:
+# One bounded experiment, edits driven by local qwen2.5-coder (Ollama):
 node scripts/harness/run-experiment.mjs lint-debt-experiment \
   --agent "node scripts/harness/ollama-apply-agent.mjs --model qwen2.5-coder:14b"
+
+# Same, but driven by a model loaded in LM Studio:
+node scripts/harness/run-experiment.mjs lint-debt-experiment \
+  --agent "node scripts/harness/ollama-apply-agent.mjs --provider lmstudio --model <loaded-model-id>"
 ```
 
 `ollama-apply-agent.mjs` reads the target from `HARNESS_EXPERIMENT_TARGETS` (set by the runner),
 asks the model for the complete updated file, and writes **only** that target — anything outside it
-is never touched, and a bad rewrite is reverted by the keep-if-improved guard. Add `--commit` to
+is never touched, and a bad rewrite is reverted by the keep-if-improved guard. It targets Ollama by
+default or LM Studio via `--provider lmstudio` (env `HARNESS_LLM_PROVIDER`). Add `--commit` to
 `run-experiment.mjs` to commit just the target after each kept improvement (a reviewable trail for
 unattended runs).
 
@@ -244,8 +258,8 @@ node scripts/harness/experiment-loop.mjs --experiments lint-debt-experiment \
   --interval-seconds 60 --max-cycles 50 --commit
 ```
 
-It never edits code itself — it only schedules the runner, which owns the
-measure → apply → keep-if-improved → journal protocol.
+It never edits code itself — it only schedules the runner, which owns the measure → apply →
+keep-if-improved → journal protocol.
 
 ---
 

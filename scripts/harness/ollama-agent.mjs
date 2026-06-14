@@ -10,7 +10,10 @@
  *
  * Example with loop runner:
  *   node scripts/harness/run-loop.mjs build-fix --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"
+ *
+ * Provider-aware: targets Ollama (default) or LM Studio via --provider / HARNESS_LLM_PROVIDER.
  */
+import { generateText, resolveProvider } from './llm-provider.mjs';
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -48,10 +51,6 @@ function parseNumber(value) {
   return parsed;
 }
 
-function trimTrailingSlash(url) {
-  return String(url || '').replace(/\/+$/, '');
-}
-
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
@@ -59,9 +58,12 @@ function showHelp() {
         usage: {
           command: 'node scripts/harness/ollama-agent.mjs --model <name> [options]',
           options: {
+            '--provider <name>':
+              'Local LLM provider: ollama (default) or lmstudio. Env: HARNESS_LLM_PROVIDER.',
             '--model <name>':
-              'Ollama model tag (default: HARNESS_OLLAMA_MODEL or qwen2.5-coder:14b).',
-            '--host <url>': 'Ollama base URL (default: OLLAMA_HOST or http://localhost:11434).',
+              'Model id (default: HARNESS_LLM_MODEL / HARNESS_OLLAMA_MODEL, else qwen2.5-coder:14b for ollama or local-model for lmstudio).',
+            '--host <url>':
+              'Base URL (default: provider host — ollama http://localhost:11434, lmstudio http://localhost:1234). Env: HARNESS_LLM_HOST / OLLAMA_HOST.',
             '--system <text>': 'Optional system prompt.',
             '--temperature <n>': 'Optional temperature.',
             '--num-predict <n>': 'Optional max tokens.',
@@ -89,56 +91,39 @@ async function main() {
     return;
   }
 
+  const provider = resolveProvider(flags.provider);
+  const fallbackModel = provider === 'lmstudio' ? 'local-model' : 'qwen2.5-coder:14b';
   const model = String(
-    flags.model || process.env.HARNESS_OLLAMA_MODEL || 'qwen2.5-coder:14b'
+    flags.model || process.env.HARNESS_LLM_MODEL || process.env.HARNESS_OLLAMA_MODEL || fallbackModel
   ).trim();
-  const host = trimTrailingSlash(flags.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
+  const host = flags.host || process.env.HARNESS_LLM_HOST || process.env.OLLAMA_HOST;
   const prompt = await readStdin();
 
   if (!prompt) {
     throw new Error('No prompt provided on stdin.');
   }
 
-  const options = {};
-  const temperature = parseNumber(flags.temperature ?? process.env.HARNESS_OLLAMA_TEMPERATURE);
-  if (temperature !== undefined) options.temperature = temperature;
+  const temperature = parseNumber(
+    flags.temperature ?? process.env.HARNESS_LLM_TEMPERATURE ?? process.env.HARNESS_OLLAMA_TEMPERATURE
+  );
+  const numPredict = parseNumber(
+    flags['num-predict'] ?? process.env.HARNESS_LLM_NUM_PREDICT ?? process.env.HARNESS_OLLAMA_NUM_PREDICT
+  );
 
-  const numPredict = parseNumber(flags['num-predict'] ?? process.env.HARNESS_OLLAMA_NUM_PREDICT);
-  if (numPredict !== undefined) options.num_predict = Math.trunc(numPredict);
+  const systemPrompt = flags.system || process.env.HARNESS_LLM_SYSTEM || process.env.HARNESS_OLLAMA_SYSTEM;
 
-  const payload = {
-    model,
-    prompt,
-    stream: false,
-  };
-
-  const systemPrompt = flags.system || process.env.HARNESS_OLLAMA_SYSTEM;
-  if (typeof systemPrompt === 'string' && systemPrompt.trim().length > 0) {
-    payload.system = systemPrompt;
-  }
-
-  if (Object.keys(options).length > 0) {
-    payload.options = options;
-  }
-
-  const response = await fetch(`${host}/api/generate`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Ollama request failed (${response.status}): ${text}`);
-  }
-
-  const data = await response.json();
-  const text = typeof data.response === 'string' ? data.response.trim() : '';
-  if (!text) {
-    throw new Error('Ollama returned an empty response payload.');
-  }
+  const text = (
+    await generateText({
+      provider,
+      host,
+      model,
+      system:
+        typeof systemPrompt === 'string' && systemPrompt.trim().length > 0 ? systemPrompt : undefined,
+      prompt,
+      temperature,
+      numPredict,
+    })
+  ).trim();
 
   process.stdout.write(`${text}\n`);
 }

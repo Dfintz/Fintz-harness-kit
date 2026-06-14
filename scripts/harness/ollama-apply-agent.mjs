@@ -27,14 +27,18 @@
  *
  * Env:
  *   HARNESS_EXPERIMENT_TARGETS  comma-separated target files (set by run-experiment.mjs)
- *   HARNESS_OLLAMA_MODEL        default model tag (overridden by --model)
- *   OLLAMA_HOST                 Ollama base URL (default http://localhost:11434)
- *   HARNESS_OLLAMA_NUM_PREDICT  max output tokens (default 8192 — full files need headroom)
- *   HARNESS_OLLAMA_TEMPERATURE  sampling temperature (default 0.2 for code edits)
+ *   HARNESS_LLM_PROVIDER        ollama (default) or lmstudio
+ *   HARNESS_LLM_MODEL           default model id (overridden by --model)
+ *   HARNESS_LLM_HOST            provider base URL (default ollama :11434 / lmstudio :1234)
+ *   HARNESS_LLM_NUM_PREDICT     max output tokens (default 8192 — full files need headroom)
+ *   HARNESS_LLM_TEMPERATURE     sampling temperature (default 0.2 for code edits)
+ *   (legacy HARNESS_OLLAMA_* / OLLAMA_HOST are still honored as fallbacks)
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { generateText, resolveProvider } from './llm-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -68,20 +72,19 @@ function parseNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function trimTrailingSlash(url) {
-  return String(url || '').replace(/\/+$/, '');
-}
-
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
       {
         usage: 'node scripts/harness/ollama-apply-agent.mjs --model <name> [options]',
         purpose:
-          'Edits the experiment target file using a local Ollama model so it can move a metric.',
+          'Edits the experiment target file using a local LLM (Ollama or LM Studio) so it can move a metric.',
         options: {
-          '--model <name>': 'Ollama model tag (default HARNESS_OLLAMA_MODEL or qwen2.5-coder:14b).',
-          '--host <url>': 'Ollama base URL (default OLLAMA_HOST or http://localhost:11434).',
+          '--provider <name>': 'ollama (default) or lmstudio. Env: HARNESS_LLM_PROVIDER.',
+          '--model <name>':
+            'Model id (default HARNESS_LLM_MODEL/HARNESS_OLLAMA_MODEL, else qwen2.5-coder:14b for ollama / local-model for lmstudio).',
+          '--host <url>':
+            'Provider base URL (default ollama http://localhost:11434 / lmstudio http://localhost:1234).',
           '--num-predict <n>': 'Max output tokens (default 8192).',
           '--temperature <n>': 'Sampling temperature (default 0.2).',
         },
@@ -155,7 +158,7 @@ function buildSystemPrompt(rel) {
   return [
     'You are an autonomous code-improvement agent in a metric-optimization loop.',
     `You may edit exactly one file: ${rel}.`,
-    'You will receive the goal and the file\'s current full contents.',
+    "You will receive the goal and the file's current full contents.",
     'Respond with ONLY the complete, updated contents of that file inside a single fenced code block.',
     'Do not include explanations, comments about your changes, or multiple code blocks.',
     'Preserve all behavior except the focused improvement requested. Never disable lint rules or add any/ts-ignore to game a metric.',
@@ -182,12 +185,22 @@ async function main() {
     return;
   }
 
-  const model = String(flags.model || process.env.HARNESS_OLLAMA_MODEL || 'qwen2.5-coder:14b').trim();
-  const host = trimTrailingSlash(flags.host || process.env.OLLAMA_HOST || 'http://localhost:11434');
+  const provider = resolveProvider(flags.provider);
+  const fallbackModel = provider === 'lmstudio' ? 'local-model' : 'qwen2.5-coder:14b';
+  const model = String(
+    flags.model || process.env.HARNESS_LLM_MODEL || process.env.HARNESS_OLLAMA_MODEL || fallbackModel
+  ).trim();
+  const host = flags.host || process.env.HARNESS_LLM_HOST || process.env.OLLAMA_HOST;
   const numPredict = Math.trunc(
-    parseNumber(flags['num-predict'] ?? process.env.HARNESS_OLLAMA_NUM_PREDICT, 8192)
+    parseNumber(
+      flags['num-predict'] ?? process.env.HARNESS_LLM_NUM_PREDICT ?? process.env.HARNESS_OLLAMA_NUM_PREDICT,
+      8192
+    )
   );
-  const temperature = parseNumber(flags.temperature ?? process.env.HARNESS_OLLAMA_TEMPERATURE, 0.2);
+  const temperature = parseNumber(
+    flags.temperature ?? process.env.HARNESS_LLM_TEMPERATURE ?? process.env.HARNESS_OLLAMA_TEMPERATURE,
+    0.2
+  );
 
   const target = resolveSingleTarget();
   const improvementPrompt = await readStdin();
@@ -195,26 +208,17 @@ async function main() {
 
   const currentContents = readFileSync(target.abs, 'utf8');
 
-  const payload = {
+  const modelResponse = await generateText({
+    provider,
+    host,
     model,
     system: buildSystemPrompt(target.rel),
     prompt: buildUserPrompt(improvementPrompt, target.rel, currentContents),
-    stream: false,
-    options: { temperature, num_predict: numPredict },
-  };
-
-  const response = await fetch(`${host}/api/generate`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(payload),
+    temperature,
+    numPredict,
   });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Ollama request failed (${response.status}): ${text}`);
-  }
 
-  const data = await response.json();
-  const newContents = extractFileContents(data.response);
+  const newContents = extractFileContents(modelResponse);
 
   if (newContents === null) {
     process.stdout.write(

@@ -44,9 +44,18 @@ of the adapted files.
 - **Source:** https://ollama.com
 - **What we adapted:** local, zero-cost model inference for loop agents and embeddings, so the
   improvement loops can run without a hosted API.
-- **Where:** [`scripts/harness/ollama-agent.mjs`](scripts/harness/ollama-agent.mjs),
+- **Where:** [`scripts/harness/llm-provider.mjs`](scripts/harness/llm-provider.mjs),
+  [`scripts/harness/ollama-agent.mjs`](scripts/harness/ollama-agent.mjs),
   [`scripts/harness/ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs),
   [`scripts/harness/vector-search.mjs`](scripts/harness/vector-search.mjs).
+
+### LM Studio — local LLM runtime (OpenAI-compatible)
+
+- **Source:** https://lmstudio.ai
+- **What we adapted:** an alternative local runtime via its OpenAI-compatible API
+  (`/v1/chat/completions`, `/v1/embeddings`), selectable alongside Ollama with `--provider lmstudio`.
+- **Where:** [`scripts/harness/llm-provider.mjs`](scripts/harness/llm-provider.mjs) (shared adapter
+  used by the agents and vector search).
 
 ### Anthropic Agent Skills / Claude Code & GitHub Copilot
 

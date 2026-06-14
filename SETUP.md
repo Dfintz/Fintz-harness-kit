@@ -33,7 +33,12 @@ This is the only required step. Point the tokens at your project's real commands
     "build": "npm run build",
     "test": "npm test",
   },
-  "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:14b" },
+  "llm": {
+    "provider": "ollama", // or "lmstudio"
+    "model": "qwen2.5-coder:14b",
+    "ollama": { "host": "http://localhost:11434" },
+    "lmstudio": { "host": "http://localhost:1234" },
+  },
   "experiments": {
     "exampleMetricCommand": "npm run lint",
     "exampleMetricExtract": "(\\d+) problems", // regex with ONE capture group = the number
@@ -64,10 +69,18 @@ Loops invoke an agent command via stdin. Any CLI works:
 # Hosted agent (example):
 node scripts/harness/run-loop.mjs build-fix --agent "claude -p"
 
-# Local model (convergence — describe-only is fine here):
+# Local model (convergence — describe-only is fine here). Ollama by default:
 node scripts/harness/run-loop.mjs build-fix \
   --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"
+
+# Or LM Studio (OpenAI-compatible) — load a model in LM Studio first:
+node scripts/harness/run-loop.mjs build-fix \
+  --agent "node scripts/harness/ollama-agent.mjs --provider lmstudio --model <loaded-model-id>"
 ```
+
+> Provider is selectable per agent via `--provider ollama|lmstudio` (or `HARNESS_LLM_PROVIDER`),
+> with `--host`/`HARNESS_LLM_HOST` and `--model`/`HARNESS_LLM_MODEL`. The shared adapter is
+> `scripts/harness/llm-provider.mjs`; `vector-search.mjs` honors `--provider` too.
 
 > **Experiments need an _apply_ agent.** Convergence loops only need the agent to _describe_ a fix in
 > chat, but experiment loops re-measure files on disk — so use
@@ -92,14 +105,15 @@ For Claude Code or Cursor, add the same stdio entry to their MCP config:
 
 ```jsonc
 {
-  "servers": {            // Claude/Cursor use "mcpServers"
+  "servers": {
+    // Claude/Cursor use "mcpServers"
     "harness": {
       "type": "stdio",
       "command": "node",
       "args": ["scripts/harness/mcp-server.mjs"],
-      "cwd": "/abs/path/to/your/repo"
-    }
-  }
+      "cwd": "/abs/path/to/your/repo",
+    },
+  },
 }
 ```
 
@@ -118,4 +132,4 @@ Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The ser
 ## Requirements
 
 - Node.js ≥ 20 (core loops need nothing else).
-- Optional: Docker, Ollama, the Understand-Anything plugin.
+- Optional: Docker, Ollama or LM Studio (local-LLM loops), the Understand-Anything plugin.

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama).
+// Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama, LM Studio).
 /**
  * First-class MCP stdio server for harness graph + memory + vector tools.
  *
@@ -266,6 +266,10 @@ const toolSpecs = [
         type: 'string',
         description: 'all|memory|lessons|briefs|graph (comma-separated allowed)',
       },
+      provider: {
+        type: 'string',
+        description: 'Local LLM provider for embeddings: ollama (default) or lmstudio',
+      },
       model: {
         type: 'string',
         description: 'Embedding model name (default nomic-embed-text)',
@@ -301,6 +305,7 @@ const toolSpecs = [
     toCliArgs: args => {
       const cliArgs = [];
       pushOptionalCliArg(cliArgs, 'scope', readOptionalString(args, 'scope'));
+      pushOptionalCliArg(cliArgs, 'provider', readOptionalString(args, 'provider'));
       pushOptionalCliArg(cliArgs, 'model', readOptionalString(args, 'model'));
       pushOptionalCliArg(cliArgs, 'host', readOptionalString(args, 'host'));
       pushOptionalCliArg(cliArgs, 'max-text-chars', readOptionalPositiveInt(args, 'maxTextChars'));
@@ -320,6 +325,10 @@ const toolSpecs = [
         scope: {
           type: 'string',
           description: 'all|memory|lessons|briefs|graph (comma-separated allowed)',
+        },
+        provider: {
+          type: 'string',
+          description: 'Local LLM provider for embeddings: ollama (default) or lmstudio',
         },
         top: {
           type: 'integer',
@@ -366,6 +375,7 @@ const toolSpecs = [
       const query = readRequiredString(args, 'query');
       const cliArgs = ['--query', query];
       pushOptionalCliArg(cliArgs, 'scope', readOptionalString(args, 'scope'));
+      pushOptionalCliArg(cliArgs, 'provider', readOptionalString(args, 'provider'));
       pushOptionalCliArg(cliArgs, 'top', readOptionalPositiveInt(args, 'top'));
       pushOptionalCliArg(cliArgs, 'min-score', readOptionalFiniteNumber(args, 'minScore'));
       pushOptionalCliArg(cliArgs, 'model', readOptionalString(args, 'model'));

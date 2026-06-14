@@ -15,7 +15,7 @@ Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior
 | **Convergence loops**                     | [`.github/harness/loops/`](.github/harness/loops/), [`run-loop.mjs`](scripts/harness/run-loop.mjs)                         | Iterate until checks (lint/type/build/test) go green                                               |
 | **Workflow loops**                        | same                                                                                                                       | Rubric-graded passes (review-fix, feature-cycle, ci-green)                                         |
 | **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
-| **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via Ollama                                                          |
+| **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`)                      |
 | **Memory**                                | [`.github/harness/memory/`](.github/harness/memory/)                                                                       | Committed lessons + Architecture Briefs (structure only — no lessons shipped)                      |
 | **Knowledge graph**                       | [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs)                                                         | Optional structural memory (needs the Understand-Anything plugin)                                  |
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes 15 graph/memory/vector + loop/report tools over MCP (`.vscode/mcp.json` registers it)      |
@@ -52,18 +52,26 @@ Full adoption guide: [`SETUP.md`](SETUP.md). Loop protocol: [`.github/harness/LO
 
 ## Autoresearch with a local model
 
+Works with **Ollama** (default, `:11434`) or **LM Studio** (OpenAI-compatible, `:1234`) — pick with
+`--provider` or `HARNESS_LLM_PROVIDER`.
+
 ```bash
 # One bounded experiment, edits driven by a local model that actually rewrites the target file:
 node scripts/harness/run-experiment.mjs lint-debt-experiment \
   --agent "node scripts/harness/ollama-apply-agent.mjs --model qwen2.5-coder:14b"
 
+# Same via LM Studio (load a model there first):
+node scripts/harness/run-experiment.mjs lint-debt-experiment \
+  --agent "node scripts/harness/ollama-apply-agent.mjs --provider lmstudio --model <loaded-model-id>"
+
 # Continuous overnight hill-climbing, committing each kept improvement:
-npm run harness:experiment:ollama -- --commit
+npm run harness:experiment:ollama -- --commit      # or: harness:experiment:lmstudio
 ```
 
 The apply-agent edits only the experiment's single declared `target`; the runner re-measures and
 reverts anything that doesn't improve the metric — so letting a small local model rewrite a file is
-safe by construction.
+safe by construction. The shared adapter [`llm-provider.mjs`](scripts/harness/llm-provider.mjs)
+handles both runtimes (chat + embeddings); `vector-search.mjs` honors `--provider` too.
 
 ## MCP integration
 
@@ -78,13 +86,13 @@ npm run harness:mcp:server                         # run the stdio server direct
 ```
 
 Loop **execution** stays CLI-only on purpose: a loop invokes an agent and runs for minutes, so
-exposing it as an auto-callable MCP tool (when the MCP client *is* the agent) would recurse and time
+exposing it as an auto-callable MCP tool (when the MCP client _is_ the agent) would recurse and time
 out. The MCP surface is for discovery and context, not for driving loops.
 
 ## Requirements
 
 - Node.js ≥ 20 (uses built-in `fetch`; no install needed for the core loops).
-- Optional: Docker (dashboard/graph sidecars), Ollama (local-LLM loops), the Understand-Anything
+- Optional: Docker (dashboard/graph sidecars), Ollama or LM Studio (local-LLM loops), the Understand-Anything
   plugin (knowledge graph).
 
 ## License

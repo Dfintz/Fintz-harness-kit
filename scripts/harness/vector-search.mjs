@@ -17,6 +17,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { embedOne, normalizeHost as resolveProviderHost, resolveProvider } from './llm-provider.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
 const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
@@ -71,10 +73,6 @@ function parseArgs(argv) {
 function printJson(payload, exitCode = 0) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   process.exit(exitCode);
-}
-
-function normalizeHost(host) {
-  return String(host || DEFAULT_OLLAMA_HOST).replace(/\/+$/, '');
 }
 
 function toWorkspacePath(pathValue) {
@@ -329,94 +327,10 @@ function isNumberArray(value) {
   return Array.isArray(value) && value.length > 0 && value.every(item => Number.isFinite(item));
 }
 
-function validateEmbedding(value, context) {
-  if (!isNumberArray(value)) {
-    throw new Error(`Embedding payload was invalid for ${context}.`);
-  }
-  return value;
-}
-
-async function requestJson(url, payload, timeoutMs) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-
-    const body = await response.text();
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} ${response.statusText}: ${body.slice(0, 300)}`);
-    }
-
-    try {
-      return JSON.parse(body);
-    } catch (error) {
-      throw new Error(
-        `Invalid JSON response from ${url}: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function fetchEmbedding(host, model, input, timeoutMs) {
-  const errors = [];
-
-  try {
-    const embedPayload = await requestJson(
-      `${host}/api/embed`,
-      {
-        model,
-        input,
-      },
-      timeoutMs
-    );
-
-    if (isNumberArray(embedPayload.embedding)) {
-      return validateEmbedding(embedPayload.embedding, '/api/embed embedding');
-    }
-
-    if (Array.isArray(embedPayload.embeddings) && isNumberArray(embedPayload.embeddings[0])) {
-      return validateEmbedding(embedPayload.embeddings[0], '/api/embed embeddings[0]');
-    }
-
-    errors.push('Unexpected /api/embed payload shape.');
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
-  }
-
-  try {
-    const legacyPayload = await requestJson(
-      `${host}/api/embeddings`,
-      {
-        model,
-        prompt: input,
-      },
-      timeoutMs
-    );
-
-    if (isNumberArray(legacyPayload.embedding)) {
-      return validateEmbedding(legacyPayload.embedding, '/api/embeddings embedding');
-    }
-
-    errors.push('Unexpected /api/embeddings payload shape.');
-  } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
-  }
-
-  throw new Error(
-    [
-      `Unable to fetch embeddings from Ollama at ${host} using model ${model}.`,
-      'Ensure Ollama is running and the model is pulled locally.',
-      `Details: ${errors.join(' | ')}`,
-    ].join(' ')
-  );
+// Embedding is delegated to the shared provider adapter so the vector index can
+// target Ollama or LM Studio identically. `provider` is resolved by the callers.
+async function fetchEmbedding(provider, host, model, input, timeoutMs) {
+  return embedOne({ provider, host, model, input, timeoutMs });
 }
 
 function cosineSimilarity(vectorA, vectorB) {
@@ -457,7 +371,8 @@ function summarizeDocuments(documents) {
 async function buildOrUpdateIndex(options) {
   const scopes = parseScopeSelection(options.scope, options.defaultScope || DEFAULT_SCOPE);
   const selectedScopes = new Set(scopes);
-  const host = normalizeHost(options.host);
+  const provider = resolveProvider(options.provider);
+  const host = resolveProviderHost(options.host, provider);
   const model = String(options.model || DEFAULT_EMBED_MODEL);
   const maxTextChars = toPositiveInt(options.maxTextChars, DEFAULT_MAX_TEXT_CHARS, 'maxTextChars');
   const timeoutMs = toPositiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS, 'timeoutMs');
@@ -503,7 +418,7 @@ async function buildOrUpdateIndex(options) {
 
   for (let index = 0; index < docsToEmbed.length; index += 1) {
     const item = docsToEmbed[index];
-    const embedding = await fetchEmbedding(host, model, item.embeddingInput, timeoutMs);
+    const embedding = await fetchEmbedding(provider, host, model, item.embeddingInput, timeoutMs);
 
     selectedResults.push({
       id: item.doc.id,
@@ -639,7 +554,8 @@ async function runSemanticSearch(options) {
   const top = toPositiveInt(options.top, DEFAULT_TOP, 'top');
   const minScore = toNumber(options.minScore, -1, 'minScore');
   const timeoutMs = toPositiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS, 'timeoutMs');
-  const host = normalizeHost(options.host);
+  const provider = resolveProvider(options.provider);
+  const host = resolveProviderHost(options.host, provider);
   const autoIndex = options.noAutoIndex ? false : true;
 
   let index = loadExistingIndex();
@@ -670,6 +586,7 @@ async function runSemanticSearch(options) {
 
     await buildOrUpdateIndex({
       scope: options.scope || 'all',
+      provider,
       host,
       model: targetModel,
       force: Boolean(options.force),
@@ -687,6 +604,7 @@ async function runSemanticSearch(options) {
   }
 
   const queryEmbedding = await fetchEmbedding(
+    provider,
     host,
     targetModel,
     truncateText(query, DEFAULT_MAX_TEXT_CHARS),
@@ -810,6 +728,7 @@ async function main() {
   if (command === 'index') {
     const payload = await buildOrUpdateIndex({
       scope: flags.scope,
+      provider: flags.provider,
       host: flags.host,
       model: flags.model,
       force: Boolean(flags.force),
@@ -827,6 +746,7 @@ async function main() {
     const payload = await runSemanticSearch({
       query: flags.query,
       scope: flags.scope,
+      provider: flags.provider,
       host: flags.host,
       model: flags.model,
       top: flags.top,

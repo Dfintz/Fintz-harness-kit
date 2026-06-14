@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama).
+// Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama, LM Studio).
 /**
  * MCP-ready wrappers for harness graph + memory + vector tools.
  *
@@ -262,6 +262,7 @@ function listToolsPayload() {
         description: 'Builds or refreshes local embeddings for memory and graph corpora.',
         input: {
           scope: 'all|memory|lessons|briefs|graph',
+          provider: 'ollama|lmstudio?',
           model: 'string?',
           host: 'string?',
           maxTextChars: 'number?',
@@ -277,6 +278,7 @@ function listToolsPayload() {
         input: {
           query: 'string',
           scope: 'all|memory|lessons|briefs|graph?',
+          provider: 'ollama|lmstudio?',
           top: 'number?',
           minScore: 'number?',
           model: 'string?',
@@ -493,6 +495,7 @@ function handleVectorTool(toolName, flags) {
   } else if (toolName === 'vector-index') {
     const args = ['index'];
     pushFlagValue(args, flags, 'scope');
+    pushFlagValue(args, flags, 'provider');
     pushFlagValue(args, flags, 'model');
     pushFlagValue(args, flags, 'host');
     pushPositiveFlagValue(args, flags, 'max-text-chars');
@@ -505,6 +508,7 @@ function handleVectorTool(toolName, flags) {
     const query = requireValue(flags, 'query', 'vector-search requires --query');
     const args = ['search', '--query', query];
     pushFlagValue(args, flags, 'scope');
+    pushFlagValue(args, flags, 'provider');
     pushPositiveFlagValue(args, flags, 'top');
     pushNumberFlagValue(args, flags, 'min-score');
     pushFlagValue(args, flags, 'model');
