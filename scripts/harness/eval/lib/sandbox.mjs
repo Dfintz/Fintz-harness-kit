@@ -5,8 +5,8 @@
  * means a verifier (or an agent under eval) can never mutate the committed fixtures.
  */
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 
 export function makeSandbox(prefix = 'harness-eval-') {
   return mkdtempSync(join(tmpdir(), prefix));

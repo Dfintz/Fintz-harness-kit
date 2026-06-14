@@ -22,19 +22,19 @@
  *
  * Exit codes: 0 ok / self-test passed, 1 self-test failed or run rejected, 2 config error.
  */
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
-  applyOverlay,
-  copyInto,
-  listFiles,
-  makeSandbox,
-  readIfExists,
-  removeSandbox,
+    applyOverlay,
+    copyInto,
+    listFiles,
+    makeSandbox,
+    readIfExists,
+    removeSandbox,
 } from './lib/sandbox.mjs';
 import dangerousDiff from './verifiers/dangerous-diff.mjs';
 

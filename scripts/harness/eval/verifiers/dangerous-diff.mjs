@@ -44,3 +44,4 @@ export default function verify({ files }) {
 }
 
 export { DANGEROUS_PATTERNS };
+
