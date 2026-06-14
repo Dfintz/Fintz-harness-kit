@@ -156,6 +156,23 @@ function loadMemory() {
   return { lessons: loadLessons(), briefs: loadBriefs(), graph: loadGraph() };
 }
 
+// Eval journals (kind: 'eval') are a distinct shape from loop journals; load them separately so the
+// dashboard can show whether the harness measurably helps (baseline vs harness).
+function loadEvalRuns() {
+  if (!existsSync(runsDir)) return [];
+  const runs = [];
+  for (const file of readdirSync(runsDir)) {
+    if (!file.startsWith('eval-') || !file.endsWith('.json')) continue;
+    try {
+      const run = JSON.parse(readFileSync(join(runsDir, file), 'utf8'));
+      if (run && run.kind === 'eval' && run.aggregate) runs.push({ ...run, file });
+    } catch {
+      // skip unreadable eval journal
+    }
+  }
+  return runs.sort((a, b) => String(b.startedAt ?? '').localeCompare(String(a.startedAt ?? '')));
+}
+
 function kindOf(journal) {
   if (
     journal.kind === 'convergence' ||
@@ -581,8 +598,37 @@ function renderMemorySection(memory) {
   return `<h2 class="section-title">Project memory</h2>${memoryCards}${lessonsPanel}${briefsPanel}`;
 }
 
+function renderEvalsSection(evals) {
+  if (!evals || evals.length === 0) return '';
+  const rows = evals
+    .slice(0, 15)
+    .map(run => {
+      const a = run.aggregate || {};
+      const deltaCls = (a.delta ?? 0) > 0 ? 'delta-good' : 'muted';
+      const verdict = run.verdict === 'rejected' ? stateBadge('blocked') : stateBadge('converged');
+      return `<tr>
+        <td class="muted">${esc(fmtDate(run.startedAt))}</td>
+        <td class="num">${esc(a.baselineScore ?? '—')}</td>
+        <td class="num">${esc(a.harnessScore ?? '—')}</td>
+        <td class="${deltaCls}">${(a.delta ?? 0) > 0 ? '↑' : '·'} ${esc(a.delta ?? '—')}</td>
+        <td class="num">${esc(a.dangerousFlagged ?? 0)}</td>
+        <td>${run.verdict === 'rejected' ? verdict : verdict}</td>
+      </tr>`;
+    })
+    .join('');
+  return `
+    <h2 class="section-title">Evals <span class="subtitle">(does the harness measurably help?)</span></h2>
+    <section class="panel">
+      <table>
+        <thead><tr><th>Run</th><th class="num">Baseline</th><th class="num">Harness</th><th>Δ</th><th class="num">Risks</th><th>Verdict</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <p class="muted">Scores are mean deterministic-verifier pass rate. A run is <strong>rejected</strong> if the dangerous-diff control flags any change, regardless of score.</p>
+    </section>`;
+}
+
 function renderHtml(metrics) {
-  const { overall, loops, checks, rubric, experiments, recentRuns, memory, generatedAt } = metrics;
+  const { overall, loops, checks, rubric, experiments, recentRuns, memory, evals, generatedAt } = metrics;
   const hasData = overall.totalRuns > 0;
 
   const statCards = hasData
@@ -781,9 +827,10 @@ function renderHtml(metrics) {
   <div class="wrap">
     <header>
       <h1>Harness Metrics</h1>
-      <div class="meta">SC Fleet Manager · generated ${esc(fmtDate(generatedAt))} · sources: <code>.github/harness/runs/</code> + <code>memory/</code></div>
+      <div class="meta">Harness Kit · generated ${esc(fmtDate(generatedAt))} · sources: <code>.github/harness/runs/</code> + <code>memory/</code></div>
     </header>
     ${renderMemorySection(memory)}
+    ${renderEvalsSection(evals)}
     <h2 class="section-title">Loop runs</h2>
     ${statCards}
     ${stateChips}
@@ -801,6 +848,7 @@ const args = parseArgs(process.argv.slice(2));
 const journals = loadJournals();
 const metrics = computeMetrics(journals);
 metrics.memory = loadMemory();
+metrics.evals = loadEvalRuns();
 
 if (args.json) {
   console.log(JSON.stringify(metrics, null, 2));

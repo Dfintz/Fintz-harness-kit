@@ -39,6 +39,7 @@ import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { generateText, resolveProvider } from './llm-provider.mjs';
+import { wrapUntrusted } from './untrusted.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -165,10 +166,12 @@ function buildSystemPrompt(rel) {
   ].join('\n');
 }
 
-function buildUserPrompt(improvementPrompt, rel, currentContents) {
+function buildUserPrompt(improvementPrompt, rel, currentContents, untrustedResearch) {
   return [
     improvementPrompt,
     '',
+    // Untrusted research (e.g. last30days) is wrapped as inert data — never instructions.
+    ...(untrustedResearch ? [untrustedResearch, ''] : []),
     `### Current contents of ${rel}`,
     '```',
     currentContents,
@@ -176,6 +179,20 @@ function buildUserPrompt(improvementPrompt, rel, currentContents) {
     '',
     `Return the COMPLETE updated contents of ${rel} as a single fenced code block.`,
   ].join('\n');
+}
+
+// Optionally fold in an external research brief, ALWAYS wrapped by the prompt-as-data boundary.
+// Off unless HARNESS_RESEARCH_FILE points at a readable file. See the self-improving-harness Brief.
+function loadUntrustedResearch() {
+  const path = process.env.HARNESS_RESEARCH_FILE;
+  if (!path || !existsSync(path)) return null;
+  const { block, flagged } = wrapUntrusted(readFileSync(path, 'utf8'), { source: `research:${path}` });
+  if (flagged > 0) {
+    process.stderr.write(
+      `[ollama-apply] research brief ${path}: defanged ${flagged} injection marker(s) before use.\n`
+    );
+  }
+  return block;
 }
 
 async function main() {
@@ -207,13 +224,14 @@ async function main() {
   if (!improvementPrompt) throw new Error('No improvement prompt provided on stdin.');
 
   const currentContents = readFileSync(target.abs, 'utf8');
+  const untrustedResearch = loadUntrustedResearch();
 
   const modelResponse = await generateText({
     provider,
     host,
     model,
     system: buildSystemPrompt(target.rel),
-    prompt: buildUserPrompt(improvementPrompt, target.rel, currentContents),
+    prompt: buildUserPrompt(improvementPrompt, target.rel, currentContents, untrustedResearch),
     temperature,
     numPredict,
   });
