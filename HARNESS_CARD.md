@@ -33,8 +33,9 @@ The control layer is everything that constrains the agent toward "done" and "saf
 - **Safety controls:** the `dangerous-diff` verifier hard-fails on backdoor-shaped changes; the
   human commit gate; eval-suite immutability (hash + target exclusion); `git-guard` blocks
   irreversible git commands (force push, hard reset, hook bypass) before they run.
-- **Independent verification:** the `plan-review` loop runs a _rival-provider_ model over a plan
-  read-only and bounded — breaking the single-model echo chamber before code is written.
+- **Independent verification:** the `plan-review` loop runs a _rival-provider_ model over the
+  author's judgment read-only and bounded — a plan, or a code change through the breadth / depth /
+  feedback lenses — breaking the single-model echo chamber.
 
 ## Agency — what autonomy the harness grants
 

@@ -77,9 +77,11 @@ of the adapted files.
   [`.github/harness/loops/plan-review.json`](.github/harness/loops/plan-review.json).
 - **How we differ:** provider-agnostic (any two CLIs over stdin, including local models), the reviewer
   critique is wrapped + injection-defanged as untrusted data before the author sees it, read-only is
-  enforced by hashing the plan before/after each round (revert + flag on a write), and each run
+  enforced by hashing the subject before/after each round (revert + flag on a write), and each run
   journals to `runs/` so it grades + exports through the existing observability. We replay the full
-  prior-round log each round (stateless) instead of resuming one reviewer session.
+  prior-round log each round (stateless) instead of resuming one reviewer session, and we generalize
+  the cross-model reviewer beyond plans to **all harness review lenses** via `--lens` (breadth, depth,
+  feedback), each referencing the matching stage instruction so the rival applies the same bar.
 
 ### Matt Pocock — Skills For Real Engineers
 

@@ -238,16 +238,16 @@ call); see [`CREDITS.md`](../../CREDITS.md).
 
 ## Built-in Loops
 
-| Loop                                          | Kind        | Checks / done-ness                            | Max |
-| --------------------------------------------- | ----------- | --------------------------------------------- | --- |
-| [`build-fix`](./loops/build-fix.json)         | convergence | lint, type-check, build all green             | 4   |
-| [`test-fix`](./loops/test-fix.json)           | convergence | backend + frontend test suites green          | 5   |
-| [`review-fix`](./loops/review-fix.json)       | workflow    | breadth + depth review yield no Blocker/Major | 3   |
-| [`feature-cycle`](./loops/feature-cycle.json) | workflow    | stage machine 0→5 complete, reviews clean     | 2   |
-| [`ci-green`](./loops/ci-green.json)           | workflow    | all PR checks green on remote                 | 5   |
-| [`tdd-cycle`](./loops/tdd-cycle.json)         | workflow    | feature/bugfix built slice-by-slice, red→green→refactor | 5 |
-| [`diagnose`](./loops/diagnose.json)           | workflow    | root cause named + regression test, no guess-fixing | 5 |
-| [`plan-review`](./loops/plan-review.json)     | workflow    | rival-model approves the plan (or flagged deadlock) | 5 |
+| Loop                                          | Kind        | Checks / done-ness                                      | Max |
+| --------------------------------------------- | ----------- | ------------------------------------------------------- | --- |
+| [`build-fix`](./loops/build-fix.json)         | convergence | lint, type-check, build all green                       | 4   |
+| [`test-fix`](./loops/test-fix.json)           | convergence | backend + frontend test suites green                    | 5   |
+| [`review-fix`](./loops/review-fix.json)       | workflow    | breadth + depth review yield no Blocker/Major           | 3   |
+| [`feature-cycle`](./loops/feature-cycle.json) | workflow    | stage machine 0→5 complete, reviews clean               | 2   |
+| [`ci-green`](./loops/ci-green.json)           | workflow    | all PR checks green on remote                           | 5   |
+| [`tdd-cycle`](./loops/tdd-cycle.json)         | workflow    | feature/bugfix built slice-by-slice, red→green→refactor | 5   |
+| [`diagnose`](./loops/diagnose.json)           | workflow    | root cause named + regression test, no guess-fixing     | 5   |
+| [`plan-review`](./loops/plan-review.json)     | workflow    | rival-model approves the plan (or flagged deadlock)     | 5   |
 
 `feature-cycle` is the outermost loop: it runs the whole stage machine and uses `review-fix` as its
 inner loop. `ci-green` is for remote/PR babysitting sessions and relies on the agent's PR event
@@ -255,28 +255,49 @@ tooling where available (e.g. Claude Code's `subscribe_pr_activity`) instead of 
 and `diagnose` are native workflow loops that enforce process discipline (test-first, evidence-first);
 run them by following their rubric, not the script runner. `plan-review` has its own runner (below).
 
-### Cross-model plan review (`plan-review`)
+### Cross-model review (`plan-review`)
 
-The deterministic eval scores _outcomes_ by code. `plan-review` scores a _plan_ by a **different
-model** — a rival-provider reviewer that adversarially critiques a plan or Architecture Brief before
-any code is written. The model that wrote a plan can't grade its own plan (echo chamber); a second
-provider catches what the first structurally can't see in itself.
+The deterministic eval scores _outcomes_ by code. `plan-review` scores the author's **judgment** by a
+**different model** — a rival-provider reviewer that adversarially critiques before the same model
+that produced the work signs off on it. The model that authored an artifact can't grade its own
+artifact (echo chamber); a second provider catches what the first structurally can't see in itself.
+
+It applies any of the harness **review lenses** via `--lens`, each referencing the matching stage
+instruction so the rival holds the work to the SAME bar as the native pass:
+
+| `--lens`   | Stage instruction   | Subject              | APPROVED means                                  |
+| ---------- | ------------------- | -------------------- | ----------------------------------------------- |
+| `plan`     | 03-ARCHITECT        | a plan / Brief       | no material concern remains (default)           |
+| `breadth`  | 05-REVIEW-BREADTH   | a code change / diff | zero Blocker and zero Major findings remain     |
+| `depth`    | 06-REVIEW-DEPTH     | a code change / diff | every architectural gate passes                 |
+| `feedback` | 07-FEEDBACK         | challenges + change  | every challenged decision is resolved           |
 
 ```bash
-# Review-only (autonomy off): one rival-model pass; a human revises and re-runs.
+# Plan (default lens): review-only — one rival pass; a human acts and re-runs.
 node scripts/harness/plan-review.mjs --plan PLAN.md --reviewer "<rival-model CLI>"
 
-# Full loop: the author revises between rounds until APPROVED or a flagged deadlock (≤ maxRounds).
+# Breadth/depth: review a captured diff snapshot. Feed the breadth findings into depth as --context.
+git diff main...HEAD > CHANGE.diff
+node scripts/harness/plan-review.mjs --lens breadth --subject CHANGE.diff --reviewer "<rival CLI>"
+node scripts/harness/plan-review.mjs --lens depth --subject CHANGE.diff --context BREADTH-FINDINGS.md --reviewer "<rival CLI>"
+
+# Feedback: a rival evaluates review challenges with fresh eyes against the change.
+node scripts/harness/plan-review.mjs --lens feedback --subject CHALLENGES.md --context CHANGE.diff --reviewer "<rival CLI>"
+
+# Full loop (any lens): the author revises between rounds until APPROVED or a flagged deadlock.
 node scripts/harness/plan-review.mjs --plan PLAN.md --reviewer "<model A>" --author "<model B>" --max-rounds 5
 ```
 
-Use a **different** provider/model for `--reviewer` than wrote the plan — that is the whole point.
-Safety: the reviewer is **read-only** (the plan is hashed before/after each round; any write is
-reverted and the round flagged); its critique is **untrusted model output**, wrapped + injection-
-defanged by [`untrusted.mjs`](../../scripts/harness/untrusted.mjs) before the author consumes it; a
-cap reached without approval is reported as a **deadlock**, never relabelled "approved". It writes
-`PLAN.md` (the _what_) + `*-REVIEW-LOG.md` (the round-by-round _why_) and journals to `runs/`, so the
-review shows on the dashboard and exports via `otel-export`. Adapted from
+Use a **different** provider/model for `--reviewer` than authored the subject — that is the whole
+point. Safety: the reviewer is **read-only** (the subject is hashed before/after each round; any
+write is reverted and the round flagged); its critique **and** any `--context` (diffs, prior-pass
+findings) are **untrusted**, wrapped + injection-defanged by
+[`untrusted.mjs`](../../scripts/harness/untrusted.mjs) before any model consumes them; a cap reached
+without approval is a **deadlock**, never relabelled "approved". It writes a `*-REVIEW-LOG.md` (the
+round-by-round _why_) and journals to `runs/`, so reviews show on the dashboard and export via
+`otel-export`. For **code** lenses the subject is a diff snapshot — to iterate on code _fixes_, drive
+the native `review-fix` loop and use this as its rival reviewer; the verdict is uniform APPROVED |
+REVISE across all lenses. Adapted from
 [chaseai-yt/grill-me-codex](https://github.com/chaseai-yt/grill-me-codex) + Matt Pocock's grill-me
 (MIT); see [`CREDITS.md`](../../CREDITS.md).
 
