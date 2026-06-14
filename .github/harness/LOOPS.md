@@ -292,6 +292,26 @@ Two hard rules are enforced by [`evolve-guard.mjs`](../../scripts/harness/evolve
 is **off by default**; a real run also needs a live agent for both the edit and the eval scoring
 (deterministic `--check` validates the safety machinery without one).
 
+##### Feeding fresh field knowledge (the sensor)
+
+The evolve agent can be handed an **external research brief** — e.g. a
+[last30days](https://github.com/mvanhorn/last30days-skill) brief on current harness practice — as
+**untrusted data**, so it incorporates what the field learned recently rather than only the model's
+prior:
+
+```bash
+# Ingest a brief (stored raw + gitignored; a .meta.json records source + injection-marker count):
+node scripts/harness/research-ingest.mjs --from last30days-brief.md --topic harness --source last30days
+
+# Feed the newest brief into an evolve run (opt-in, loudly logged):
+node scripts/harness/harness-evolve.mjs --agent "<cmd>" --research latest
+```
+
+The brief is **never executed and never committed**. It is wrapped + injection-defanged by
+[`untrusted.mjs`](../../scripts/harness/untrusted.mjs) at the moment the agent sees it (via
+`HARNESS_RESEARCH_FILE`). Because scraped internet content is the highest-risk input, this is opt-in,
+autonomy stays off by default, and the human gate on the first commit is non-negotiable.
+
 ---
 
 ## Creating a Loop

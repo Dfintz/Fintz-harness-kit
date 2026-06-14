@@ -26,7 +26,7 @@
  * Exit codes: 0 ok / improved, 1 aborted (integrity violation or no improvement), 2 config error.
  */
 import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,9 +36,11 @@ import {
   integrityMatches,
   resolveTargetFiles,
 } from './evolve-guard.mjs';
+import { defangInjections } from './untrusted.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
+const researchDir = join(repoRoot, '.github', 'harness', 'research');
 const runExperiment = resolve(repoRoot, 'scripts', 'harness', 'run-experiment.mjs');
 
 function fail(message, code = 2) {
@@ -55,6 +57,7 @@ function parseArgs(argv) {
     else if (a === '--help') flags.help = true;
     else if (a === '--agent') flags.agent = argv[++i];
     else if (a === '--loop') flags.loop = argv[++i];
+    else if (a === '--research') flags.research = argv[++i];
     else if (a === '--max-iterations') flags.maxIterations = Number(argv[++i]);
     else if (a.startsWith('--')) fail(`Unknown option: ${a}`);
   }
@@ -70,15 +73,34 @@ function loadLoop(name) {
   return loop;
 }
 
+// Resolve an opt-in research brief (Phase 4 sensor). 'latest' picks the newest *-brief.md; otherwise
+// the value is a path. Returns an absolute path or fails. The brief is UNTRUSTED — the apply-agent
+// wraps + defangs it at use via HARNESS_RESEARCH_FILE; here we only resolve it and log a safety note.
+function resolveResearchFile(value) {
+  if (value === 'latest' || value === undefined) {
+    if (!existsSync(researchDir)) fail('--research latest: no .github/harness/research/ briefs. Ingest one first.', 2);
+    const briefs = readdirSync(researchDir)
+      .filter(f => f.endsWith('-brief.md'))
+      .map(f => ({ abs: join(researchDir, f), mtimeMs: statSync(join(researchDir, f)).mtimeMs }))
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+    if (briefs.length === 0) fail('--research latest: no briefs found. Run research-ingest.mjs first.', 2);
+    return briefs[0].abs;
+  }
+  const abs = resolve(repoRoot, value);
+  if (!existsSync(abs)) fail(`--research: file not found: ${value}`, 2);
+  return abs;
+}
+
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
       {
-        usage: 'node scripts/harness/harness-evolve.mjs [--check | --agent "<cmd>"] [--commit] [--max-iterations n]',
+        usage: 'node scripts/harness/harness-evolve.mjs [--check | --agent "<cmd>"] [--commit] [--research latest|<path>] [--max-iterations n]',
         rules: [
           'RULE 1: target may never resolve to a forbidden path (eval suite / guardrails / memory / config / evolve machinery).',
           'RULE 2: eval-suite + forbidden-file integrity is checked before AND after every iteration; any change aborts the run.',
         ],
+        research: '--research feeds an UNTRUSTED brief (Phase 4 sensor) to the agent as data (wrapped + defanged at use). Opt-in.',
         autonomy: 'OFF by default — no commit unless --commit; never pushes; --check runs no agent.',
       },
       null,
@@ -167,6 +189,25 @@ function main() {
 
   const agentCmd = flags.agent || process.env.HARNESS_AGENT_CMD;
   if (!agentCmd) fail('no agent. Use --agent "<cmd>" or set HARNESS_AGENT_CMD (or use --check).', 2);
+
+  // Phase 4 sensor (opt-in): point the apply-agent at an untrusted research brief. Children inherit
+  // process.env, so setting HARNESS_RESEARCH_FILE here flows through run-experiment to the apply-agent,
+  // which wraps + defangs it at use. Logged loudly to reinforce the human gate.
+  if (flags.research !== undefined) {
+    const researchAbs = resolveResearchFile(flags.research);
+    process.env.HARNESS_RESEARCH_FILE = researchAbs;
+    let markers = 0;
+    try {
+      markers = defangInjections(readFileSync(researchAbs, 'utf8')).flagged;
+    } catch {
+      /* unreadable brief surfaces later */
+    }
+    process.stdout.write(
+      `[harness-evolve] ⚠ UNTRUSTED research active: ${researchAbs}\n` +
+        `[harness-evolve]   ${markers} injection marker(s) detected; the agent will defang + wrap it as data.\n` +
+        `[harness-evolve]   Review the run before committing anything this brief influenced.\n`
+    );
+  }
 
   const maxIterations = Number.isInteger(flags.maxIterations)
     ? Math.min(flags.maxIterations, loop.maxIterations ?? flags.maxIterations)
