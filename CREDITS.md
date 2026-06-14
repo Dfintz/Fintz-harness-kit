@@ -70,8 +70,9 @@ of the adapted files.
 
 - The unified harness contract (skill routing + stage machine + loop protocol), the five
   architectural review gates, the convergence/workflow/experiment loop taxonomy, the config-token
-  layer (`harness.config.json` + `scripts/harness/config.mjs`), and the live metrics dashboard
-  (`scripts/harness/report-server.mjs`).
+  layer (`harness.config.json` + `scripts/harness/config.mjs`), the live metrics dashboard
+  (`scripts/harness/report-server.mjs`), and the deterministic trajectory critic
+  (`scripts/harness/grade-trace.mjs`) that scores a loop's _process_ and recommends early-stopping.
 
 ## Foundations & reference harnesses
 
@@ -94,6 +95,12 @@ These shaped the design and vocabulary; no code was copied from them.
 - **awesome-harness-engineering** (CC0) — https://github.com/walkinglabs/awesome-harness-engineering —
   the field map (CAR / HarnessCard framing, evals & observability, Lurkr capability-risk scanning)
   that informed the HarnessCard and the `dangerous-diff` control.
+- **OpenTelemetry — GenAI semantic conventions** —
+  https://opentelemetry.io/docs/specs/semconv/gen-ai/ — the attribute vocabulary (`gen_ai.*`,
+  agent-invocation spans) that [`scripts/harness/otel-export.mjs`](scripts/harness/otel-export.mjs)
+  emits so run journals are portable into any OTel backend. We adapt it: a harness loop is an agentic
+  workflow, not a single model call, so the loop maps to an agent-invocation span with iteration/task
+  child spans, and loop-specific facts live under a `harness.*` namespace.
 
 ## License
 

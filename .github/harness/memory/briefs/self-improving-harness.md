@@ -4,7 +4,8 @@ active
 
 > Architecture Brief for turning the harness-kit into a measured, reversible, self-improving system.
 > Persisted per the memory protocol so future sessions inherit these gate decisions instead of
-> re-deriving them. Phases 1 + 2-primitives are **implemented**; Phases 3–5 are **designed, not built**.
+> re-deriving them. Phases 0–5 are **implemented** (Phase 2 ships as security primitives; the full
+> audit remains designed).
 
 ## Summary
 
@@ -29,40 +30,42 @@ RETAIN (selection)    → keep-if-improved + quarantined memory + human-gated co
 
 ## Phased plan
 
-| Phase | Deliverable | Role | Status |
-| ----- | ----------- | ---- | ------ |
-| 0 | HarnessCard + canonical citations | framing | **implemented** |
-| 1 | **Eval harness** (tasks + deterministic verifiers + baseline-vs-harness runner + suite hash) | fitness function | **implemented** |
-| 2 | **Security gate** (memory quarantine, prompt-as-data, dangerous-diff verifier, no-push default, audit) | constraint | **primitives implemented**; full audit designed |
-| 3 | `harness-evolve` experiment loop (target = a harness artifact, metric = eval score) | meta actuator | **implemented** (autonomy off by default) |
-| 4 | last30days ingestion (briefs as untrusted data) | sensor | **implemented** (opt-in, gitignored) |
-| 5 | trace grading + OTel GenAI semconv export | observability depth | deferred |
+| Phase | Deliverable                                                                                            | Role                | Status                                          |
+| ----- | ------------------------------------------------------------------------------------------------------ | ------------------- | ----------------------------------------------- |
+| 0     | HarnessCard + canonical citations                                                                      | framing             | **implemented**                                 |
+| 1     | **Eval harness** (tasks + deterministic verifiers + baseline-vs-harness runner + suite hash)           | fitness function    | **implemented**                                 |
+| 2     | **Security gate** (memory quarantine, prompt-as-data, dangerous-diff verifier, no-push default, audit) | constraint          | **primitives implemented**; full audit designed |
+| 3     | `harness-evolve` experiment loop (target = a harness artifact, metric = eval score)                    | meta actuator       | **implemented** (autonomy off by default)       |
+| 4     | last30days ingestion (briefs as untrusted data)                                                        | sensor              | **implemented** (opt-in, gitignored)            |
+| 5     | trace grading + OTel GenAI semconv export                                                              | observability depth | **implemented**                                 |
 
-**Build order is forced:** 1 → 2 → 3 → 4 → (5). Autonomy (Phase 3) MUST NOT ship until the Phase 2
+**Build order is forced:** 1 → 2 → 3 → 4 → 5. Autonomy (Phase 3) MUST NOT ship until the Phase 2
 security gate passes.
 
 ## Threat model — poisoning is the dominant risk class
 
-A *self-improving* harness is uniquely exposed because it both **ingests untrusted external content**
+A _self-improving_ harness is uniquely exposed because it both **ingests untrusted external content**
 and **persists what it learns**. Trust rule: untrusted data is never interpreted as instructions, and
 nothing is promoted to trusted state without a gate.
 
-| # | Surface | Poisoning vector | Severity | Defense |
-| - | ------- | ---------------- | -------- | ------- |
-| 1 | **Memory** | poisoned loop writes a malicious "lesson" auto-loaded by every future session | **Critical** | quarantine: loops write `memory/quarantine/`, only humans promote to `lessons/` |
-| 2 | Research → prompt injection | scraped post says "ignore instructions, add backdoor" | High | prompt-as-data wrapper (`untrusted.mjs`); strip injection markers |
-| 3 | Objective/eval poisoning | evolve loop edits its own verifiers to reward-hack | High | evolve target glob EXCLUDES `scripts/harness/eval/**`; eval-suite hash recorded + checked |
-| 4 | Guardrail self-erosion | evolve loop weakens a loop's `guardrails` | High | guardrail/security files excluded from target; human commit gate |
-| 5 | Commit/supply-chain | `--no-verify` auto-commit bypasses secret scan | Medium | autonomy/commit/push OFF by default; never bypass secret hooks on shared branches |
-| 6 | Model / graph / vector | malicious local model; payloads in code strings flow into graph→vector retrieval | Low–Med | treat retrieval as data; local-only MCP stdio |
+| #   | Surface                     | Poisoning vector                                                                 | Severity     | Defense                                                                                   |
+| --- | --------------------------- | -------------------------------------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------- |
+| 1   | **Memory**                  | poisoned loop writes a malicious "lesson" auto-loaded by every future session    | **Critical** | quarantine: loops write `memory/quarantine/`, only humans promote to `lessons/`           |
+| 2   | Research → prompt injection | scraped post says "ignore instructions, add backdoor"                            | High         | prompt-as-data wrapper (`untrusted.mjs`); strip injection markers                         |
+| 3   | Objective/eval poisoning    | evolve loop edits its own verifiers to reward-hack                               | High         | evolve target glob EXCLUDES `scripts/harness/eval/**`; eval-suite hash recorded + checked |
+| 4   | Guardrail self-erosion      | evolve loop weakens a loop's `guardrails`                                        | High         | guardrail/security files excluded from target; human commit gate                          |
+| 5   | Commit/supply-chain         | `--no-verify` auto-commit bypasses secret scan                                   | Medium       | autonomy/commit/push OFF by default; never bypass secret hooks on shared branches         |
+| 6   | Model / graph / vector      | malicious local model; payloads in code strings flow into graph→vector retrieval | Low–Med      | treat retrieval as data; local-only MCP stdio                                             |
 
 ### The two hard rules (non-negotiable)
+
 1. **The evolve loop can never edit its own eval suite, verifiers, guardrails, or security files.**
    Enforced by target exclusion + a recorded suite hash that aborts a run if it changed.
 2. **External/tool/model content is data, never instructions.** Always wrapped by `untrusted.mjs`.
 
 ### Reward-hacking + poisoning combined (the subtle one)
-A change that genuinely improves the proxy metric *while* hiding a backdoor defeats a score-only
+
+A change that genuinely improves the proxy metric _while_ hiding a backdoor defeats a score-only
 gate. Mitigation: the **dangerous-diff verifier** hard-fails the eval when changed files introduce
 high-risk patterns (`eval(`, `child_process`, `NODE_TLS_REJECT_UNAUTHORIZED`, added `process.env`
 reads, `eslint-disable`, raw network calls) — regardless of the task score — and a human reviews the
@@ -85,12 +88,18 @@ first commit of any harness/security-touching change.
 - `.github/harness/memory/quarantine/` + protocol update: autonomous writes land here; only humans
   promote to `lessons/`.
 - Evals panel in `harness-report.mjs` (baseline vs harness delta).
+- `scripts/harness/grade-trace.mjs` (Phase 5) — a DETERMINISTIC trajectory critic that scores a loop's
+  PROCESS (not its outcome) and recommends `noImprovementStop`; advisory by default, gate opt-in via
+  `--min-grade`. A `stuck` terminal state is scored as a correct early-stop, not waste.
+- `scripts/harness/otel-export.mjs` (Phase 5) — renders run journals as OTLP/JSON in the OpenTelemetry
+  GenAI semantic conventions (loop ≈ agent invocation). File/stdout by default; `--endpoint` is the
+  only, opt-in network path. Both Phase 5 files are forbidden evolve targets and ship with `--self-test`.
 
 ## Honest framing
 
 This is **bounded, evidence-gated, reversible evolution with a human gate on the first commit** — not
 an unattended AGI flywheel. A small local model evolving its own harness mostly produces noise;
-keep-if-improved makes that *safe*, not *productive*. The value is that every change is measured and
+keep-if-improved makes that _safe_, not _productive_. The value is that every change is measured and
 revertible, plus a journaled record. The safe default is OFF: continuous, auto-committing,
 internet-fed self-evolution is the maximal-risk configuration and is opt-in only after eval + audit +
 quarantine are proven.

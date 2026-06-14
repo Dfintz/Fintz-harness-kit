@@ -28,6 +28,8 @@ The control layer is everything that constrains the agent toward "done" and "saf
   (keep-if-improved else revert), each bounded by `maxIterations` / `noImprovementStop`.
 - **Fitness function:** the deterministic eval suite (`scripts/harness/eval/`) — code, not model
   judgment — is the authority on "did this help."
+- **Process scoring:** `grade-trace` deterministically grades a loop's _trajectory_ (not its outcome)
+  and recommends early-stopping — advisory by default; gating is opt-in (`--min-grade`).
 - **Safety controls:** the `dangerous-diff` verifier hard-fails on backdoor-shaped changes; the
   human commit gate; eval-suite immutability (hash + target exclusion).
 
@@ -51,7 +53,9 @@ configuration (continuous, auto-committing, internet-fed) is never the default.
 
 - **Engine:** Node loop runners (`run-loop`, `run-experiment`, `experiment-loop`) + the eval runner.
 - **Agents:** any CLI over stdin; local models via Ollama / LM Studio (`llm-provider.mjs`).
-- **Observability:** per-run JSON journals → `harness-report` dashboard (incl. the Evals panel).
+- **Observability:** per-run JSON journals → `harness-report` dashboard (incl. the Evals panel);
+  deterministic trajectory grading (`grade-trace`) + OpenTelemetry GenAI export (`otel-export`) for
+  process scoring and portable telemetry.
 - **Tools:** read-only MCP stdio server (graph / memory / vector / loop catalog / metrics).
 - **Isolation:** in-process controls shrink blast radius, but real isolation for untrusted/unattended
   work must come from a container/VM (see the Brief's threat model — this is an industry consensus,
@@ -99,6 +103,8 @@ the whole history:
 | Loop catalog loads | `node scripts/harness/run-loop.mjs --list` |
 | Report renders | `node scripts/harness/harness-report.mjs --no-html --json` |
 | Prompt-as-data boundary | `node scripts/harness/untrusted.mjs "<probe>"` |
+| Trace grader integrity | `node scripts/harness/grade-trace.mjs --self-test` |
+| OTel export mapping | `node scripts/harness/otel-export.mjs --self-test` |
 
 ## Honest limits
 

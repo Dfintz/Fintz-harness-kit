@@ -17,52 +17,59 @@
  *
  * It is import-only logic with a thin CLI for inspection. No agent, no network.
  */
-import { createHash } from 'node:crypto';
-import { execSync, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { execSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // Paths the evolve loop must never target and that must never change during a run.
 // Globs use ** (any depth) and * (within a segment).
 export const FORBIDDEN_GLOBS = [
-  'scripts/harness/eval/**', // the fitness function (tasks + verifiers + runner)
-  'scripts/harness/evolve-guard.mjs', // this guard
-  'scripts/harness/harness-evolve.mjs', // the evolve runner
-  'scripts/harness/run-experiment.mjs', // the keep-if-improved engine
-  'scripts/harness/run-loop.mjs', // the convergence engine
-  'scripts/harness/untrusted.mjs', // prompt-as-data boundary
-  'scripts/harness/llm-provider.mjs', // provider adapter
-  'scripts/harness/ollama-agent.mjs', // agents
-  'scripts/harness/ollama-apply-agent.mjs',
-  'scripts/harness/config.mjs', // token resolver
-  '.github/harness/memory/**', // committed memory (lessons/briefs/quarantine)
-  '.github/harness/loops/harness-evolve.json', // the evolve loop's own definition
-  'harness.config.json', // project commands
+  "scripts/harness/eval/**", // the fitness function (tasks + verifiers + runner)
+  "scripts/harness/evolve-guard.mjs", // this guard
+  "scripts/harness/harness-evolve.mjs", // the evolve runner
+  "scripts/harness/run-experiment.mjs", // the keep-if-improved engine
+  "scripts/harness/run-loop.mjs", // the convergence engine
+  "scripts/harness/untrusted.mjs", // prompt-as-data boundary
+  "scripts/harness/llm-provider.mjs", // provider adapter
+  "scripts/harness/ollama-agent.mjs", // agents
+  "scripts/harness/ollama-apply-agent.mjs",
+  "scripts/harness/config.mjs", // token resolver
+  "scripts/harness/grade-trace.mjs", // the process critic (early-stop authority)
+  "scripts/harness/otel-export.mjs", // the telemetry/audit exporter
+  ".github/harness/memory/**", // committed memory (lessons/briefs/quarantine)
+  ".github/harness/loops/harness-evolve.json", // the evolve loop's own definition
+  "harness.config.json", // project commands
 ];
 
 export function globToRegExp(glob) {
-  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const withPlaceholders = escaped.replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*');
-  return new RegExp(`^${withPlaceholders.replace(/\u0000/g, '.*')}$`);
+  const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  const withPlaceholders = escaped
+    .replace(/\*\*/g, "\u0000")
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${withPlaceholders.replace(/\u0000/g, ".*")}$`);
 }
 
 export function matchesForbidden(posixPath) {
-  return FORBIDDEN_GLOBS.some(glob => globToRegExp(glob).test(posixPath));
+  return FORBIDDEN_GLOBS.some((glob) => globToRegExp(glob).test(posixPath));
 }
 
 function toPosix(p) {
-  return p.split(sep).join('/');
+  return p.split(sep).join("/");
 }
 
 // Resolve a target pattern to concrete tracked/literal files (mirrors run-experiment.resolveTargets).
 function resolvePattern(pattern) {
   const files = new Set();
   try {
-    const out = execSync(`git ls-files -- "${pattern}"`, { cwd: repoRoot, encoding: 'utf8' }).trim();
-    for (const line of out.split('\n')) if (line.trim()) files.add(line.trim());
+    const out = execSync(`git ls-files -- "${pattern}"`, {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }).trim();
+    for (const line of out.split("\n")) if (line.trim()) files.add(line.trim());
   } catch {
     // not tracked / git unavailable
   }
@@ -92,12 +99,19 @@ export function forbiddenTargetViolations(targetPatterns) {
   for (const pattern of targetPatterns || []) {
     const posixPattern = toPosix(String(pattern));
     if (matchesForbidden(posixPattern)) {
-      violations.push({ pattern, reason: 'declared target matches a forbidden path' });
+      violations.push({
+        pattern,
+        reason: "declared target matches a forbidden path",
+      });
       continue;
     }
     for (const file of resolvePattern(pattern)) {
       if (matchesForbidden(file)) {
-        violations.push({ pattern, file, reason: 'target resolves to a forbidden file' });
+        violations.push({
+          pattern,
+          file,
+          reason: "target resolves to a forbidden file",
+        });
       }
     }
   }
@@ -120,12 +134,13 @@ function listFilesUnder(absDir) {
 function forbiddenFiles() {
   const files = new Set();
   for (const glob of FORBIDDEN_GLOBS) {
-    if (glob.endsWith('/**')) {
+    if (glob.endsWith("/**")) {
       const base = join(repoRoot, glob.slice(0, -3));
       for (const f of listFilesUnder(base)) files.add(f);
     } else {
       const abs = join(repoRoot, glob);
-      if (existsSync(abs) && statSync(abs).isFile()) files.add(toPosix(relative(repoRoot, abs)));
+      if (existsSync(abs) && statSync(abs).isFile())
+        files.add(toPosix(relative(repoRoot, abs)));
     }
   }
   return [...files].sort();
@@ -136,31 +151,43 @@ function forbiddenFiles() {
 // scorer. Spawns run-eval --self-test --json (deterministic, no agent, no network).
 export function computeIntegrity() {
   const files = forbiddenFiles();
-  const hash = createHash('sha256');
+  const hash = createHash("sha256");
   for (const rel of files) {
     hash.update(rel);
-    hash.update('\0');
+    hash.update("\0");
     hash.update(readFileSync(join(repoRoot, rel)));
-    hash.update('\0');
+    hash.update("\0");
   }
-  const forbiddenHash = `sha256:${hash.digest('hex')}`;
+  const forbiddenHash = `sha256:${hash.digest("hex")}`;
 
-  const evalRunner = join(repoRoot, 'scripts', 'harness', 'eval', 'run-eval.mjs');
+  const evalRunner = join(
+    repoRoot,
+    "scripts",
+    "harness",
+    "eval",
+    "run-eval.mjs",
+  );
   let suiteHash = null;
   let suiteOk = false;
-  let suiteDetail = 'eval runner not found';
+  let suiteDetail = "eval runner not found";
   if (existsSync(evalRunner)) {
-    const result = spawnSync(process.execPath, [evalRunner, '--self-test', '--json'], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-    });
+    const result = spawnSync(
+      process.execPath,
+      [evalRunner, "--self-test", "--json"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
     try {
-      const parsed = JSON.parse(result.stdout || '{}');
+      const parsed = JSON.parse(result.stdout || "{}");
       suiteOk = parsed.ok === true;
       suiteHash = parsed.suiteHash ?? null;
-      suiteDetail = suiteOk ? 'self-test passed' : 'self-test FAILED — do not evolve against it';
+      suiteDetail = suiteOk
+        ? "self-test passed"
+        : "self-test FAILED — do not evolve against it";
     } catch {
-      suiteDetail = 'could not parse run-eval --self-test output';
+      suiteDetail = "could not parse run-eval --self-test output";
     }
   }
 
@@ -186,9 +213,9 @@ export function integrityMatches(baseline, current) {
 // CLI: `node scripts/harness/evolve-guard.mjs [--target "<pattern>"]`
 if (
   import.meta.url === `file://${process.argv[1]}` ||
-  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/')}`
+  import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`
 ) {
-  const targetIdx = process.argv.indexOf('--target');
+  const targetIdx = process.argv.indexOf("--target");
   const targets = targetIdx >= 0 ? [process.argv[targetIdx + 1]] : [];
   const violations = forbiddenTargetViolations(targets);
   const integrity = computeIntegrity();
@@ -201,8 +228,8 @@ if (
         integrity,
       },
       null,
-      2
-    )}\n`
+      2,
+    )}\n`,
   );
   process.exit(violations.length === 0 && integrity.ok ? 0 : 1);
 }

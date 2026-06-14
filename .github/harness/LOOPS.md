@@ -1,4 +1,5 @@
 <!-- harness-kit: project-agnostic template. See SETUP.md and CREDITS.md. -->
+
 > **Harness-kit template.** Loop commands resolve `{{tokens}}` from `harness.config.json`. Examples below are illustrative; adapt loops under `.github/harness/loops/` to your project. See SETUP.md.
 
 # Loop Protocol — AI Agent Harness
@@ -194,6 +195,45 @@ The dashboard shows per-loop convergence rates, the slowest checks (convergence 
 pass-rates most-failed-first (workflow loops/stages) — the latter is how Understand, Architect, and
 the breadth/depth review passes become measurable.
 
+### Trace grading — score the process, not just the outcome
+
+The eval suite scores the _outcome_ (did a change help?). [`grade-trace.mjs`](../../scripts/harness/grade-trace.mjs)
+scores the **process**: given an experiment journal, it computes a deterministic trajectory grade
+and — the useful part — an **early-stop recommendation**:
+
+```bash
+node scripts/harness/grade-trace.mjs --latest      # grade the newest experiment journal
+node scripts/harness/grade-trace.mjs --all         # summarize every experiment (avg grade, wasted iters)
+node scripts/harness/grade-trace.mjs --self-test   # validate the grader deterministically
+```
+
+It reports where the loop reached its best, how many trailing iterations added nothing, and the
+`noImprovementStop` that would have saved that budget — so a loop that hill-climbed for 8 iterations
+but peaked at iteration 2 is flagged "recommend noImprovementStop=1". A `stuck` early-stop is scored
+as _good_ process behaviour (the detector fired), not waste. The grader is **advisory** — it never
+changes a loop's control flow unless you opt in with `--min-grade <0..1>` (exit 1 below the floor).
+Like the eval verifiers it is deterministic code with its own `--self-test`, and it defangs
+journal-derived strings (a journal is data, never instructions).
+
+### OpenTelemetry export — portable run telemetry
+
+[`otel-export.mjs`](../../scripts/harness/otel-export.mjs) renders run journals as **OTLP/JSON** using
+the OpenTelemetry **GenAI semantic conventions**, so harness telemetry can flow into Jaeger / Tempo /
+Grafana / Honeycomb instead of living only in local JSON. Each journal becomes one root span
+(`gen_ai.operation.name=invoke_agent`) with a child span per iteration (or per eval task), plus a
+`harness.*` attribute namespace for loop-specific facts:
+
+```bash
+node scripts/harness/otel-export.mjs --latest                 # → .github/harness/otel/ (gitignored)
+node scripts/harness/otel-export.mjs --file <journal> --stdout
+node scripts/harness/otel-export.mjs --latest --endpoint http://localhost:4318/v1/traces
+```
+
+Span/trace IDs are deterministic (hashed from loop + start time), so re-exports are idempotent.
+**Network is off by default** — output is a file or stdout; `--endpoint` is the only, opt-in network
+path. The mapping is an honest adaptation (a harness loop is an agentic workflow, not a single model
+call); see [`CREDITS.md`](../../CREDITS.md).
+
 ---
 
 ## Built-in Loops
@@ -283,7 +323,7 @@ Two hard rules are enforced by [`evolve-guard.mjs`](../../scripts/harness/evolve
 
 1. **RULE 1 — forbidden targets.** The loop's `target` may never resolve to the eval suite, any
    guardrail/security file, memory, config, or the evolve machinery itself. Checked at config time;
-   the run fails fast. *A loop that can edit its own scorer reward-hacks in one iteration.*
+   the run fails fast. _A loop that can edit its own scorer reward-hacks in one iteration._
 2. **RULE 2 — integrity tripwire.** The eval suite + every forbidden file is hashed before the run
    and re-checked before AND after every iteration. Any change aborts the run — that means the agent
    touched the scorer or a guardrail, which is exactly the tampering the guard exists to stop.
