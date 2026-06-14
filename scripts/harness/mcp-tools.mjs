@@ -21,8 +21,10 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const graphCliPath = join(repoRoot, 'scripts', 'harness', 'graph.mjs');
 const vectorCliPath = join(repoRoot, 'scripts', 'harness', 'vector-search.mjs');
+const reportCliPath = join(repoRoot, 'scripts', 'harness', 'harness-report.mjs');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
 const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
+const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
 
 function toWorkspacePath(pathValue) {
   return relative(repoRoot, pathValue).replace(/\\/g, '/');
@@ -42,6 +44,8 @@ const TOOL_NAMES = [
   'vector-status',
   'vector-index',
   'vector-search',
+  'harness-loops',
+  'harness-report',
 ];
 
 function parseArgs(argv) {
@@ -165,6 +169,34 @@ function runVectorCli(args) {
   return runCli(vectorCliPath, args);
 }
 
+// Read all loop definitions directly (fast, no spawn). Mirrors the runners' loaders
+// but returns a compact, JSON-friendly catalog for agents to discover what exists.
+function readLoopCatalog() {
+  if (!existsSync(loopsDir)) return [];
+  const loops = [];
+  for (const file of readdirSync(loopsDir)) {
+    if (!file.endsWith('.json') || file.startsWith('_')) continue;
+    try {
+      const loop = JSON.parse(readFileSync(join(loopsDir, file), 'utf8'));
+      if (!loop || typeof loop.name !== 'string') continue;
+      loops.push({
+        name: loop.name,
+        kind: loop.kind ?? 'convergence',
+        description: loop.description ?? '',
+        maxIterations: loop.maxIterations ?? null,
+        metric:
+          loop.metric && typeof loop.metric === 'object'
+            ? { name: loop.metric.name ?? loop.name, direction: loop.metric.direction ?? null }
+            : null,
+        file: toWorkspacePath(join(loopsDir, file)),
+      });
+    } catch {
+      // skip unparseable loop definitions
+    }
+  }
+  return loops.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function printJson(data, code = 0) {
   process.stdout.write(`${JSON.stringify(data, null, 2)}\n`);
   process.exit(code);
@@ -256,6 +288,16 @@ function listToolsPayload() {
           noAutoIndex: 'boolean?',
           verbose: 'boolean?',
         },
+      },
+      {
+        name: 'harness-loops',
+        description:
+          'Lists available harness loops (convergence/workflow/experiment) with kind, description, and metric. Read-only; execute loops via the CLI, not MCP.',
+      },
+      {
+        name: 'harness-report',
+        description:
+          'Returns aggregated harness metrics (loops, checks, rubric, experiments, recent runs, memory) as JSON. Read-only.',
       },
     ],
   };
@@ -481,6 +523,19 @@ function handleVectorTool(toolName, flags) {
   printJson(response, response.ok ? 0 : 1);
 }
 
+function handleHarnessLoops() {
+  const loops = readLoopCatalog();
+  printJson({ ok: true, count: loops.length, loops });
+}
+
+function handleHarnessReport() {
+  if (!existsSync(reportCliPath)) {
+    printJson({ ok: false, error: `report CLI not found at ${reportCliPath}` }, 2);
+  }
+  const response = runCli(reportCliPath, ['--json']);
+  printJson(response, response.ok ? 0 : 1);
+}
+
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   const tool = flags._[0];
@@ -517,6 +572,16 @@ function main() {
 
   if (tool.startsWith('vector-')) {
     handleVectorTool(tool, flags);
+    return;
+  }
+
+  if (tool === 'harness-loops') {
+    handleHarnessLoops();
+    return;
+  }
+
+  if (tool === 'harness-report') {
+    handleHarnessReport();
     return;
   }
 

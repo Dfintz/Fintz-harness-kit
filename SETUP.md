@@ -28,17 +28,17 @@ This is the only required step. Point the tokens at your project's real commands
 {
   "project": { "name": "My App", "description": "…" },
   "commands": {
-    "lint": "npm run lint",          // or "ruff check .", "cargo clippy", "golangci-lint run", …
+    "lint": "npm run lint", // or "ruff check .", "cargo clippy", "golangci-lint run", …
     "typeCheck": "npm run type-check",
     "build": "npm run build",
-    "test": "npm test"
+    "test": "npm test",
   },
   "ollama": { "host": "http://localhost:11434", "model": "qwen2.5-coder:14b" },
   "experiments": {
     "exampleMetricCommand": "npm run lint",
-    "exampleMetricExtract": "(\\d+) problems",  // regex with ONE capture group = the number
-    "exampleTarget": "src/path/to/one-file.ts"
-  }
+    "exampleMetricExtract": "(\\d+) problems", // regex with ONE capture group = the number
+    "exampleTarget": "src/path/to/one-file.ts",
+  },
 }
 ```
 
@@ -69,7 +69,7 @@ node scripts/harness/run-loop.mjs build-fix \
   --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"
 ```
 
-> **Experiments need an *apply* agent.** Convergence loops only need the agent to *describe* a fix in
+> **Experiments need an _apply_ agent.** Convergence loops only need the agent to _describe_ a fix in
 > chat, but experiment loops re-measure files on disk — so use
 > `scripts/harness/ollama-apply-agent.mjs` (it rewrites the single declared target), not the
 > describe-only `ollama-agent.mjs`.
@@ -85,6 +85,27 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
   docker compose -f docker-compose.harness.yml --profile graph-refresh up -d --build graph-refresh
 ```
 
+## 6. (Optional) MCP integration
+
+The kit ships `.vscode/mcp.json`, which registers the harness MCP server for VS Code automatically.
+For Claude Code or Cursor, add the same stdio entry to their MCP config:
+
+```jsonc
+{
+  "servers": {            // Claude/Cursor use "mcpServers"
+    "harness": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["scripts/harness/mcp-server.mjs"],
+      "cwd": "/abs/path/to/your/repo"
+    }
+  }
+}
+```
+
+Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The server is read-only
+(graph/memory/vector + `harness-loops`/`harness-report`); run loops from the CLI.
+
 ## What to customize next
 
 - **Skills:** the kit ships no domain skills. Add your project's under `.github/skills/` (and/or
@@ -95,5 +116,6 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
 - **Loops:** add your own under `.github/harness/loops/` using `_template.json` as a starting point.
 
 ## Requirements
+
 - Node.js ≥ 20 (core loops need nothing else).
 - Optional: Docker, Ollama, the Understand-Anything plugin.

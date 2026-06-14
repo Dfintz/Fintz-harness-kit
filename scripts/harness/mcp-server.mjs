@@ -379,6 +379,20 @@ const toolSpecs = [
       return cliArgs;
     },
   },
+  {
+    name: 'harness-loops',
+    description:
+      'Lists available harness loops (convergence/workflow/experiment) with kind, description, and metric. Read-only; loops are executed via the CLI, not over MCP.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
+    name: 'harness-report',
+    description:
+      'Returns aggregated harness metrics (loops, checks, rubric, experiments, recent runs, memory) as JSON. Read-only.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
 ];
 
 const toolByName = new Map(toolSpecs.map(spec => [spec.name, spec]));

@@ -5,10 +5,10 @@
 
 Two complementary memory surfaces can exist in a project that adopts this harness:
 
-| Surface                                     | What it remembers                                                                    | Who writes it                                                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| Knowledge graph (optional, see SETUP)       | Code structure: components, layers, dependencies, call sites                         | The graph pipeline (regenerate incrementally; commit results) |
-| `.github/harness/memory/` (this directory)  | Everything the graph can't: lessons, gotchas, settled decisions, Architecture Briefs | Any agent, following the protocol below                       |
+| Surface                                    | What it remembers                                                                    | Who writes it                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| Knowledge graph (optional, see SETUP)      | Code structure: components, layers, dependencies, call sites                         | The graph pipeline (regenerate incrementally; commit results) |
+| `.github/harness/memory/` (this directory) | Everything the graph can't: lessons, gotchas, settled decisions, Architecture Briefs | Any agent, following the protocol below                       |
 
 The knowledge graph answers "how does this codebase fit together"; this directory answers "what did
 we already learn the hard way". Consult both before discovery; neither replaces the project's own

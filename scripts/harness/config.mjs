@@ -12,13 +12,17 @@
  *
  * Part of the harness-kit. See CREDITS.md for upstream inspirations.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // repoRoot = two levels up from scripts/harness/ = the adopting project root.
-export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const CONFIG_PATH = join(repoRoot, 'harness.config.json');
+export const repoRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
+export const CONFIG_PATH = join(repoRoot, "harness.config.json");
 
 let cached;
 
@@ -30,10 +34,10 @@ export function loadConfig() {
     return cached;
   }
   try {
-    cached = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+    cached = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
   } catch (error) {
     process.stderr.write(
-      `[harness-config] invalid harness.config.json: ${error instanceof Error ? error.message : String(error)}\n`
+      `[harness-config] invalid harness.config.json: ${error instanceof Error ? error.message : String(error)}\n`,
     );
     cached = {};
   }
@@ -42,8 +46,11 @@ export function loadConfig() {
 
 function getByPath(object, dottedKey) {
   return dottedKey
-    .split('.')
-    .reduce((acc, key) => (acc === null || acc === undefined ? undefined : acc[key]), object);
+    .split(".")
+    .reduce(
+      (acc, key) => (acc === null || acc === undefined ? undefined : acc[key]),
+      object,
+    );
 }
 
 /**
@@ -51,12 +58,12 @@ function getByPath(object, dottedKey) {
  * Non-string input is returned unchanged. Unmatched tokens are preserved and warned about.
  */
 export function resolveTokens(input, config = loadConfig()) {
-  if (typeof input !== 'string' || !input.includes('{{')) return input;
+  if (typeof input !== "string" || !input.includes("{{")) return input;
   return input.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (whole, key) => {
     const value = getByPath(config, key);
     if (value === undefined || value === null) {
       process.stderr.write(
-        `[harness-config] unresolved token ${whole} — set "${key}" in harness.config.json\n`
+        `[harness-config] unresolved token ${whole} — set "${key}" in harness.config.json\n`,
       );
       return whole;
     }
@@ -65,7 +72,11 @@ export function resolveTokens(input, config = loadConfig()) {
 }
 
 /** Convenience accessor: resolveValue('ollama.model', 'fallback'). */
-export function resolveValue(dottedKey, fallback = undefined, config = loadConfig()) {
+export function resolveValue(
+  dottedKey,
+  fallback = undefined,
+  config = loadConfig(),
+) {
   const value = getByPath(config, dottedKey);
   return value === undefined || value === null ? fallback : value;
 }

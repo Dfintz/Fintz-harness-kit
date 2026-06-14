@@ -7,6 +7,7 @@ of the adapted files.
 ## Direct inspirations
 
 ### karpathy/autoresearch — experiment loop
+
 - **Source:** https://github.com/karpathy/autoresearch (MIT)
 - **What we adapted:** the autonomous, metric-optimizing "experiment" loop — edit a focused target,
   re-measure a single numeric metric, **keep the edit only if it improved, else revert**, and repeat
@@ -20,6 +21,7 @@ of the adapted files.
   declared target only (never `git reset`).
 
 ### Egonex-AI/Understand-Anything — knowledge graph
+
 - **Source:** https://github.com/Egonex-AI/Understand-Anything
 - **What we adapted:** the deterministic code knowledge-graph that the harness treats as structural
   memory, and the graph-refresh sidecar that regenerates it.
@@ -30,6 +32,7 @@ of the adapted files.
   the harness works without it.
 
 ### Model Context Protocol (MCP)
+
 - **Source:** https://modelcontextprotocol.io · SDK: https://github.com/modelcontextprotocol
 - **What we adapted:** exposing the harness's graph / memory / vector tools over MCP so any
   MCP-aware agent can call them.
@@ -37,6 +40,7 @@ of the adapted files.
   [`scripts/harness/mcp-tools.mjs`](scripts/harness/mcp-tools.mjs).
 
 ### Ollama — local LLM runtime
+
 - **Source:** https://ollama.com
 - **What we adapted:** local, zero-cost model inference for loop agents and embeddings, so the
   improvement loops can run without a hosted API.
@@ -45,6 +49,7 @@ of the adapted files.
   [`scripts/harness/vector-search.mjs`](scripts/harness/vector-search.mjs).
 
 ### Anthropic Agent Skills / Claude Code & GitHub Copilot
+
 - **Source:** https://docs.claude.com (Agent Skills) · https://github.com/features/copilot
 - **What we adapted:** the "skills + workflow instructions" structuring and the multi-agent adapter
   idea (the same content served to Claude Code, Copilot/Codex, and other runtimes).
@@ -53,11 +58,13 @@ of the adapted files.
   [`.github/instructions/`](.github/instructions/).
 
 ## Original to this kit
+
 - The unified harness contract (skill routing + stage machine + loop protocol), the five
   architectural review gates, the convergence/workflow/experiment loop taxonomy, the config-token
   layer (`harness.config.json` + `scripts/harness/config.mjs`), and the live metrics dashboard
   (`scripts/harness/report-server.mjs`).
 
 ## License
+
 Released under the MIT License (see `LICENSE`). Adapted components retain their upstream licenses;
 where a file adapts upstream work, its header notes the source.
