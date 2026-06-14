@@ -5,7 +5,8 @@ Cursor, Gemini, …) a consistent operating contract: what to load, what sequenc
 iterate until done — plus autonomous, metric-driven self-improvement loops that can run on a **local
 LLM**, and a live metrics dashboard.
 
-Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on.
+Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
+and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
 ## Install
 

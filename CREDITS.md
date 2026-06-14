@@ -73,6 +73,28 @@ of the adapted files.
   layer (`harness.config.json` + `scripts/harness/config.mjs`), and the live metrics dashboard
   (`scripts/harness/report-server.mjs`).
 
+## Foundations & reference harnesses
+
+These shaped the design and vocabulary; no code was copied from them.
+
+- **Pi** (Earendil, MIT) — https://pi.dev/docs/latest — a minimal terminal coding harness. We adapted
+  its **structured compaction/handoff summary format** (Goal / Constraints / Progress / Key Decisions
+  / Next Steps / Critical Context + read/modified files) as the context-discipline convention in
+  [`HARNESS_CARD.md`](HARNESS_CARD.md), and its candid security stance ("no built-in sandbox"; real
+  isolation must come from a container/VM; prompt injection from untrusted content cannot be reliably
+  prevented in-process) reinforced this kit's threat model.
+- **OpenAI — Harness Engineering** — https://openai.com/index/harness-engineering/ — repo-local
+  instructions, architectural constraints, validation, telemetry.
+- **Anthropic — Effective harnesses for long-running agents** —
+  https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents — self-verification
+  and handoff artifacts across many context windows.
+- **Agent Skill evals** — OpenAI *Testing Agent Skills with Evals* and OpenHands *How to Evaluate
+  Agent Skills* — the no-skill-baseline + deterministic-verifier approach behind
+  [`scripts/harness/eval/`](scripts/harness/eval/).
+- **awesome-harness-engineering** (CC0) — https://github.com/walkinglabs/awesome-harness-engineering —
+  the field map (CAR / HarnessCard framing, evals & observability, Lurkr capability-risk scanning)
+  that informed the HarnessCard and the `dangerous-diff` control.
+
 ## License
 
 Released under the MIT License (see `LICENSE`). Adapted components retain their upstream licenses;

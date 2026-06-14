@@ -31,7 +31,7 @@ RETAIN (selection)    → keep-if-improved + quarantined memory + human-gated co
 
 | Phase | Deliverable | Role | Status |
 | ----- | ----------- | ---- | ------ |
-| 0 | HarnessCard + canonical citations | framing | designed |
+| 0 | HarnessCard + canonical citations | framing | **implemented** |
 | 1 | **Eval harness** (tasks + deterministic verifiers + baseline-vs-harness runner + suite hash) | fitness function | **implemented** |
 | 2 | **Security gate** (memory quarantine, prompt-as-data, dangerous-diff verifier, no-push default, audit) | constraint | **primitives implemented**; full audit designed |
 | 3 | `harness-evolve` experiment loop (target = a harness artifact, metric = eval score) | meta actuator | designed |
