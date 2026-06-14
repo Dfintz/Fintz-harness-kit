@@ -66,6 +66,35 @@ of the adapted files.
   [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md) and the stage instructions under
   [`.github/instructions/`](.github/instructions/).
 
+### chaseai-yt/grill-me-codex — cross-model adversarial plan review
+
+- **Source:** https://github.com/chaseai-yt/grill-me-codex (MIT)
+- **What we adapted:** the two-act pattern's Act 2 — a rival, cross-provider model reviews a locked
+  plan READ-ONLY over bounded rounds, the author revises between rounds, and a cap reached without
+  approval is a flagged deadlock (never a fake "approved"). Two artifacts: the plan (the _what_) and
+  a round-by-round review log (the _why_).
+- **Where:** [`scripts/harness/plan-review.mjs`](scripts/harness/plan-review.mjs),
+  [`.github/harness/loops/plan-review.json`](.github/harness/loops/plan-review.json).
+- **How we differ:** provider-agnostic (any two CLIs over stdin, including local models), the reviewer
+  critique is wrapped + injection-defanged as untrusted data before the author sees it, read-only is
+  enforced by hashing the plan before/after each round (revert + flag on a write), and each run
+  journals to `runs/` so it grades + exports through the existing observability. We replay the full
+  prior-round log each round (stateless) instead of resuming one reviewer session.
+
+### Matt Pocock — Skills For Real Engineers
+
+- **Source:** https://github.com/mattpocock/skills (MIT)
+- **What we adapted:** the `grill-me` / `grill-with-docs` alignment-interrogation idea (interview the
+  human one question at a time, build a shared language in `CONTEXT.md`, record decisions as ADRs),
+  and `git-guardrails` (block dangerous git commands). Act 1 of grill-me-codex is also his work.
+- **Where:** [`skills/grill/SKILL.md`](skills/grill/SKILL.md),
+  [`.github/harness/templates/CONTEXT.template.md`](.github/harness/templates/CONTEXT.template.md),
+  [`.github/harness/templates/adr.template.md`](.github/harness/templates/adr.template.md),
+  [`scripts/harness/git-guard.mjs`](scripts/harness/git-guard.mjs).
+- **How we differ:** the grill skill is wired into the harness stage machine (it feeds Architect and
+  pairs with the `plan-review` loop), and git-guardrails is generalized from a Claude-Code-only hook
+  into an agent-neutral deterministic classifier with a `--self-test`, usable from any runtime.
+
 ## Original to this kit
 
 - The unified harness contract (skill routing + stage machine + loop protocol), the five
@@ -73,6 +102,10 @@ of the adapted files.
   layer (`harness.config.json` + `scripts/harness/config.mjs`), the live metrics dashboard
   (`scripts/harness/report-server.mjs`), and the deterministic trajectory critic
   (`scripts/harness/grade-trace.mjs`) that scores a loop's _process_ and recommends early-stopping.
+- The harness-native framing of the adapted patterns above: the `plan-review` loop as a first-class
+  workflow loop (read-only reviewer + untrusted-wrapped critique + run journaling), the agent-neutral
+  `git-guard` classifier, and the `tdd-cycle` / `diagnose` workflow loops as rubric-graded process
+  discipline.
 
 ## Foundations & reference harnesses
 
@@ -89,12 +122,16 @@ These shaped the design and vocabulary; no code was copied from them.
 - **Anthropic — Effective harnesses for long-running agents** —
   https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents — self-verification
   and handoff artifacts across many context windows.
-- **Agent Skill evals** — OpenAI *Testing Agent Skills with Evals* and OpenHands *How to Evaluate
-  Agent Skills* — the no-skill-baseline + deterministic-verifier approach behind
+- **Agent Skill evals** — OpenAI _Testing Agent Skills with Evals_ and OpenHands _How to Evaluate
+  Agent Skills_ — the no-skill-baseline + deterministic-verifier approach behind
   [`scripts/harness/eval/`](scripts/harness/eval/).
 - **awesome-harness-engineering** (CC0) — https://github.com/walkinglabs/awesome-harness-engineering —
   the field map (CAR / HarnessCard framing, evals & observability, Lurkr capability-risk scanning)
   that informed the HarnessCard and the `dangerous-diff` control.
+- **dpolivaev/spec-loop** (MIT) — https://github.com/dpolivaev/spec-loop — a design-first skill
+  framework (write the next _small_ spec → review → implement with tests → repeat). Reinforced the
+  kit's incremental Architect→Implement→Review cadence and the value of keeping the spec local to the
+  next step; no code was copied.
 - **OpenTelemetry — GenAI semantic conventions** —
   https://opentelemetry.io/docs/specs/semconv/gen-ai/ — the attribute vocabulary (`gen_ai.*`,
   agent-invocation spans) that [`scripts/harness/otel-export.mjs`](scripts/harness/otel-export.mjs)
