@@ -31,10 +31,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  computeIntegrity,
-  forbiddenTargetViolations,
-  integrityMatches,
-  resolveTargetFiles,
+    computeIntegrity,
+    forbiddenTargetViolations,
+    integrityMatches,
+    resolveTargetFiles,
 } from "./evolve-guard.mjs";
 import { defangInjections } from "./untrusted.mjs";
 
