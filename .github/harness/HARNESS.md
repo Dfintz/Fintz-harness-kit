@@ -170,7 +170,7 @@ Run the narrowest command that covers the change; loops use these as their conve
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Backend code        | `npm run lint --workspace=backend` · `npm run type-check` · `npm test --workspace=backend -- <changed>.test.ts`    |
 | Frontend code       | `npm run lint --workspace=frontend` · `npm run type-check` · `npm test --workspace=frontend -- <changed>.test.tsx` |
-| Shared types        | `npm run build --workspace=<your-shared-types-package>` then rebuild dependents                                 |
+| Shared types        | `npm run build --workspace=@sc-fleet-manager/shared-types` then rebuild dependents                                 |
 | Migrations/entities | Migration generated + backend tests pass                                                                           |
 | API contract        | `npm run test:pact --workspace=backend` · `npm run test:openapi --workspace=backend`                               |
 | Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                                               |
@@ -219,6 +219,40 @@ Every run leaves a JSON journal in `.github/harness/runs/` (gitignored): converg
 `run-loop.mjs`, workflow loops/stages via `scripts/harness/record-run.mjs`. Aggregate them into a
 dashboard with `npm run harness:report` — per-loop convergence rates, slowest checks, and the rubric
 pass-rates that make Understand/Architect/Review activity measurable.
+
+---
+
+## Harness Self-Improvement: Phase Integration Snapshot
+
+The harness includes a closed-loop optimization path for its own guidance, with guarded evolution,
+observability, and deterministic scoring.
+
+### Phase 3 — Meta-Optimization Loop (`harness-evolve`)
+
+- Target: `.github/harness/evolve/candidate-instructions.md` (editable guidance surface)
+- Guardrails: forbidden target validation + suite integrity tripwire in
+  `scripts/harness/evolve-guard.mjs`
+- Iteration control: bounded loop with no-improvement early stop
+
+Run with:
+
+- `npm run harness:evolve`
+- `npm run harness:evolve:dry-run`
+- `npm run harness:evolve:check`
+
+### Phase 4 — Observability
+
+- Journals: `.github/harness/runs/*.jsonl`
+- Dashboard: `npm run harness:report`
+- OTLP/JSON export: `npm run harness:otel`
+
+### Phase 5 — Outcome Scoring & Feedback
+
+- Trajectory scorer: `npm run harness:grade`
+- Self-test checks: `npm run harness:grade:self-test`, `npm run harness:evolve:self-test`
+- Feedback path: run -> journal -> grade -> evolve adjustment -> next measured cycle
+
+See `LOOPS.md` for scoring semantics and loop protocol details.
 
 ---
 

@@ -16,10 +16,10 @@ without copying folders by hand.
 
 ```bash
 # Any of 70+ agents, via the open Agent Skills CLI (-g installs globally for your user):
-npx skills add Dfintz/Fintz-harness-kit -g
+npx skills add <owner>/harness-kit -g
 
 # A specific agent (or several):
-npx skills add Dfintz/Fintz-harness-kit -g -a github-copilot -a claude-code
+npx skills add <owner>/harness-kit -g -a github-copilot -a claude-code
 
 # Or from a local checkout of this kit:
 npx skills add ./harness-kit --list      # discover, then add --skill harness to install
@@ -27,7 +27,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 
 ```text
 # Claude Code, via the native plugin marketplace (auto-updates):
-/plugin marketplace add Dfintz/Fintz-harness-kit
+/plugin marketplace add <owner>/harness-kit
 /plugin install harness-kit
 ```
 
@@ -35,7 +35,8 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 contract (stages, gates, loops, memory) and is enough for guidance in any repo. The **runnable
 engine** (the `scripts/harness/*.mjs` loop runners, dashboard, and MCP server) ships with the kit
 files; get it by either installing the Claude Code **plugin** (bundles everything) or adopting the
-kit scaffold per [`SETUP.md`](SETUP.md).
+kit scaffold per [`SETUP.md`](SETUP.md). Replace `<owner>/harness-kit` with wherever you publish this
+kit.
 
 ## What's inside
 
@@ -134,6 +135,7 @@ stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 - `harness:route` classifies a prompt as trivial or non-trivial.
 - `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
 - `harness:handoff:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
+- `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
 - `harness:review` runs the plan-review workflow for backward compatibility.
 
 By default the shipped environment policy separates execution and judgment:
@@ -185,6 +187,25 @@ out. The MCP surface is for discovery and context, not for driving loops.
 - Node.js ≥ 20 (uses built-in `fetch`; no install needed for the core loops).
 - Optional: Docker (dashboard/graph sidecars), Ollama or LM Studio (local-LLM loops), the Understand-Anything
   plugin (knowledge graph).
+
+For the `graph-refresh` sidecar, plugin dependency bootstrapping is now hardened by default: when
+the plugin is mounted at `/opt/understand-plugin`, the loop copies it to a writable runtime path and
+runs `corepack pnpm install --frozen-lockfile` there before refresh. This avoids regressions from
+read-only mounts or host/container linker mismatches. Override with:
+
+- `GRAPH_REFRESH_BOOTSTRAP_PLUGIN=false` to disable bootstrap.
+- `GRAPH_REFRESH_FORCE_BOOTSTRAP=true` to force runtime copy/install even when source plugin already has `node_modules`.
+- `GRAPH_REFRESH_RUNTIME_PLUGIN_ROOT=/custom/path` to change runtime copy location (default: `/workspace/.cache/understand-plugin-runtime`).
+- `GRAPH_REFRESH_BOOTSTRAP_INSTALL_TIMEOUT_MS=120000` to cap install wait time and fail fast.
+
+You can also run a deterministic preflight manually before starting the loop:
+
+```bash
+node scripts/harness/graph-refresh-loop.mjs --preflight-only --plugin-root <plugin-root>
+```
+
+The compose sidecar now runs this preflight first and exits with one actionable error if
+prerequisites are missing.
 
 ## License
 

@@ -37,13 +37,14 @@ List every file provided, one per line:
 
 Examine the files to determine scope:
 
-**🔧 Backend indicators:** API routes, service/repository layers, validation schemas, middleware,
-data-access code in your project's service and controller directories
+**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
+services in `backend/src/services/`, controllers in `backend/src/controllers/`
 
-**🎨 Frontend indicators:** UI components, frontend service layer, state management (e.g. data-fetching
-hooks, stores), client-side routing
+**🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
+frontend services in `frontend/src/services/`
 
-**🔗 Full-stack indicators:** Shared type packages, API contract changes, real-time features
+**🔗 Full-stack indicators:** Shared types in `packages/shared-types`, API contract changes,
+real-time (Socket.io) features
 
 State the detected scope clearly:
 
@@ -120,22 +121,22 @@ Before writing ANY code, complete every item below. If you cannot complete an it
 
 ### 5. Frontend Discovery (if applicable)
 
-- [ ] Checked the project's query key registry for existing key factories
-- [ ] Checked for existing data-fetching hooks in the hooks directory
-- [ ] Checked for existing frontend services in the services directory
-- [ ] Confirmed the project's approved UI library is used (not deprecated alternatives)
-- [ ] Confirmed the project's import path conventions are followed
+- [ ] Checked `frontend/src/hooks/queries/queryKeys.ts` for existing key factories
+- [ ] Checked for existing React Query hooks in `frontend/src/hooks/queries/`
+- [ ] Checked for existing frontend services in `frontend/src/services/`
+- [ ] Confirmed MUI components used (not Adobe Spectrum — which is migrated away)
+- [ ] Confirmed `@/` path alias used for all cross-directory imports
 
 ### 6. Database/Migration Discovery (if applicable)
 
-- [ ] Checked the project's model/entity directory for existing related entities
+- [ ] Checked `backend/src/models/` for existing related entities
 - [ ] Checked for existing indexes and constraints that may conflict
 - [ ] Migration timestamp follows convention: `YYYYMMDDHHMMSS`
 - [ ] No `synchronize: true` anywhere — migrations only
 
 ### 7. Validation Schema Discovery
 
-- [ ] Searched the project's validation schema directory for existing schemas
+- [ ] Searched for existing Joi schemas in `backend/src/schemas/`
 - [ ] Matching existing schema patterns (field naming, validation rules)
 - [ ] Schema covers all required fields and applies appropriate constraints
 
@@ -151,23 +152,25 @@ attention to:
 - Service layer handles business logic; controllers handle HTTP concerns only
 - All services that access tenant-scoped data extend TenantService or scope queries by
   organizationId
-- All endpoints validate inputs using the project's validation layer
+- All endpoints validate inputs with Joi schemas
 - Use Winston logger — never `console.log` in production code
 - Error handling uses `catch (error: unknown)` — never `catch (error: any)`
-- Parameterised queries only — no string concatenation in SQL
-- Follow the project's middleware order (auth → tenant context → permissions → validation → handler)
+- TypeORM parameterised queries only — no string concatenation in SQL
+- Middleware order: Helmet → CORS → Correlation ID → Rate Limiting → Body Parsing → Auth → Tenant
+  Context → Permissions → Validation → Controller
 
 **Frontend patterns:**
 
-- Use the project's data-fetching layer for all server state (hooks, keys)
-- Use the project's client state management solution (stores, context)
-- Use the project's approved UI component library exclusively
-- Use the project's API client wrapper for all API calls — never raw HTTP client imports
-- Follow the project's import path conventions throughout
-- Use the project's logger — never `console.log`
-- No hardcoded colours — use the project's theme/design token system
-- Use the project's error-type helpers — never `as any` for error access
-- Show loading indicators during async operations
+- React Query for all server state (hooks in `hooks/queries/use<Domain>Queries.ts`, keys in
+  `queryKeys.ts`)
+- Zustand for client-only state (auth, UI preferences, theme)
+- MUI v7 components exclusively (Fringe Core design system)
+- `apiClient` or `BaseService` for all API calls — never raw `axios` imports
+- `@/` path alias for all cross-directory imports — never `../../` relative paths
+- `logger` from `@/utils/logger` — never `console.log`
+- No hardcoded hex colours — use MUI theme palette or shared colour utilities
+- `isApiClientError()` for error handling — never `as any` for error access
+- `<CircularProgress />` for loading states
 - Props interfaces use `Readonly<>` wrapper
 
 **Type safety:**
@@ -204,7 +207,7 @@ Work through every item. Do not submit until all pass.
 
 - [ ] Found and compared against source types being mirrored?
 - [ ] Field types match EXACTLY (or deviations have an inline comment)?
-- [ ] Types from the project's shared types package used where appropriate?
+- [ ] Types from `packages/shared-types` used where appropriate?
 
 ### Pattern Consistency
 
@@ -220,32 +223,32 @@ Work through every item. Do not submit until all pass.
 
 ### Backend Checks (if applicable)
 
-- [ ] Service extends the project's base service / tenant-scoping base (if multi-tenant data access)?
-- [ ] Controller uses the project's standard response helper?
-- [ ] Validation schema defined for all new API endpoints?
+- [ ] Service extends TenantService (if multi-tenant data access)?
+- [ ] Controller uses BaseController.executeAndReturn() for response handling?
+- [ ] Joi schema defined for all new API endpoints?
 - [ ] Route registered in the appropriate routes file?
 - [ ] All database queries scoped by organizationId (tenant isolation)?
 - [ ] Audit logging added for sensitive operations?
-- [ ] Project logger used — no console.log/warn/error?
+- [ ] Winston logger used — no console.log/warn/error?
 - [ ] Error types are domain-specific (NotFoundError, ValidationError, etc.)?
 
 ### Frontend Checks (if applicable)
 
-- [ ] Project-approved UI components used — no deprecated imports?
-- [ ] Data-fetching hooks follow the project's naming pattern?
-- [ ] Query/cache keys registered in the project's key registry?
-- [ ] Loading states shown during async operations?
-- [ ] Error states displayed appropriately?
-- [ ] Project import path conventions used throughout?
+- [ ] MUI v7 components used — no Adobe Spectrum imports?
+- [ ] React Query hooks follow `use<Domain>Queries.ts` pattern?
+- [ ] Query keys registered in `queryKeys.ts` factory?
+- [ ] Loading states show `<CircularProgress />`?
+- [ ] Error states show `<Alert severity="error">`?
+- [ ] `@/` imports used throughout — no relative cross-directory paths?
 - [ ] No `any` types — proper typing or `unknown` with guards?
-- [ ] No hardcoded colours — project theme or design tokens?
-- [ ] Project API client / base service used for API calls — no raw HTTP client?
+- [ ] No hardcoded colours — MUI theme or utility functions?
+- [ ] `apiClient` or `BaseService` for API calls — no raw axios?
 
 ### Security Checks
 
 - [ ] No hardcoded secrets or API keys?
-- [ ] Input validation via project's validation layer?
-- [ ] SQL queries use parameterised binding (no string concatenation)?
+- [ ] Input validation via Joi schemas?
+- [ ] SQL queries use TypeORM parameterised binding?
 - [ ] Authentication middleware on protected routes?
 - [ ] Permission checks in place for RBAC?
 - [ ] No PII in log messages (or encrypted if compliance-required)?
