@@ -187,6 +187,25 @@ out. The MCP surface is for discovery and context, not for driving loops.
 - Optional: Docker (dashboard/graph sidecars), Ollama or LM Studio (local-LLM loops), the Understand-Anything
   plugin (knowledge graph).
 
+For the `graph-refresh` sidecar, plugin dependency bootstrapping is now hardened by default: when
+the plugin is mounted at `/opt/understand-plugin`, the loop copies it to a writable runtime path and
+runs `corepack pnpm install --frozen-lockfile` there before refresh. This avoids regressions from
+read-only mounts or host/container linker mismatches. Override with:
+
+- `GRAPH_REFRESH_BOOTSTRAP_PLUGIN=false` to disable bootstrap.
+- `GRAPH_REFRESH_FORCE_BOOTSTRAP=true` to force runtime copy/install even when source plugin already has `node_modules`.
+- `GRAPH_REFRESH_RUNTIME_PLUGIN_ROOT=/custom/path` to change runtime copy location (default: `/workspace/.cache/understand-plugin-runtime`).
+- `GRAPH_REFRESH_BOOTSTRAP_INSTALL_TIMEOUT_MS=120000` to cap install wait time and fail fast.
+
+You can also run a deterministic preflight manually before starting the loop:
+
+```bash
+node scripts/harness/graph-refresh-loop.mjs --preflight-only --plugin-root <plugin-root>
+```
+
+The compose sidecar now runs this preflight first and exits with one actionable error if
+prerequisites are missing.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE) and [`CREDITS.md`](CREDITS.md).
