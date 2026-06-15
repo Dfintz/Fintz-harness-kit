@@ -40,14 +40,14 @@ List every file provided, one per line:
 - Its layer (`backend/service`, `backend/controller`, `backend/middleware`, `backend/model`,
   `frontend/component`, `frontend/hook`, `frontend/service`, `frontend/store`, `shared-types`,
   `test`)
-- Its domain (fleet, activity, communication, trade, organization, auth, etc.)
+- Its domain/layer (service, controller, component, hook, etc.)
 
 ### Step 2 — Determine scope context
 
 Examine the files to determine scope:
 
-**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
-services in `backend/src/services/`
+**🔧 Backend indicators:** API routes, service/repository layers, validation schemas, middleware,
+data-access code in your project's service and controller directories
 
 **🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
 frontend services in `frontend/src/services/`

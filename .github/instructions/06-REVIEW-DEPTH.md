@@ -132,7 +132,7 @@ failure is a finding. Do not skip any gate because the code "looks right".
 **Procedure:**
 
 1. Take the name of each new method
-2. Strip every domain-specific word (fleet, ship, activity, organization, etc.)
+2. Strip every domain-specific word (e.g. fleet, order, user, product, etc.)
 3. Ask: "Does the remaining logic, as implemented, apply to other domains?"
 4. Ask: "Would another domain need this exact same pattern?"
 
@@ -141,9 +141,9 @@ service, or base controller, not the domain-specific class.
 
 **Example:**
 
-- `getFleetPaginatedList()` → strip "Fleet" → `getPaginatedList()` → logic is just TypeORM
+- `getFleetPaginatedList()` → strip "Fleet" → `getPaginatedList()` → logic is just a
   `.findAndCount()` with offset/limit, valid for any entity → misplaced in FleetService, should be
-  in TenantService/BaseService
+  in a shared base service
 
 **Finding format:**
 
@@ -279,7 +279,7 @@ For every database query or data access in the new code:
 
 - [ ] Is organizationId included in the WHERE clause?
 - [ ] Is the service extending TenantService (which provides automatic scoping)?
-- [ ] If using raw queries or query builders: is parameterised binding used?
+- [ ] If using raw queries or query builders: is parameterised binding used (no string concatenation)?
 - [ ] Could a malicious request scope hop to access another tenant's data?
 - [ ] Are API responses filtered by tenant before sending to client?
 

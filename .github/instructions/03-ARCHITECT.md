@@ -39,16 +39,16 @@ List every file provided, one per line:
 
 Examine the files and task to determine scope:
 
-**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
-services in `backend/src/services/`, controllers in `backend/src/controllers/`
+**🔧 Backend indicators:** API routes, service/repository layers, validation schemas, middleware,
+data-access code in your project's service and controller directories
 
-**🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
-frontend services in `frontend/src/services/`
+**🎨 Frontend indicators:** UI components, frontend service layer, state management (e.g. React Query
+hooks, stores), client-side routing
 
-**🔗 Full-stack indicators:** Shared types in `packages/shared-types`, API contract changes,
-real-time (Socket.io) features
+**🔗 Full-stack indicators:** Shared type packages, API contract changes, real-time features (e.g.
+WebSockets, SSE)
 
-**🏗️ Infrastructure indicators:** Docker, Bicep/Azure, CI/CD workflows, database migrations
+**🏗️ Infrastructure indicators:** Docker, cloud IaC (Bicep/Terraform/etc.), CI/CD workflows, database migrations
 
 State the detected scope clearly:
 
@@ -219,22 +219,22 @@ For each new file:
 
 **Backend file checklist:**
 
-- [ ] Entity/model in `backend/src/models/` if new table needed
-- [ ] Migration in `backend/src/migrations/` if schema changes
-- [ ] Service in `backend/src/services/<domain>/`
-- [ ] Controller in `backend/src/controllers/<version>/`
-- [ ] Joi schema in `backend/src/schemas/`
-- [ ] Route definition in `backend/src/routes/`
-- [ ] Tests in `backend/src/__tests__/`
+- [ ] Data model / entity if a new table is needed
+- [ ] Migration / schema change script if schema changes
+- [ ] Service / repository in the appropriate domain directory
+- [ ] Controller / handler in the appropriate version directory
+- [ ] Validation schema for request inputs
+- [ ] Route / endpoint definition
+- [ ] Tests co-located or in a `__tests__/` directory
 
 **Frontend file checklist:**
 
-- [ ] Component in `frontend/src/components/`
-- [ ] Page in `frontend/src/pages/`
-- [ ] React Query hook in `frontend/src/hooks/queries/use<Domain>Queries.ts`
-- [ ] Query keys in `frontend/src/hooks/queries/queryKeys.ts`
-- [ ] Service in `frontend/src/services/`
-- [ ] Types co-located in service file or in `@sc-fleet-manager/shared-types`
+- [ ] Component in the appropriate feature directory
+- [ ] Page / view in the appropriate pages directory
+- [ ] Data-fetching hook in the appropriate hooks directory
+- [ ] Query keys / cache keys registered
+- [ ] API service in the appropriate services directory
+- [ ] Types co-located in the service file or in a shared types package
 
 ### Files to Modify
 
@@ -262,23 +262,23 @@ If all answers are NO → state: "No abstraction created — reason: [reason]"
 
 ### Error Handling
 
-- What error types will be used (NotFoundError, ValidationError, ForbiddenError, UnauthorizedError)?
+- What error types will be used (e.g. NotFoundError, ValidationError, ForbiddenError)?
 - Where are the failure paths and how will they be communicated?
-- Does the controller use `executeAndReturn` from BaseController?
+- Does the handler/controller use the project's standard response helper?
 
 ### Security Considerations
 
 - [ ] Does this feature need new permissions? What RBAC roles can access it?
-- [ ] Is input validation covered by Joi schemas?
-- [ ] Are all database queries parameterised (TypeORM, no string concatenation)?
+- [ ] Is input validation covered by the project's validation layer?
+- [ ] Are all database queries parameterised (no string concatenation)?
 - [ ] Is audit logging needed for sensitive operations?
 - [ ] Is CSRF protection maintained (state-changing endpoints)?
-- [ ] Does this touch PII? If so, GDPR compliance needed (encryption, deletion support)?
+- [ ] Does this touch PII? If so, is data-protection compliance addressed (encryption, deletion support)?
 
 ### Real-Time Considerations (if applicable)
 
 - [ ] Does this feature need WebSocket events?
-- [ ] Are events scoped to the correct room (org, fleet, activity)?
+- [ ] Are events scoped to the correct room/channel?
 - [ ] Is the event name following the `domain:action` convention?
 
 ---

@@ -47,14 +47,13 @@ List every file provided, one per line:
 
 Examine the files to determine scope:
 
-**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
-services in `backend/src/services/`, controllers in `backend/src/controllers/`
+**🔧 Backend indicators:** API routes, service/repository layers, validation schemas, middleware,
+data-access code in your project's service and controller directories
 
-**🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
-frontend services in `frontend/src/services/`
+**🎨 Frontend indicators:** UI components, frontend service layer, state management (e.g. data-fetching
+hooks, stores), client-side routing
 
-**🔗 Full-stack indicators:** Shared types in `packages/shared-types`, API contract changes,
-real-time (Socket.io) features
+**🔗 Full-stack indicators:** Shared type packages, API contract changes, real-time features
 
 State the detected scope clearly:
 
@@ -128,7 +127,7 @@ Check each item as a checklist. Report failures only.
 ### Backend: Service Layer
 
 - [ ] Business logic in services, not controllers?
-- [ ] Service extends TenantService for multi-tenant data access?
+- [ ] Service extends the project's base/tenant service for multi-tenant data access?
 - [ ] Constructor follows established DI pattern (injected repositories or singleton exports)?
 - [ ] Logger used for method entry and error conditions?
 - [ ] Domain-specific error types thrown (NotFoundError, ValidationError, etc.)?
@@ -136,15 +135,15 @@ Check each item as a checklist. Report failures only.
 ### Backend: Controller Layer
 
 - [ ] Controllers handle HTTP concerns only (req/res extraction, status codes)?
-- [ ] Uses BaseController.executeAndReturn() for consistent response handling?
-- [ ] Joi validation applied before business logic?
+- [ ] Uses the project's standard response helper for consistent response handling?
+- [ ] Validation applied before business logic?
 - [ ] No business logic in controllers (calculations, data transformations, external calls)?
 - [ ] Authentication middleware applied to protected routes?
 - [ ] Permission checks applied where RBAC is required?
 
 ### Backend: Database
 
-- [ ] All queries use TypeORM parameterised binding — no string concatenation?
+- [ ] All queries use parameterised binding — no string concatenation?
 - [ ] Queries scoped by organizationId for tenant isolation?
 - [ ] Relations loaded explicitly (not relying on eager loading)?
 - [ ] Migrations use timestamp naming convention?
@@ -152,7 +151,7 @@ Check each item as a checklist. Report failures only.
 
 ### Backend: Validation
 
-- [ ] Joi schemas defined for all new endpoints in `backend/src/schemas/`?
+- [ ] Validation schemas defined for all new endpoints?
 - [ ] Schema field names match entity/DTO field names?
 - [ ] Required fields validated as `.required()`?
 - [ ] String fields have reasonable `.max()` constraints?
@@ -169,38 +168,37 @@ Check each item as a checklist. Report failures only.
 ### Frontend: Components
 
 - [ ] Functional components with hooks — no class components?
-- [ ] MUI v7 components used — no Adobe Spectrum imports?
+- [ ] Project-approved UI components used — no deprecated imports?
 - [ ] Props interfaces defined with `Readonly<>` wrapper?
 - [ ] Named exports used — no default exports?
 - [ ] `@/` path alias for all cross-directory imports — no `../../` relative paths?
-- [ ] No hardcoded hex colours — MUI theme palette or utility functions (`semanticColorUtils`,
-      `statusStyles`)?
-- [ ] Error states handled with `<Alert severity="error">`?
-- [ ] Loading states show `<CircularProgress />`?
-- [ ] Charts/sparklines have explicit container dimensions (avoid Recharts -1 errors)?
+- [ ] No hardcoded colours — project theme/design tokens used?
+- [ ] Error states displayed using the project's standard error component?
+- [ ] Loading states shown using the project's standard loading indicator?
+- [ ] Chart/sparkline containers have explicit dimensions to avoid zero-size rendering errors?
 
 ### Frontend: State Management
 
 - [ ] Server state uses React Query (TanStack) — not local useState for fetched data?
 - [ ] Client-only state uses Zustand stores (auth, UI, theme)?
-- [ ] React Query hooks in `hooks/queries/use<Domain>Queries.ts`?
-- [ ] Query keys in `queryKeys.ts` using factory pattern?
+- [ ] Data-fetching hooks follow the project's naming and location convention?
+- [ ] Cache/query keys in the project's key registry using factory pattern?
 - [ ] Mutations invalidate related query caches on success?
 - [ ] `enabled` option used for conditional fetching (not manual `useEffect` fetching)?
 
 ### Frontend: API Layer
 
-- [ ] All API calls through `apiClient` or `BaseService` — never raw `axios` imports?
-- [ ] Error handling uses `isApiClientError()` (preferred) or `isAxiosError()` (legacy)?
+- [ ] All API calls through the project's API client / base service — never raw HTTP client imports?
+- [ ] Error handling uses the project's error-type helpers?
 - [ ] No `as any` for error property access?
-- [ ] Service files extend `BaseService` and are exported as singletons?
+- [ ] Service files follow the project's service pattern (base class, singleton export)?
 - [ ] Types/interfaces co-located in the service file?
 
 ### Frontend: Routing & Navigation
 
 - [ ] Pages are lazy-loaded with named exports?
 - [ ] Protected routes wrapped with `<ProtectedRoute>`?
-- [ ] Routes registered in `routeRegistry` for navigation, command palette, breadcrumbs?
+- [ ] Routes registered in the project's route registry (navigation, breadcrumbs, etc.)?
 
 ### Logging
 
@@ -216,7 +214,7 @@ Check each item as a checklist. Report failures only.
 - [ ] Custom error classes from `apiErrors` used for expected error conditions?
 - [ ] Error messages are specific and actionable (not "Something went wrong")?
 - [ ] Frontend: Unknown errors wrapped: `err instanceof Error ? err : new Error(String(err))`?
-- [ ] Backend: `logError(error, 'ServiceName.methodName')` pattern used?
+- [ ] Backend: project's error-logging helper pattern used?
 
 ### Documentation
 
@@ -253,8 +251,8 @@ Analyse:
 
 **Resource Safety**
 
-- Database connections properly managed (TypeORM handles most of this)?
-- Redis connections/subscriptions cleaned up?
+- Database connections properly managed (ORM/driver handles pooling)?
+- Cache/message-broker connections and subscriptions cleaned up?
 - Socket.io event listeners cleaned up on disconnect?
 - React useEffect cleanup functions provided where needed?
 - Event listeners removed on component unmount?
@@ -262,7 +260,7 @@ Analyse:
 **Null Safety**
 
 - All optional values checked before use?
-- TypeORM query results validated (`.findOne()` can return null)?
+- ORM query results validated (`.findOne()` / similar can return null)?
 - `req.user`, `req.params`, `req.query` values validated before use?
 
 **Async Safety**
