@@ -41,7 +41,8 @@ const STAGE_PROMPT_METADATA = {
   implement: {
     title: "Implement",
     outputFile: "implementation-notes.md",
-    deliverable: "Applied changes plus pre-implementation and self-review notes.",
+    deliverable:
+      "Applied changes plus pre-implementation and self-review notes.",
     instructions: [
       "Read architecture-brief.md and stay within its ownership boundaries.",
       "Load relevant domain skills before editing.",
@@ -63,7 +64,8 @@ const STAGE_PROMPT_METADATA = {
   "review-depth": {
     title: "Review Depth",
     outputFile: "review-depth-findings.md",
-    deliverable: "Gate verdicts and structural findings checked against the Architecture Brief.",
+    deliverable:
+      "Gate verdicts and structural findings checked against the Architecture Brief.",
     instructions: [
       "Read architecture-brief.md and review-breadth-findings.md.",
       "Re-run the architectural gates against the implemented diff.",
@@ -73,7 +75,8 @@ const STAGE_PROMPT_METADATA = {
   feedback: {
     title: "Feedback",
     outputFile: "feedback-verdict.md",
-    deliverable: "Verdict table, decision updates, and refreshed next-steps summary.",
+    deliverable:
+      "Verdict table, decision updates, and refreshed next-steps summary.",
     instructions: [
       "Read Architecture Brief plus both review outputs.",
       "Produce a verdict table with accepted/rejected/deferred findings.",
@@ -330,10 +333,12 @@ function buildPromptPack(route, outDir) {
     packDir,
     route,
     stageFiles,
-    sidecarFiles: Object.entries(SIDECAR_PROMPT_METADATA).map(([key, meta]) => ({
-      key,
-      ...meta,
-    })),
+    sidecarFiles: Object.entries(SIDECAR_PROMPT_METADATA).map(
+      ([key, meta]) => ({
+        key,
+        ...meta,
+      }),
+    ),
     nextStepsFile: "next-steps.md",
     logFile: "orchestrator-log.md",
     manifestFile: "manifest.json",
@@ -385,13 +390,18 @@ function renderStagePrompt(pack, stageFile) {
     requiredInputs.push("review-breadth-findings.md");
   }
   if (stageFile.stage === "feedback") {
-    requiredInputs.push("review-breadth-findings.md", "review-depth-findings.md");
+    requiredInputs.push(
+      "review-breadth-findings.md",
+      "review-depth-findings.md",
+    );
   }
 
   const requiredInputsBlock = requiredInputs.length
     ? requiredInputs.map((name) => `- ${name}`).join("\n")
     : "- manifest.json\n- next-steps.md (if present)";
-  const instructionBlock = stageFile.instructions.map((line) => `- ${line}`).join("\n");
+  const instructionBlock = stageFile.instructions
+    .map((line) => `- ${line}`)
+    .join("\n");
 
   return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
 }
@@ -409,8 +419,12 @@ function renderSidecarPrompt(pack, sidecar) {
   if (sidecar.key === "challenger") {
     suggestedInputs.push("architecture-brief.md", "implementation-notes.md");
   }
-  const suggestedInputsBlock = suggestedInputs.map((name) => `- ${name}`).join("\n");
-  const instructionsBlock = sidecar.instructions.map((line) => `- ${line}`).join("\n");
+  const suggestedInputsBlock = suggestedInputs
+    .map((name) => `- ${name}`)
+    .join("\n");
+  const instructionsBlock = sidecar.instructions
+    .map((line) => `- ${line}`)
+    .join("\n");
 
   return `# Optional Sidecar: ${sidecar.title}\n\nTask: ${pack.route.task}\nRecommended model: ${sidecar.recommendedModel}\n\nPurpose:\n${sidecar.purpose}\n\nSuggested inputs:\n${suggestedInputsBlock}\n\nOptional output:\n- ${sidecar.outputFile}\n\nWhen to use:\n${sidecar.timing}\n\nInstructions:\n${instructionsBlock}\n\nGuardrails:\n- This is a sidecar, not a replacement for canonical harness stages.\n- Keep output concise, file-grounded, and actionable by the orchestrator.\n- Stop after writing ${sidecar.outputFile}.\n`;
 }
@@ -450,16 +464,36 @@ function writePromptPack(route, outDir) {
   };
 
   writePackFile(pack.packDir, pack.readmeFile, renderPromptPackReadme(pack));
-  writePackFile(pack.packDir, pack.orchestratorFile, renderOrchestratorPrompt(pack));
-  writePackFile(pack.packDir, pack.nextStepsFile, renderNextStepsTemplate(pack));
+  writePackFile(
+    pack.packDir,
+    pack.orchestratorFile,
+    renderOrchestratorPrompt(pack),
+  );
+  writePackFile(
+    pack.packDir,
+    pack.nextStepsFile,
+    renderNextStepsTemplate(pack),
+  );
   writePackFile(pack.packDir, pack.logFile, renderOrchestratorLog(pack));
-  writePackFile(pack.packDir, pack.manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+  writePackFile(
+    pack.packDir,
+    pack.manifestFile,
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
 
   for (const stageFile of pack.stageFiles) {
-    writePackFile(pack.packDir, stageFile.promptFile, renderStagePrompt(pack, stageFile));
+    writePackFile(
+      pack.packDir,
+      stageFile.promptFile,
+      renderStagePrompt(pack, stageFile),
+    );
   }
   for (const sidecar of pack.sidecarFiles) {
-    writePackFile(pack.packDir, sidecar.promptFile, renderSidecarPrompt(pack, sidecar));
+    writePackFile(
+      pack.packDir,
+      sidecar.promptFile,
+      renderSidecarPrompt(pack, sidecar),
+    );
   }
 
   return pack;
@@ -579,7 +613,11 @@ async function main() {
     return;
   }
 
-  if (command !== "route" && command !== "handoff" && command !== "prompt-pack") {
+  if (
+    command !== "route" &&
+    command !== "handoff" &&
+    command !== "prompt-pack"
+  ) {
     fail(`unknown command: ${command}`);
   }
 
