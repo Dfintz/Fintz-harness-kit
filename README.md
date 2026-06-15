@@ -135,6 +135,7 @@ stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 - `harness:route` classifies a prompt as trivial or non-trivial.
 - `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
 - `harness:handoff:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
+- `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
 - `harness:review` runs the plan-review workflow for backward compatibility.
 
 By default the shipped environment policy separates execution and judgment:
