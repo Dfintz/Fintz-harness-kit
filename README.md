@@ -92,6 +92,16 @@ The dashboard's Pending approvals section is strict: it only shows runs with exp
 (`approval.required=true` and `approval.status=pending`). It does not infer pending approvals from
 brief status or blocked/stuck terminal states.
 
+To normalize historical datasets, backfill legacy run journals with explicit default approval markers:
+
+```bash
+npm run harness:migrate:approvals -- --dry-run
+npm run harness:migrate:approvals
+```
+
+This migration only updates loop journals missing the `approval` object, defaulting to
+`required=false` and `status=not-required`.
+
 Full adoption guide: [`SETUP.md`](SETUP.md). Loop protocol: [`.github/harness/LOOPS.md`](.github/harness/LOOPS.md).
 
 ## Prompt routing policy
