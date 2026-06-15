@@ -222,6 +222,40 @@ pass-rates that make Understand/Architect/Review activity measurable.
 
 ---
 
+## Harness Self-Improvement: Phase Integration Snapshot
+
+The harness includes a closed-loop optimization path for its own guidance, with guarded evolution,
+observability, and deterministic scoring.
+
+### Phase 3 — Meta-Optimization Loop (`harness-evolve`)
+
+- Target: `.github/harness/evolve/candidate-instructions.md` (editable guidance surface)
+- Guardrails: forbidden target validation + suite integrity tripwire in
+  `scripts/harness/evolve-guard.mjs`
+- Iteration control: bounded loop with no-improvement early stop
+
+Run with:
+
+- `npm run harness:evolve`
+- `npm run harness:evolve:dry-run`
+- `npm run harness:evolve:check`
+
+### Phase 4 — Observability
+
+- Journals: `.github/harness/runs/*.jsonl`
+- Dashboard: `npm run harness:report`
+- OTLP/JSON export: `npm run harness:otel`
+
+### Phase 5 — Outcome Scoring & Feedback
+
+- Trajectory scorer: `npm run harness:grade`
+- Self-test checks: `npm run harness:grade:self-test`, `npm run harness:evolve:self-test`
+- Feedback path: run -> journal -> grade -> evolve adjustment -> next measured cycle
+
+See `LOOPS.md` for scoring semantics and loop protocol details.
+
+---
+
 ## Memory
 
 Persistent, committed memory keeps sessions from rediscovering what earlier sessions learned. Full

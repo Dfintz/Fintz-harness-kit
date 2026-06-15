@@ -54,16 +54,25 @@ function fail(message, code = 2) {
 }
 
 function parseArgs(argv) {
-  const flags = { loop: "harness-evolve", check: false, commit: false };
+  const flags = {
+    loop: "harness-evolve",
+    check: false,
+    commit: false,
+    dryRun: false,
+    selfTest: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--check") flags.check = true;
     else if (a === "--commit") flags.commit = true;
+    else if (a === "--dry-run") flags.dryRun = true;
+    else if (a === "--self-test") flags.selfTest = true;
     else if (a === "--help") flags.help = true;
     else if (a === "--agent") flags.agent = argv[++i];
     else if (a === "--loop") flags.loop = argv[++i];
     else if (a === "--research") flags.research = argv[++i];
     else if (a === "--max-iterations") flags.maxIterations = Number(argv[++i]);
+    else if (a === "--max-iter") flags.maxIterations = Number(argv[++i]);
     else if (a.startsWith("--")) fail(`Unknown option: ${a}`);
   }
   return flags;
@@ -114,7 +123,7 @@ function showHelp() {
     `${JSON.stringify(
       {
         usage:
-          'node scripts/harness/harness-evolve.mjs [--check | --agent "<cmd>"] [--commit] [--research latest|<path>] [--max-iterations n]',
+          'node scripts/harness/harness-evolve.mjs [--check|--dry-run|--self-test|--agent "<cmd>"] [--commit] [--research latest|<path>] [--max-iterations n]',
         rules: [
           "RULE 1: target may never resolve to a forbidden path (eval suite / guardrails / memory / config / evolve machinery).",
           "RULE 2: eval-suite + forbidden-file integrity is checked before AND after every iteration; any change aborts the run.",
@@ -183,10 +192,46 @@ function abortOnTamper(loopName) {
   process.exit(1);
 }
 
+function runSelfTest() {
+  const checks = [
+    {
+      name: "loop loads and is experiment",
+      ok: () => loadLoop("harness-evolve").kind === "experiment",
+    },
+    {
+      name: "target is not forbidden",
+      ok: () => forbiddenTargetViolations([".github/harness/evolve/candidate-instructions.md"]).length === 0,
+    },
+    {
+      name: "integrity hash exists",
+      ok: () => typeof computeIntegrity().forbiddenHash === "string",
+    },
+  ];
+
+  let passed = 0;
+  for (const check of checks) {
+    try {
+      if (check.ok()) {
+        passed += 1;
+      }
+    } catch {
+      // ignore and count as failed
+    }
+  }
+
+  const result = { ok: passed === checks.length, passed, total: checks.length };
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.exit(result.ok ? 0 : 1);
+}
+
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   if (flags.help) {
     showHelp();
+    return;
+  }
+  if (flags.selfTest) {
+    runSelfTest();
     return;
   }
 
@@ -211,24 +256,25 @@ function main() {
   // RULE 2 — integrity baseline (also a health gate: refuses a broken scorer).
   const baseline = computeIntegrity();
 
-  if (flags.check) {
+  if (flags.check || flags.dryRun) {
     process.stdout.write(
       `${JSON.stringify(
         {
           loop: flags.loop,
           targetViolations: violations,
           integrity: baseline,
+          dryRun: flags.dryRun,
           autonomy: "off (default)",
         },
         null,
         2,
       )}\n`,
     );
-    process.stdout.write(
-      baseline.ok
-        ? `[harness-evolve] --check PASSED — target is safe and the eval suite is healthy.\n`
-        : `[harness-evolve] --check FAILED — ${baseline.suiteDetail}.\n`,
-    );
+    const modeLabel = flags.dryRun ? "--dry-run" : "--check";
+    const modeMessage = baseline.ok
+      ? `[harness-evolve] ${modeLabel} PASSED — target is safe and the eval suite is healthy.\n`
+      : `[harness-evolve] ${modeLabel} FAILED — ${baseline.suiteDetail}.\n`;
+    process.stdout.write(modeMessage);
     process.exit(baseline.ok ? 0 : 1);
   }
 
