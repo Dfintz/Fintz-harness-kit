@@ -54,7 +54,7 @@ kit.
 
 ## The three loop kinds
 
-```
+```text
 convergence   run until pass/fail checks are all green        (build-fix, test-fix)
 workflow      run rubric-graded passes to a terminal state    (review-fix, feature-cycle, ci-green)
 experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experiment)   ← autoresearch-style
@@ -66,6 +66,12 @@ experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experim
 # 1. Point the harness at your project's commands.
 cp harness.config.json harness.config.json   # then edit: project name + commands
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  # sanity-check
+
+# Optional: preview the repo's harness routing and operator handoff plans.
+# PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
+npm run harness:route -- --task "fix auth middleware race"
+npm run harness:feature -- --task "ship federation audit hardening"
+npm run harness:review -- --task "review cache invalidation changes"
 
 # 2. List and run a convergence loop (uses your configured commands).
 npm run harness:loops
@@ -80,6 +86,21 @@ npm run dashboard:up            # or serve it always-on at http://localhost:8099
 ```
 
 Full adoption guide: [`SETUP.md`](SETUP.md). Loop protocol: [`.github/harness/LOOPS.md`](.github/harness/LOOPS.md).
+
+## Prompt routing policy
+
+The kit ships a repo-local prompt router in [`scripts/harness/prompt-router.mjs`](scripts/harness/prompt-router.mjs).
+It does not intercept editor prompts by itself; instead it gives operators a deterministic route and
+stage/model handoff plan based on [`harness.config.json`](harness.config.json).
+
+- `harness:route` classifies a prompt as trivial or non-trivial.
+- `harness:feature` prints the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
+- `harness:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
+
+By default the shipped environment policy separates execution and judgment:
+
+- `gpt-5.3-codex` for Implement and fix loops.
+- `claude-opus-4.8` for Understand, Architect, Review Breadth, Review Depth, and Feedback.
 
 ## Autoresearch with a local model
 

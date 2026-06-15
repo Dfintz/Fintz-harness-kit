@@ -1,7 +1,9 @@
-<!-- harness-kit: project-agnostic template. See SETUP.md and CREDITS.md. -->
-> **Harness-kit template.** Project-specific values (name, validation commands, model) come from `harness.config.json`. The skill-routing tables and any multi-tenant (gate 4b) examples below are illustrative from the kit's origin project — replace them with your project's own skills and drop gates that do not apply. See SETUP.md.
-
 # AI Agent Harness — your project
+
+Harness-kit template note: project-specific values (name, validation commands, model) come from
+`harness.config.json`. The skill-routing tables and any multi-tenant (gate 4b) examples below are
+illustrative from the kit's origin project. Replace them with your project's own skills and drop
+gates that do not apply. See `SETUP.md` and `CREDITS.md`.
 
 > **Audience:** Every AI coding agent working in this repository (Claude Code, GitHub Copilot,
 > Codex, Cursor, Gemini, or any other). This document is agent-agnostic: it unifies all project
@@ -14,6 +16,23 @@ The harness answers three questions for any agent, on any task:
 3. **How do I iterate until done?** → [Loops](#loops) (full protocol in [`LOOPS.md`](./LOOPS.md))
 
 A machine-readable index of everything below lives in [`registry.json`](./registry.json).
+
+---
+
+## Default Prompt Routing
+
+The kit ships a harness-first prompt routing policy through `scripts/harness/prompt-router.mjs` and
+`harness.config.json`.
+
+- `npm run harness:route -- --task "<prompt>"` classifies a prompt against the trivial/non-trivial policy.
+- `npm run harness:feature -- --task "<feature task>"` prints the full operator handoff plan.
+- `npm run harness:review -- --task "<review task>"` prints the review-only handoff plan.
+
+### Model Roles In The Shipped Environment Policy
+
+- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, Review Depth, and Feedback**.
+- **GPT-5.3 Codex** owns **Implement** and targeted fix loops.
+- **Cross-model review** runs Codex first, then Opus as the independent challenger.
 
 ---
 
@@ -53,7 +72,7 @@ Every non-trivial task moves through these stages. A task is **non-trivial** whe
 than one file, changes APIs/shared types/routes/database behavior, or touches auth, security,
 tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip straight to Implement.
 
-```
+```text
 ┌──────────────┐
 │ 0 UNDERSTAND │  graph freshness + architecture discovery
 └──────┬───────┘

@@ -14,5 +14,11 @@ Quick map:
 - **Machine-readable index:** [`.github/harness/registry.json`](.github/harness/registry.json)
 - **Project commands & config:** [`harness.config.json`](harness.config.json)
 
+Prompt routing shortcuts:
+
+- `npm run harness:route -- --task "<prompt>"` — classify a prompt against the harness policy.
+- `npm run harness:feature -- --task "<feature task>"` — print the full stage/model handoff.
+- `npm run harness:review -- --task "<review task>"` — print the review-only handoff.
+
 This file is intentionally short: it points at the harness rather than duplicating it. Replace this
 note's specifics with your project's own conventions docs as needed.
