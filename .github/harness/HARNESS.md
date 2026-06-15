@@ -152,7 +152,7 @@ description and the files being touched.
 | `star-citizen-domain` | Ships, fleets, activities, mining, trading, bounties, RSI sync, crew    |
 | `understand-process`  | Any non-trivial change (always pairs with stage 0)                      |
 
-Multiple skills can apply: a fleet API feature loads `star-citizen-domain` + `backend-service`; an
+Multiple skills can apply: a domain-specific feature loads `domain-specific` + `backend-service`; an
 end-to-end feature with tests loads `full-stack-feature` + `testing`.
 
 ### Workflow Skills (stage executors)
@@ -170,7 +170,7 @@ Run the narrowest command that covers the change; loops use these as their conve
 | ------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Backend code        | `npm run lint --workspace=backend` · `npm run type-check` · `npm test --workspace=backend -- <changed>.test.ts`    |
 | Frontend code       | `npm run lint --workspace=frontend` · `npm run type-check` · `npm test --workspace=frontend -- <changed>.test.tsx` |
-| Shared types        | `npm run build --workspace=@sc-fleet-manager/shared-types` then rebuild dependents                                 |
+| Shared types        | `npm run build --workspace=@<org>/<shared-types-package>` then rebuild dependents                             |
 | Migrations/entities | Migration generated + backend tests pass                                                                           |
 | API contract        | `npm run test:pact --workspace=backend` · `npm run test:openapi --workspace=backend`                               |
 | Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                                               |

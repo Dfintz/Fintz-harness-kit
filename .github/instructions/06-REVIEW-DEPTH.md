@@ -132,7 +132,7 @@ failure is a finding. Do not skip any gate because the code "looks right".
 **Procedure:**
 
 1. Take the name of each new method
-2. Strip every domain-specific word (fleet, ship, activity, organization, etc.)
+2. Strip every domain-specific word (document, user, item, resource, etc.)
 3. Ask: "Does the remaining logic, as implemented, apply to other domains?"
 4. Ask: "Would another domain need this exact same pattern?"
 

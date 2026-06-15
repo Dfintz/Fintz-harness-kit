@@ -339,7 +339,7 @@ stages rely on it: Implement follows it, Review-Depth compares against it, Feedb
 
 Run `npm run harness:graph -- brief-check` to confirm a non-trivial branch added or updated a
 committed Brief. The brief filename should map to the branch slug (for example,
-`feature/fleet-readiness-dashboard` -> `fleet-readiness-dashboard.md`; Claude run suffixes like
+`feature/entity-api-enhancement` -> `entity-api-enhancement.md`; Claude run suffixes like
 `-6nrbto` are tolerated). Flip the status to `implemented` when the feature ships; never delete a
 Brief — it is the record of _why_ the code is shaped the way it is.
 
