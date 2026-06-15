@@ -169,7 +169,7 @@ Check each item as a checklist. Report failures only.
 ### Frontend: Components
 
 - [ ] Functional components with hooks — no class components?
-- [ ] MUI v7 components used — no Adobe Spectrum imports?
+- [ ] UI framework components used — no legacy library imports?
 - [ ] Props interfaces defined with `Readonly<>` wrapper?
 - [ ] Named exports used — no default exports?
 - [ ] `@/` path alias for all cross-directory imports — no `../../` relative paths?
