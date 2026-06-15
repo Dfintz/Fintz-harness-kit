@@ -32,6 +32,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { assertSafeCliCommand } from './command-validation.mjs';
 import { resolveTokens } from './config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -224,6 +225,7 @@ function composeImprovementPrompt(loop, iteration, best, current, journal) {
 }
 
 function invokeAgent(agentCmd, prompt, targetFiles) {
+  assertSafeCliCommand(agentCmd, { label: 'run-experiment agent command' });
   console.log(`[run-experiment]   invoking agent: ${agentCmd}`);
   const result = spawnSync(agentCmd, {
     cwd: repoRoot,

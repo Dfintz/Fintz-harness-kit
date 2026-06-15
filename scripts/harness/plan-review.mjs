@@ -56,6 +56,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { assertSafeCliCommand } from "./command-validation.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -302,6 +303,7 @@ function parseArgs(argv) {
 
 function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds) {
   return (subjectContent, priorRounds, round) => {
+    assertSafeCliCommand(reviewerCmd, { label: "plan-review reviewer command" });
     const before = hashContent(readFileSync(subjectPath, "utf8"));
     const prompt = composeReviewerPrompt(
       lens,
@@ -349,6 +351,7 @@ function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds)
 function makeCliRevise(lens, subjectPath, authorCmd) {
   if (!authorCmd) return null;
   return (subjectContent, critique, round) => {
+    assertSafeCliCommand(authorCmd, { label: "plan-review author command" });
     const prompt = composeAuthorPrompt(lens, subjectContent, critique, round);
     spawnSync(authorCmd, {
       cwd: repoRoot,
