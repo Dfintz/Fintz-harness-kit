@@ -43,7 +43,7 @@ List every file provided, one per line:
 - Its layer (`backend/service`, `backend/controller`, `backend/middleware`, `backend/model`,
   `frontend/component`, `frontend/hook`, `frontend/service`, `frontend/store`, `shared-types`,
   `test`)
-- Its domain (fleet, activity, communication, trade, organization, auth, etc.)
+- Its domain (user, organization, document, search, auth, etc.)
 - Scope: 🔧 Backend / 🎨 Frontend / 🔗 Full-stack
 
 ### Step 2 — Identify what you need
@@ -56,8 +56,8 @@ For each new method or class in scope, list files you do NOT have for:
 
 | Missing file                                 | Needed to verify                                                                                              |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `backend/src/services/fleet/FleetService.ts` | "Does `getFleetAnalytics()` use fleet-specific state or only base class members? Gate 3 cannot be completed." |
-| `backend/src/models/Fleet.ts`                | "What entity fields exist? Gate 3 data ownership cannot be verified."                                         |
+| `backend/src/services/document/DocumentService.ts` | "Does `getDocumentAnalytics()` use document-specific state or only base class members? Gate 3 cannot be completed." |
+| `backend/src/models/Document.ts`                | "What entity fields exist? Gate 3 data ownership cannot be verified."                                         |
 
 ### Step 3 — Decide how to proceed
 
@@ -110,8 +110,8 @@ failure is a finding. Do not skip any gate because the code "looks right".
 
 **Failures to flag:**
 
-- A `fleet` entity accessed/modified by a `trade` domain service without justification
-- A `communication` service processing `activity` domain data directly
+- A `document` entity accessed/modified by a `search` domain service without justification
+- A `notification` service processing `user` domain data directly
 - A service in `backend/src/services/<domainA>/` mutating entities from `<domainB>/` without going
   through domainB's service
 - Frontend components directly calling services from unrelated domains
@@ -141,8 +141,8 @@ service, or base controller, not the domain-specific class.
 
 **Example:**
 
-- `getFleetPaginatedList()` → strip "Fleet" → `getPaginatedList()` → logic is just TypeORM
-  `.findAndCount()` with offset/limit, valid for any entity → misplaced in FleetService, should be
+- `getDocumentPaginatedList()` → strip "Document" → `getPaginatedList()` → logic is just TypeORM
+  `.findAndCount()` with offset/limit, valid for any entity → misplaced in DocumentService, should be
   in TenantService/BaseService
 
 **Finding format:**

@@ -124,8 +124,8 @@ failure is a finding.
   domains)
 - What domain do the entities, DTOs, or types it processes originate from?
 - Rule: services must live within their own domain or a shared domain
-- A `fleet` entity handled by a `trade` domain service is a misalignment
-- A `communication` service processing `activity` domain data is a misalignment
+- A `document` entity handled by a `search` domain service is a misalignment
+- A `notification` service processing `user` domain data is a misalignment
 
 **Finding format if failed:**
 
@@ -138,8 +138,8 @@ failure is a finding.
 Strip the domain-specific words from each new method name. Does the remaining logic apply to other
 domains?
 
-- Example: `getFleetAnalytics()` → strip "Fleet" → `getAnalytics()` → if logic is just counting
-  entities and aggregating, it belongs in a shared analytics utility, not the fleet service
+- Example: `getDocumentAnalytics()` → strip "Document" → `getAnalytics()` → if logic is just counting
+  entities and aggregating, it belongs in a shared analytics utility, not the domain service
 - Ask explicitly: "Would another domain need this exact same pattern?"
 - If yes → it belongs in a shared utility or base service, not the domain-specific class
 
@@ -234,7 +234,7 @@ For each new file:
 - [ ] React Query hook in `frontend/src/hooks/queries/use<Domain>Queries.ts`
 - [ ] Query keys in `frontend/src/hooks/queries/queryKeys.ts`
 - [ ] Service in `frontend/src/services/`
-- [ ] Types co-located in service file or in `@sc-fleet-manager/shared-types`
+- [ ] Types co-located in service file or in `packages/shared-types`
 
 ### Files to Modify
 
@@ -278,7 +278,7 @@ If all answers are NO → state: "No abstraction created — reason: [reason]"
 ### Real-Time Considerations (if applicable)
 
 - [ ] Does this feature need WebSocket events?
-- [ ] Are events scoped to the correct room (org, fleet, activity)?
+- [ ] Are events scoped to the correct room (tenant, domain, resource)?
 - [ ] Is the event name following the `domain:action` convention?
 
 ---

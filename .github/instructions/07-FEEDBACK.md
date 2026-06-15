@@ -40,7 +40,7 @@ List every file provided, one per line:
 - Its layer (`backend/service`, `backend/controller`, `backend/middleware`, `backend/model`,
   `frontend/component`, `frontend/hook`, `frontend/service`, `frontend/store`, `shared-types`,
   `test`)
-- Its domain (fleet, activity, communication, trade, organization, auth, etc.)
+- Its domain (user, document, notification, search, organization, auth, etc.)
 
 ### Step 2 — Determine scope context
 

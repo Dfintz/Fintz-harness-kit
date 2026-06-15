@@ -124,7 +124,7 @@ Before writing ANY code, complete every item below. If you cannot complete an it
 - [ ] Checked `frontend/src/hooks/queries/queryKeys.ts` for existing key factories
 - [ ] Checked for existing React Query hooks in `frontend/src/hooks/queries/`
 - [ ] Checked for existing frontend services in `frontend/src/services/`
-- [ ] Confirmed MUI components used (not Adobe Spectrum — which is migrated away)
+- [ ] Confirmed framework UI components used (not legacy component library)
 - [ ] Confirmed `@/` path alias used for all cross-directory imports
 
 ### 6. Database/Migration Discovery (if applicable)
@@ -164,8 +164,8 @@ attention to:
 - React Query for all server state (hooks in `hooks/queries/use<Domain>Queries.ts`, keys in
   `queryKeys.ts`)
 - Zustand for client-only state (auth, UI preferences, theme)
-- MUI v7 components exclusively (Fringe Core design system)
-- `apiClient` or `BaseService` for all API calls — never raw `axios` imports
+- Component framework UI components exclusively (using design system theme)
+- `apiClient` or `BaseService` for all API calls — never raw HTTP client imports
 - `@/` path alias for all cross-directory imports — never `../../` relative paths
 - `logger` from `@/utils/logger` — never `console.log`
 - No hardcoded hex colours — use MUI theme palette or shared colour utilities
@@ -234,7 +234,7 @@ Work through every item. Do not submit until all pass.
 
 ### Frontend Checks (if applicable)
 
-- [ ] MUI v7 components used — no Adobe Spectrum imports?
+- [ ] Component framework components used — no legacy library imports?
 - [ ] React Query hooks follow `use<Domain>Queries.ts` pattern?
 - [ ] Query keys registered in `queryKeys.ts` factory?
 - [ ] Loading states show `<CircularProgress />`?
