@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /**
  * Harness metrics report — aggregates loop run journals from .github/harness/runs/
- * and handoff telemetry events from .github/harness/runs/handoffs.jsonl
  * into a self-contained HTML dashboard and a terminal summary.
  *
  * Journals are produced by run-loop.mjs (one JSON file per run). This script never
@@ -29,7 +28,6 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
-const handoffEventsPath = join(runsDir, "handoffs.jsonl");
 const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
 const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
 const graphPath = join(
@@ -37,6 +35,7 @@ const graphPath = join(
   ".understand-anything",
   "knowledge-graph.json",
 );
+const configPath = join(repoRoot, "harness.config.json");
 const NON_LESSON_FILES = new Set(["_template.md", "readme.md"]);
 const BRIEF_STATUSES = ["active", "implemented", "superseded"];
 const TERMINAL_STATES = [
@@ -46,6 +45,12 @@ const TERMINAL_STATES = [
   "blocked",
   "incomplete",
 ];
+const APPROVAL_STATUSES = new Set([
+  "pending",
+  "approved",
+  "rejected",
+  "not-required",
+]);
 
 function fail(message) {
   console.error(`[harness-report] ${message}`);
@@ -88,33 +93,6 @@ function loadJournals() {
     }
   }
   return journals;
-}
-
-function loadHandoffEvents() {
-  if (!existsSync(handoffEventsPath)) return [];
-  try {
-    const text = readFileSync(handoffEventsPath, "utf8");
-    return text
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .filter(
-        (event) => typeof event.at === "string" && Array.isArray(event.stages),
-      );
-  } catch (err) {
-    console.warn(
-      `[harness-report] could not read handoff telemetry: ${err.message}`,
-    );
-    return [];
-  }
 }
 
 function stateOf(journal) {
@@ -213,6 +191,135 @@ function loadMemory() {
   return { lessons: loadLessons(), briefs: loadBriefs(), graph: loadGraph() };
 }
 
+function loadHarnessConfig() {
+  if (!existsSync(configPath)) return {};
+  try {
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function pickString(value, fallback) {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function objectOrEmpty(value) {
+  return value && typeof value === "object" ? value : {};
+}
+
+function integrationScriptStatus(path, absolutePath) {
+  return { path, present: existsSync(absolutePath) };
+}
+
+function loadPipelineIntegration(config) {
+  const llm = objectOrEmpty(config.llm);
+  const models = objectOrEmpty(config.models);
+  const routing = objectOrEmpty(config.routing);
+
+  const provider = pickString(llm.provider, "ollama");
+  const model = pickString(llm.model, "qwen2.5-coder:14b");
+  const embedModel = pickString(llm.embedModel, "nomic-embed-text");
+  const providerConfig = objectOrEmpty(llm[provider]);
+  const hostByProvider = pickString(providerConfig.host, null);
+
+  const integrationScripts = [
+    integrationScriptStatus(
+      "scripts/harness/llm-provider.mjs",
+      join(repoRoot, "scripts", "harness", "llm-provider.mjs"),
+    ),
+    integrationScriptStatus(
+      "scripts/harness/ollama-agent.mjs",
+      join(repoRoot, "scripts", "harness", "ollama-agent.mjs"),
+    ),
+    integrationScriptStatus(
+      "scripts/harness/ollama-apply-agent.mjs",
+      join(repoRoot, "scripts", "harness", "ollama-apply-agent.mjs"),
+    ),
+    integrationScriptStatus(
+      "scripts/harness/experiment-loop.mjs",
+      join(repoRoot, "scripts", "harness", "experiment-loop.mjs"),
+    ),
+  ];
+
+  return {
+    provider,
+    model,
+    embedModel,
+    host: hostByProvider,
+    implementerModel:
+      models.implementer && typeof models.implementer.model === "string"
+        ? models.implementer.model
+        : "gpt-5.3-codex",
+    reviewerModel:
+      models.reviewer && typeof models.reviewer.model === "string"
+        ? models.reviewer.model
+        : "claude-opus-4.8",
+    routingProfiles:
+      routing.profiles && typeof routing.profiles === "object"
+        ? Object.keys(routing.profiles)
+        : [],
+    integrationScripts,
+  };
+}
+
+function pendingApprovalSnapshot(recentRuns) {
+  const pendingRuns = (recentRuns ?? []).filter(
+    (run) => run.approval?.required && run.approval?.status === "pending",
+  );
+  return {
+    count: pendingRuns.length,
+    pendingRuns,
+  };
+}
+
+function approvalOf(journal) {
+  const approval = journal?.approval;
+  if (!approval || typeof approval !== "object") {
+    return {
+      required: false,
+      status: "not-required",
+      note: null,
+      requestedAt: null,
+      decidedAt: null,
+    };
+  }
+  const status = APPROVAL_STATUSES.has(approval.status)
+    ? approval.status
+    : "not-required";
+  const required =
+    status === "not-required" ? false : Boolean(approval.required);
+  return {
+    required,
+    status,
+    note: typeof approval.note === "string" ? approval.note : null,
+    requestedAt:
+      typeof approval.requestedAt === "string" ? approval.requestedAt : null,
+    decidedAt:
+      typeof approval.decidedAt === "string" ? approval.decidedAt : null,
+  };
+}
+
+// Eval journals (kind: 'eval') are a distinct shape from loop journals; load them separately so the
+// dashboard can show whether the harness measurably helps (baseline vs harness).
+function loadEvalRuns() {
+  if (!existsSync(runsDir)) return [];
+  const runs = [];
+  for (const file of readdirSync(runsDir)) {
+    if (!file.startsWith("eval-") || !file.endsWith(".json")) continue;
+    try {
+      const run = JSON.parse(readFileSync(join(runsDir, file), "utf8"));
+      if (run?.kind === "eval" && run.aggregate) runs.push({ ...run, file });
+    } catch {
+      // skip unreadable eval journal
+    }
+  }
+  return runs.sort((a, b) =>
+    String(b.startedAt ?? "").localeCompare(String(a.startedAt ?? "")),
+  );
+}
+
 function kindOf(journal) {
   if (
     journal.kind === "convergence" ||
@@ -306,7 +413,7 @@ function tallyRubric(perRubric, iteration, loopName) {
   }
 }
 
-function computeMetrics(journals, handoffEvents = []) {
+function computeMetrics(journals) {
   const overall = {
     totalRuns: journals.length,
     byState: emptyStateBucket(),
@@ -394,6 +501,7 @@ function computeMetrics(journals, handoffEvents = []) {
       durationMs: durationMs(j),
       iterations: j.iterations.length,
       state: stateOf(j),
+      approval: approvalOf(j),
       baseline: j.baseline?.commit ? j.baseline.commit.slice(0, 12) : null,
       dirty: j.baseline?.dirty ?? null,
     }));
@@ -414,32 +522,12 @@ function computeMetrics(journals, handoffEvents = []) {
       String(b.startedAt ?? "").localeCompare(String(a.startedAt ?? "")),
     );
 
-  const handoffs = {
-    total: handoffEvents.length,
-    recent: [...handoffEvents]
-      .sort((a, b) => String(b.at ?? "").localeCompare(String(a.at ?? "")))
-      .slice(0, 30)
-      .map((event) => ({
-        at: event.at,
-        profile: event.profile ?? null,
-        mode: event.mode ?? null,
-        stageCount: Array.isArray(event.stages) ? event.stages.length : 0,
-        task: typeof event.task === "string" ? event.task : "",
-        modelsByPhase:
-          event.models && typeof event.models === "object" ? event.models : {},
-        modelPhaseUsage: Array.isArray(event.modelPhaseUsage)
-          ? event.modelPhaseUsage
-          : [],
-      })),
-  };
-
   return {
     overall,
     loops,
     checks,
     rubric,
     experiments,
-    handoffs,
     recentRuns,
     generatedAt: new Date().toISOString(),
   };
@@ -478,7 +566,7 @@ function esc(value) {
 // ---------- terminal summary ----------
 
 function printSummary(metrics) {
-  const { overall, loops, checks, rubric, handoffs } = metrics;
+  const { overall, loops, checks, rubric } = metrics;
   console.log("\n=== Harness Loop Metrics ===");
   if (overall.totalRuns === 0) {
     console.log("No loop run journals found in .github/harness/runs/.");
@@ -491,7 +579,6 @@ function printSummary(metrics) {
     return;
   }
   console.log(`Total runs:        ${overall.totalRuns}`);
-  console.log(`Handoffs logged:   ${handoffs.total}`);
   console.log(
     `Convergence rate:  ${fmtPct(overall.convergenceRate)} (${overall.byState.converged}/${overall.totalRuns})`,
   );
@@ -531,19 +618,6 @@ function printSummary(metrics) {
         `  pass=${fmtPct(r.passRate).padEnd(4)} graded=${String(r.graded).padEnd(3)} ${r.item}`,
       );
     }
-  }
-
-  if (handoffs.recent.length) {
-    const latest = handoffs.recent[0];
-    const usageLine = latest.modelPhaseUsage.length
-      ? latest.modelPhaseUsage
-          .map(
-            (entry) =>
-              `${entry.model}=${entry.tokenPct}% (${entry.tokenSource === "actual" ? "actual" : "est"}) phases:[${(entry.phases ?? []).join(",")}]`,
-          )
-          .join(" | ")
-      : "none";
-    console.log(`\nLatest handoff model/token split: ${usageLine}`);
   }
 }
 
@@ -702,38 +776,99 @@ function renderMemorySection(memory) {
   return `<h2 class="section-title">Project memory</h2>${memoryCards}${lessonsPanel}${briefsPanel}`;
 }
 
-function renderHandoffsSection(handoffs) {
-  if (!handoffs.recent.length) return "";
-  const fmtUsage = (usage) => {
-    if (!Array.isArray(usage) || usage.length === 0)
-      return '<span class="muted">—</span>';
-    return usage
-      .map(
-        (entry) =>
-          `<div><span class="mono">${esc(entry.model)}</span> · ${esc(entry.tokenPct)}% <span class="muted">(${esc(entry.tokenSource === "actual" ? "actual" : "est")})</span><br/><span class="muted">${esc((entry.phases ?? []).join(" -> "))}</span></div>`,
-      )
-      .join('<hr class="sep"/>');
-  };
+function renderPendingApprovalsSection(recentRuns) {
+  const pending = pendingApprovalSnapshot(recentRuns);
+  const card = `
+    <section class="cards">
+      <div class="card"><div class="card-value">${pending.count}</div><div class="card-label">Pending approvals</div></div>
+      <div class="card"><div class="card-value">${recentRuns.length}</div><div class="card-label">Recent runs scanned</div></div>
+      <div class="card"><div class="card-value">explicit-only</div><div class="card-label">Pending source policy</div></div>
+    </section>`;
 
-  const rows = handoffs.recent
+  const pendingRows = pending.pendingRuns
+    .slice(0, 10)
     .map(
-      (event) => `<tr>
-        <td class="muted">${esc(fmtDate(event.at))}</td>
-        <td>${esc(event.profile ?? event.mode ?? "—")}</td>
-        <td class="num">${event.stageCount}</td>
-        <td>${fmtUsage(event.modelPhaseUsage)}</td>
-        <td>${esc(event.task || "—")}</td>
+      (run) => `<tr>
+        <td class="mono">${esc(run.loop)}</td>
+        <td class="muted">${esc(fmtDate(run.startedAt))}</td>
+        <td class="muted">${esc(fmtDate(run.approval?.requestedAt))}</td>
+        <td class="muted">${esc(run.approval?.note ?? "—")}</td>
+        <td>${stateBadge(run.state)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const approvalQueue = pending.count
+    ? `<table><thead><tr><th>Loop</th><th>Started</th><th>Requested</th><th>Note</th><th>Run state</th></tr></thead><tbody>${pendingRows}</tbody></table>`
+    : '<p class="muted">No explicitly pending approvals right now.</p>';
+
+  return `
+    <h2 class="section-title">Pending approvals</h2>
+    ${card}
+    <section class="panel">
+      <h2>Approval queue <span class="subtitle">(explicit journal approval markers only)</span></h2>
+      ${approvalQueue}
+    </section>`;
+}
+
+function renderPipelineSection(pipeline) {
+  const scriptRows = pipeline.integrationScripts
+    .map(
+      (entry) => `<tr>
+        <td class="mono">${esc(entry.path)}</td>
+        <td>${entry.present ? '<span class="badge badge-converged">present</span>' : '<span class="badge badge-stuck">missing</span>'}</td>
       </tr>`,
     )
     .join("");
 
   return `
+    <h2 class="section-title">Pipeline integrations</h2>
+    <section class="cards">
+      <div class="card"><div class="card-value mono">${esc(pipeline.provider)}</div><div class="card-label">Local LLM provider</div></div>
+      <div class="card"><div class="card-value mono">${esc(pipeline.model)}</div><div class="card-label">Inference model</div></div>
+      <div class="card"><div class="card-value mono">${esc(pipeline.embedModel)}</div><div class="card-label">Embedding model</div></div>
+      <div class="card"><div class="card-value mono">${esc(pipeline.routingProfiles.length || 0)}</div><div class="card-label">Routing profiles</div></div>
+    </section>
     <section class="panel">
-      <h2>Recent handoffs <span class="subtitle">(latest 30 command invocations; token % by model)</span></h2>
+      <h2>Local LLM in pipeline</h2>
+      <p class="muted">Provider host: <code>${esc(pipeline.host || "not configured")}</code></p>
+      <p class="muted">Model split: implementer <code>${esc(pipeline.implementerModel)}</code> · reviewer <code>${esc(pipeline.reviewerModel)}</code></p>
       <table>
-        <thead><tr><th>When</th><th>Profile</th><th class="num">Stages</th><th>Models / phases / token %</th><th>Task</th></tr></thead>
+        <thead><tr><th>Integration script</th><th>Status</th></tr></thead>
+        <tbody>${scriptRows}</tbody>
+      </table>
+    </section>`;
+}
+
+function renderEvalsSection(evals) {
+  if (!evals || evals.length === 0) return "";
+  const rows = evals
+    .slice(0, 15)
+    .map((run) => {
+      const a = run.aggregate || {};
+      const deltaCls = (a.delta ?? 0) > 0 ? "delta-good" : "muted";
+      const verdict =
+        run.verdict === "rejected"
+          ? stateBadge("blocked")
+          : stateBadge("converged");
+      return `<tr>
+        <td class="muted">${esc(fmtDate(run.startedAt))}</td>
+        <td class="num">${esc(a.baselineScore ?? "—")}</td>
+        <td class="num">${esc(a.harnessScore ?? "—")}</td>
+        <td class="${deltaCls}">${(a.delta ?? 0) > 0 ? "↑" : "·"} ${esc(a.delta ?? "—")}</td>
+        <td class="num">${esc(a.dangerousFlagged ?? 0)}</td>
+        <td>${verdict}</td>
+      </tr>`;
+    })
+    .join("");
+  return `
+    <h2 class="section-title">Evals <span class="subtitle">(does the harness measurably help?)</span></h2>
+    <section class="panel">
+      <table>
+        <thead><tr><th>Run</th><th class="num">Baseline</th><th class="num">Harness</th><th>Δ</th><th class="num">Risks</th><th>Verdict</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      <p class="muted">Scores are mean deterministic-verifier pass rate. A run is <strong>rejected</strong> if the dangerous-diff control flags any change, regardless of score.</p>
     </section>`;
 }
 
@@ -744,22 +879,25 @@ function renderHtml(metrics) {
     checks,
     rubric,
     experiments,
-    handoffs,
     recentRuns,
     memory,
+    evals,
+    pipeline,
     generatedAt,
   } = metrics;
+  const refreshSeconds =
+    Number.isFinite(metrics.refreshSeconds) && metrics.refreshSeconds > 0
+      ? Math.floor(metrics.refreshSeconds)
+      : 60;
   const hasData = overall.totalRuns > 0;
-  const hasAnyTelemetry = hasData || handoffs.total > 0;
 
-  const statCards = hasAnyTelemetry
+  const statCards = hasData
     ? `
     <section class="cards">
       <div class="card"><div class="card-value">${overall.totalRuns}</div><div class="card-label">Total runs</div></div>
       <div class="card"><div class="card-value">${fmtPct(overall.convergenceRate)}</div><div class="card-label">Convergence rate</div></div>
       <div class="card"><div class="card-value">${overall.totalIterations}</div><div class="card-label">Total iterations</div></div>
       <div class="card"><div class="card-value">${loops.length}</div><div class="card-label">Loops exercised</div></div>
-      <div class="card"><div class="card-value">${handoffs.total}</div><div class="card-label">Handoffs logged</div></div>
     </section>`
     : "";
 
@@ -884,7 +1022,7 @@ function renderHtml(metrics) {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Harness Loop Metrics</title>
+<title>Harness Loop Metrics — Harness Kit</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -944,9 +1082,9 @@ function renderHtml(metrics) {
   .bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 6px; }
   .bar-label { position: relative; display: block; text-align: center; font-size: 11px; font-weight: 600; line-height: 18px; mix-blend-mode: difference; color: #fff; }
   .dirty { color: var(--stuck); font-weight: 600; font-size: 11px; }
-  .sep { border: 0; border-top: 1px dashed var(--border); margin: 6px 0; }
   .empty { background: var(--panel); border: 1px dashed var(--border); border-radius: 10px; padding: 28px; text-align: center; }
   .empty h2 { margin: 0 0 8px; }
+  .refresh { margin-top: 8px; color: var(--muted); font-size: 12px; }
   pre { background: var(--accent-soft); color: var(--text); padding: 12px 14px; border-radius: 8px; overflow-x: auto; text-align: left; }
   code { font-family: "SF Mono", "Cascadia Code", Consolas, monospace; font-size: 13px; }
 </style>
@@ -956,15 +1094,32 @@ function renderHtml(metrics) {
     <header>
       <h1>Harness Metrics</h1>
       <div class="meta">Harness Kit · generated ${esc(fmtDate(generatedAt))} · sources: <code>.github/harness/runs/</code> + <code>memory/</code></div>
+      <div class="refresh">Auto refresh every <span id="refresh-seconds">${refreshSeconds}</span>s · next reload in <span id="refresh-countdown">${refreshSeconds}</span>s</div>
     </header>
     ${renderMemorySection(memory)}
+    ${renderPendingApprovalsSection(recentRuns)}
+    ${renderPipelineSection(pipeline)}
+    ${renderEvalsSection(evals)}
     <h2 class="section-title">Loop runs</h2>
     ${statCards}
     ${stateChips}
     ${emptyNotice}
     ${tables}
-    ${renderHandoffsSection(handoffs)}
   </div>
+  <script>
+    (() => {
+      const refreshSeconds = ${refreshSeconds};
+      let remaining = refreshSeconds;
+      const countdownEl = document.getElementById('refresh-countdown');
+      const tick = () => {
+        if (countdownEl) countdownEl.textContent = String(remaining);
+        remaining -= 1;
+        if (remaining < 0) window.location.reload();
+      };
+      tick();
+      setInterval(tick, 1000);
+    })();
+  </script>
 </body>
 </html>
 `;
@@ -974,9 +1129,16 @@ function renderHtml(metrics) {
 
 const args = parseArgs(process.argv.slice(2));
 const journals = loadJournals();
-const handoffEvents = loadHandoffEvents();
-const metrics = computeMetrics(journals, handoffEvents);
+const metrics = computeMetrics(journals);
 metrics.memory = loadMemory();
+metrics.evals = loadEvalRuns();
+const config = loadHarnessConfig();
+metrics.pipeline = loadPipelineIntegration(config);
+metrics.refreshSeconds =
+  Number.isFinite(config?.dashboard?.intervalSeconds) &&
+  config.dashboard.intervalSeconds > 0
+    ? Math.floor(config.dashboard.intervalSeconds)
+    : 60;
 
 if (args.json) {
   console.log(JSON.stringify(metrics, null, 2));

@@ -211,26 +211,78 @@ export function integrityMatches(baseline, current) {
   );
 }
 
+function runSelfTest() {
+  const checks = [
+    () => forbiddenTargetViolations(["scripts/harness/eval/run-eval.mjs"]).length > 0,
+    () =>
+      forbiddenTargetViolations([
+        ".github/harness/evolve/candidate-instructions.md",
+      ]).length === 0,
+    () => typeof computeIntegrity().forbiddenHash === "string",
+    () => FORBIDDEN_GLOBS.length > 0,
+  ];
+
+  let passed = 0;
+  for (const check of checks) {
+    if (check()) {
+      passed += 1;
+    }
+  }
+
+  return {
+    ok: passed === checks.length,
+    passed,
+    total: checks.length,
+  };
+}
+
 // CLI: `node scripts/harness/evolve-guard.mjs [--target "<pattern>"]`
 if (
   import.meta.url === `file://${process.argv[1]}` ||
   import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, "/")}`
 ) {
-  const targetIdx = process.argv.indexOf("--target");
-  const targets = targetIdx >= 0 ? [process.argv[targetIdx + 1]] : [];
+  const args = process.argv.slice(2);
+  const isCheck = args.includes("--check");
+  const isSelfTest = args.includes("--self-test");
+  const targetArgIndex = Math.max(
+    args.indexOf("--verify-target"),
+    args.indexOf("--target"),
+  );
+  const targetValue = targetArgIndex >= 0 ? args[targetArgIndex + 1] : null;
+
+  if (isSelfTest) {
+    const result = runSelfTest();
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.exit(result.ok ? 0 : 1);
+  }
+
+  const targets = targetValue ? [targetValue] : [];
   const violations = forbiddenTargetViolations(targets);
   const integrity = computeIntegrity();
+  const payload = {
+    forbiddenGlobs: FORBIDDEN_GLOBS.length,
+    checkedTarget: targets[0] ?? null,
+    targetViolations: violations,
+    integrity,
+  };
+
+  if (isCheck || targetValue) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    process.exit(violations.length === 0 && integrity.ok ? 0 : 1);
+  }
+
   process.stdout.write(
     `${JSON.stringify(
       {
-        forbiddenGlobs: FORBIDDEN_GLOBS.length,
-        checkedTarget: targets[0] ?? null,
-        targetViolations: violations,
-        integrity,
+        usage: [
+          "node scripts/harness/evolve-guard.mjs --check",
+          "node scripts/harness/evolve-guard.mjs --verify-target .github/harness/evolve/candidate-instructions.md",
+          "node scripts/harness/evolve-guard.mjs --self-test",
+        ],
       },
       null,
       2,
     )}\n`,
   );
-  process.exit(violations.length === 0 && integrity.ok ? 0 : 1);
+  process.exit(0);
 }
