@@ -71,7 +71,7 @@ node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  
 # PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
 npm run harness:route -- --task "fix auth middleware race"
 npm run harness:feature -- --task "ship federation audit hardening"
-npm run harness:review -- --task "review cache invalidation changes"
+npm run harness:handoff:review -- --task "review cache invalidation changes"
 
 # 2. List and run a convergence loop (uses your configured commands).
 npm run harness:loops
@@ -94,8 +94,9 @@ It does not intercept editor prompts by itself; instead it gives operators a det
 stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 
 - `harness:route` classifies a prompt as trivial or non-trivial.
-- `harness:feature` prints the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
-- `harness:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
+- `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
+- `harness:handoff:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
+- `harness:review` runs the plan-review workflow for backward compatibility.
 
 By default the shipped environment policy separates execution and judgment:
 

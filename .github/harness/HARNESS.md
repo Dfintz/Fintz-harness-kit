@@ -25,8 +25,9 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 `harness.config.json`.
 
 - `npm run harness:route -- --task "<prompt>"` classifies a prompt against the trivial/non-trivial policy.
-- `npm run harness:feature -- --task "<feature task>"` prints the full operator handoff plan.
-- `npm run harness:review -- --task "<review task>"` prints the review-only handoff plan.
+- `npm run harness:feature -- --task "<feature task>"` or `npm run harness:handoff:feature -- --task "<feature task>"` prints the full operator handoff plan.
+- `npm run harness:handoff:review -- --task "<review task>"` prints the review-only handoff plan.
+- `npm run harness:review` runs the plan-review workflow (backward-compatible behavior).
 
 ### Model Roles In The Shipped Environment Policy
 

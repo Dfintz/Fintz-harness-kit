@@ -217,7 +217,7 @@ function printReminder() {
   process.stdout.write(
     `[prompt-router] Operator shortcuts:\n` +
       `[prompt-router]   npm run harness:feature -- --task "<feature task>"\n` +
-      `[prompt-router]   npm run harness:review -- --task "<review task>"\n` +
+      `[prompt-router]   npm run harness:handoff:review -- --task "<review task>"\n` +
       `[prompt-router]   npm run harness:route -- --task "<any prompt>" --json\n`,
   );
 }
