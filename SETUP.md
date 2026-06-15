@@ -7,8 +7,8 @@ are required for the core loops.
 
 | Path                          | Command                                                                          | What you get                                                                                |
 | ----------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Agent Skill** (70+ agents)  | `npx skills add <owner>/harness-kit -g`                                          | The harness **playbook** (`skills/harness/SKILL.md`) — agent guidance on stages/gates/loops |
-| **Claude Code plugin**        | `/plugin marketplace add <owner>/harness-kit` then `/plugin install harness-kit` | The plugin bundle (playbook + engine files)                                                 |
+| **Agent Skill** (70+ agents)  | `npx skills add Dfintz/sc-fleet-harness-kit -g`                                          | The harness **playbook** (`skills/harness/SKILL.md`) — agent guidance on stages/gates/loops |
+| **Claude Code plugin**        | `/plugin marketplace add Dfintz/sc-fleet-harness-kit` then `/plugin install harness-kit` | The plugin bundle (playbook + engine files)                                                 |
 | **Copy the scaffold** (below) | manual                                                                           | The full runnable **engine** dropped into your repo                                         |
 
 The skill teaches an agent _how_ to drive the harness; the **engine** (the `scripts/harness/*.mjs`

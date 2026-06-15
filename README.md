@@ -16,10 +16,10 @@ without copying folders by hand.
 
 ```bash
 # Any of 70+ agents, via the open Agent Skills CLI (-g installs globally for your user):
-npx skills add <owner>/harness-kit -g
+npx skills add Dfintz/sc-fleet-harness-kit -g
 
 # A specific agent (or several):
-npx skills add <owner>/harness-kit -g -a github-copilot -a claude-code
+npx skills add Dfintz/sc-fleet-harness-kit -g -a github-copilot -a claude-code
 
 # Or from a local checkout of this kit:
 npx skills add ./harness-kit --list      # discover, then add --skill harness to install
@@ -27,7 +27,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 
 ```text
 # Claude Code, via the native plugin marketplace (auto-updates):
-/plugin marketplace add <owner>/harness-kit
+/plugin marketplace add Dfintz/sc-fleet-harness-kit
 /plugin install harness-kit
 ```
 
@@ -35,8 +35,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 contract (stages, gates, loops, memory) and is enough for guidance in any repo. The **runnable
 engine** (the `scripts/harness/*.mjs` loop runners, dashboard, and MCP server) ships with the kit
 files; get it by either installing the Claude Code **plugin** (bundles everything) or adopting the
-kit scaffold per [`SETUP.md`](SETUP.md). Replace `<owner>/harness-kit` with wherever you publish this
-kit.
+kit scaffold per [`SETUP.md`](SETUP.md).
 
 ## What's inside
 
