@@ -16,10 +16,10 @@ without copying folders by hand.
 
 ```bash
 # Any of 70+ agents, via the open Agent Skills CLI (-g installs globally for your user):
-npx skills add Dfintz/sc-fleet-harness-kit -g
+npx skills add Dfintz/Fintz-harness-kit -g
 
 # A specific agent (or several):
-npx skills add Dfintz/sc-fleet-harness-kit -g -a github-copilot -a claude-code
+npx skills add Dfintz/Fintz-harness-kit -g -a github-copilot -a claude-code
 
 # Or from a local checkout of this kit:
 npx skills add ./harness-kit --list      # discover, then add --skill harness to install
@@ -27,7 +27,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 
 ```text
 # Claude Code, via the native plugin marketplace (auto-updates):
-/plugin marketplace add Dfintz/sc-fleet-harness-kit
+/plugin marketplace add Dfintz/Fintz-harness-kit
 /plugin install harness-kit
 ```
 
