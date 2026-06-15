@@ -1,8 +1,8 @@
 <!-- harness-kit template: concrete examples below reference the kit's origin project (a TypeScript/Node monorepo). Adapt them to your stack; the workflow and gates are stack-agnostic. -->
 
 ---
-applyTo: '**'
----
+
+## applyTo: '\*\*'
 
 # Architecture Planning
 
