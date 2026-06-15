@@ -236,9 +236,8 @@ function runPreflight(options) {
   }
 
   if (!sourceResolution.ok && shouldBootstrap) {
-    throw new Error(
-      `Plugin dependencies are not resolvable from source root: ${sourceResolution.error}. ` +
-        "Action: run corepack pnpm install in plugin checkout so source plugin resolves directly, or use host execution for graph refresh.",
+    process.stdout.write(
+      `[graph-refresh-loop] source dependency probe failed (${sourceResolution.error}); continuing because bootstrap is enabled\n`,
     );
   }
 
