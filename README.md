@@ -83,7 +83,14 @@ node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only
 # 4. See the dashboard.
 npm run harness:report          # writes .github/harness/runs/report.html
 npm run dashboard:up            # or serve it always-on at http://localhost:8099
+
+# Optional: record a workflow run with explicit pending approval marker
+node scripts/harness/record-run.mjs --loop review-fix --state blocked --approval-required --approval-status pending --approval-note "Awaiting reviewer sign-off" --fail "Gate 3 ownership unresolved"
 ```
+
+The dashboard's Pending approvals section is strict: it only shows runs with explicit journal markers
+(`approval.required=true` and `approval.status=pending`). It does not infer pending approvals from
+brief status or blocked/stuck terminal states.
 
 Full adoption guide: [`SETUP.md`](SETUP.md). Loop protocol: [`.github/harness/LOOPS.md`](.github/harness/LOOPS.md).
 
