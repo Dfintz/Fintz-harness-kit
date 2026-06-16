@@ -105,12 +105,16 @@ or LM Studio are first-class (`scripts/harness/ollama-agent.mjs`); see the READM
 
 ### CI / GitHub Actions
 
-Run the deterministic, agent-free parts as gates — no model required:
+Run the whole deterministic, agent-free regression gate with one command — no model, no network,
+no install:
 
 ```bash
-node scripts/harness/eval/run-eval.mjs --self-test     # suite integrity
-node scripts/harness/domain-pack.mjs --self-test       # domain pack integrity
-node scripts/harness/run-loop.mjs build-fix --check-only
+npm run harness:selftest          # = node scripts/harness/selftest-all.mjs
 ```
 
-`harness:doctor --json` is handy for asserting environment prerequisites in a CI step.
+It runs every component's `--self-test` (eval suite, domain packs, doctor, git-guard, grade-trace,
+otel, plan-review, command-validation, evolve-guard), the six domain deliverable-check unit tests, and
+a JSON-validity sweep over the committed harness JSON; it exits non-zero if anything fails. The kit
+ships this as a workflow at [`.github/workflows/harness-selftest.yml`](../.github/workflows/harness-selftest.yml)
+(runs on push/PR across Node 20 and 22). `harness:doctor --json` is handy for asserting environment
+prerequisites in a CI step.

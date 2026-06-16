@@ -38,14 +38,15 @@ export default function run({ file, text }) {
     return { pass: true, detail: "no definitions section; nothing to check" };
   }
 
-  const bodyOutsideDefs = lines
-    .filter((_, i) => !defLineNums.has(i + 1))
-    .join("\n")
-    .toLowerCase();
+  const bodyOutsideDefs = lines.filter((_, i) => !defLineNums.has(i + 1)).join("\n");
 
-  const unused = defs
-    .filter(({ term }) => !bodyOutsideDefs.includes(term.toLowerCase()))
-    .map(({ term }) => term);
+  // Whole-term match (word boundaries), not substring: otherwise a short term like "IT" or "AI"
+  // would count as used inside unrelated words ("items", "said"), defeating the dead-definition gate.
+  const usesTerm = (term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(bodyOutsideDefs);
+  };
+  const unused = defs.filter(({ term }) => !usesTerm(term)).map(({ term }) => term);
 
   if (unused.length) {
     return { pass: false, detail: `defined but never used: ${unused.join(", ")}`, unused };
@@ -61,9 +62,12 @@ runCli({
       "## Definitions\n- **Licensee** — the party.\n- **Effective Date** — the date.\n\n## Terms\nThe Licensee shall, on the Effective Date, comply.\n";
     const bad =
       "## Definitions\n- **Licensee** — the party.\n- **Indemnity Cap** — a limit.\n\n## Terms\nThe Licensee shall comply.\n";
+    const shortTerm =
+      "## Definitions\n- **IT** — information technology.\n\n## Body\nThe quitting items are listed.\n";
     return [
       { name: "all defined terms used", opts: { text: good }, expectPass: true },
       { name: "unused defined term fails", opts: { text: bad }, expectPass: false },
+      { name: "short term not matched as substring", opts: { text: shortTerm }, expectPass: false },
     ];
   },
 });

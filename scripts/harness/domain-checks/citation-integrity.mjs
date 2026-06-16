@@ -10,11 +10,13 @@
  * deliverable — research, legal, financial — where an unsupported or invented reference is the
  * failure mode that matters most.
  */
-import { loadFile, runCli } from "./_lib.mjs";
+import { loadFile, nonCodeLines, runCli } from "./_lib.mjs";
 
 export default function run({ file, text }) {
   const body = text ?? loadFile(file);
-  const lines = body.split(/\r?\n/);
+  // Ignore fenced code blocks: a citation or definition shown as a code example is not real prose,
+  // and counting it would let an invented reference (defined only inside a fence) pass.
+  const lines = nonCodeLines(body).map((row) => row.line);
   const defined = new Set();
   const cited = new Set();
   const defRe = /^\s*\[\^([\w-]+)\]:/;

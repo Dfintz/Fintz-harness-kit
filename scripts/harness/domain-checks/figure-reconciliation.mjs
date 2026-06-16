@@ -13,16 +13,21 @@
 import { loadFile, runCli } from "./_lib.mjs";
 
 function toNumber(raw) {
-  const cleaned = raw.replace(/[^0-9.+-]/g, "");
+  const trimmed = raw.trim();
+  // Accounting convention: a value wrapped in parentheses, e.g. (400), is negative.
+  const negParen = /^\(.*\)$/.test(trimmed);
+  const cleaned = trimmed.replace(/[^0-9.+-]/g, "");
   if (cleaned === "" || cleaned === "+" || cleaned === "-") return NaN;
-  return Number(cleaned);
+  const n = Number(cleaned);
+  if (Number.isNaN(n)) return NaN;
+  return negParen ? -Math.abs(n) : n;
 }
 
 export default function run({ file, text, epsilon }) {
   const body = text ?? loadFile(file);
   const eps = Number(epsilon ?? 0.01);
   const lines = body.split(/\r?\n/);
-  const itemRe = /^\s*-\s+(.+?):\s*([$€£]?\s*[-+]?[\d,]+(?:\.\d+)?)\s*%?\s*$/;
+  const itemRe = /^\s*-\s+(.+?):\s*(\(?\s*[$€£]?\s*[-+]?[\d,]+(?:\.\d+)?\s*\)?)\s*%?\s*$/;
 
   const blocks = [];
   let current = null;
@@ -42,7 +47,8 @@ export default function run({ file, text, epsilon }) {
     const label = m[1].trim();
     const value = toNumber(m[2]);
     if (Number.isNaN(value)) continue;
-    if (/total/i.test(label)) current.total = { label, value };
+    // Match a real "Total" line with a word boundary so "Subtotal" is summed as an item, not the total.
+    if (/\btotal\b/i.test(label)) current.total = { label, value };
     else current.items.push({ label, value });
   }
 
@@ -76,9 +82,15 @@ runCli({
       "<!-- reconcile -->\n- Product revenue: 1,200\n- Services revenue: 300\n- Total revenue: 1,500\n<!-- /reconcile -->\n";
     const bad =
       "<!-- reconcile -->\n- Product revenue: 1,200\n- Services revenue: 300\n- Total revenue: 1,400\n<!-- /reconcile -->\n";
+    const accountingNeg =
+      "<!-- reconcile -->\n- Gross: 1,000\n- Adjustment: (400)\n- Total: 600\n<!-- /reconcile -->\n";
+    const subtotal =
+      "<!-- reconcile -->\n- Hardware: 700\n- Software: 300\n- Subtotal: 1,000\n- Shipping: 50\n- Total: 1,050\n<!-- /reconcile -->\n";
     return [
       { name: "balanced block", opts: { text: good }, expectPass: true },
       { name: "unbalanced block fails", opts: { text: bad }, expectPass: false },
+      { name: "parenthesised negative balances", opts: { text: accountingNeg }, expectPass: true },
+      { name: "Subtotal is not mistaken for Total", opts: { text: subtotal }, expectPass: false },
     ];
   },
 });

@@ -44,15 +44,36 @@ function listPackDirs() {
 }
 
 function loadPack(name) {
+  if (typeof name !== "string" || /[\\/]|\.\./.test(name)) {
+    fail(`invalid pack name "${name}" — use a bare pack id (no path separators)`);
+  }
   const dir = join(domainsDir, name);
   const manifest = join(dir, "pack.json");
   if (!existsSync(manifest)) fail(`no pack "${name}" (looked for ${manifest})`);
-  const pack = JSON.parse(readFileSync(manifest, "utf8"));
+  let pack;
+  try {
+    pack = JSON.parse(readFileSync(manifest, "utf8"));
+  } catch (err) {
+    fail(`pack "${name}" has invalid pack.json: ${err.message}`);
+  }
   return { ...pack, dir };
 }
 
+// Quote the substituted path so deliverables with spaces survive the shell, and reject paths that
+// carry characters which stay active inside a double-quoted string — POSIX expands $ ` \ inside
+// double quotes, Windows expands % — so a crafted --deliverable cannot inject a command. The run
+// string itself is authored in pack.json (trusted); only the path is variable.
+const SHELL_UNSAFE = process.platform === "win32" ? /[\n\r"%]/ : /[\n\r"$`\\]/;
+function quotePath(p) {
+  const s = String(p);
+  if (SHELL_UNSAFE.test(s)) {
+    fail(`deliverable path has shell-unsafe character(s); refusing to run: ${s}`);
+  }
+  return `"${s}"`;
+}
+
 function resolveDeliverable(runStr, deliverablePath) {
-  return runStr.replace(/\{\{\s*deliverable\s*\}\}/g, deliverablePath);
+  return runStr.replace(/\{\{\s*deliverable\s*\}\}/g, quotePath(deliverablePath));
 }
 
 function runChecks(pack, deliverablePath) {
@@ -101,11 +122,14 @@ function cmdShow(name) {
 
 function cmdCheck(name, flags) {
   const pack = loadPack(name);
-  const deliverable = flags.deliverable
-    ? flags.deliverable
-    : pack.samples?.good
-      ? join(pack.dir, pack.samples.good)
-      : null;
+  // `--deliverable` with no value parses to boolean true; treat only a real string as a path.
+  if (flags.deliverable === true) fail("--deliverable needs a file path");
+  const deliverable =
+    typeof flags.deliverable === "string"
+      ? flags.deliverable
+      : pack.samples?.good
+        ? join(pack.dir, pack.samples.good)
+        : null;
   if (!deliverable) fail(`pack "${name}" has no samples.good and no --deliverable given`);
   const rel = deliverable.startsWith(repoRoot) ? deliverable.slice(repoRoot.length + 1) : deliverable;
   process.stdout.write(`[domain-pack] checking ${pack.name} against ${rel}\n`);
@@ -121,24 +145,45 @@ function cmdCheck(name, flags) {
 
 function cmdActivate(name) {
   const pack = loadPack(name);
-  mkdirSync(loopsDir, { recursive: true });
-  const copied = [];
-  for (const loop of pack.loops ?? []) {
+  // Validate every source BEFORE mutating anything, so a missing file can't leave a half-activation.
+  const loopJobs = (pack.loops ?? []).map((loop) => {
     const src = join(pack.dir, "loops", `${loop}.json`);
     if (!existsSync(src)) fail(`pack "${name}" loop file missing: ${src}`);
-    copyFileSync(src, join(loopsDir, `${loop}.json`));
-    copied.push(loop);
-  }
-  let configNote = "config preset not applied (none declared)";
+    return { loop, src, dest: join(loopsDir, `${loop}.json`) };
+  });
+  let presetPath = null;
   if (pack.configPreset) {
-    const presetPath = join(pack.dir, pack.configPreset);
+    presetPath = join(pack.dir, pack.configPreset);
     if (!existsSync(presetPath)) fail(`pack "${name}" configPreset missing: ${presetPath}`);
-    if (existsSync(configPath)) copyFileSync(configPath, `${configPath}.bak`);
-    copyFileSync(presetPath, configPath);
-    configNote = `harness.config.json written from ${pack.configPreset} (previous backed up to harness.config.json.bak)`;
   }
+
+  mkdirSync(loopsDir, { recursive: true });
+  const copied = [];
+  const overwritten = [];
+  for (const job of loopJobs) {
+    if (existsSync(job.dest) && readFileSync(job.dest, "utf8") !== readFileSync(job.src, "utf8")) {
+      overwritten.push(`${job.loop}.json`);
+    }
+    copyFileSync(job.src, job.dest);
+    copied.push(job.loop);
+  }
+
+  let configNote = "config preset not applied (none declared)";
+  if (presetPath) {
+    const bak = `${configPath}.bak`;
+    // Back up only the ORIGINAL — never overwrite an existing .bak on a second activation.
+    if (existsSync(configPath) && !existsSync(bak)) copyFileSync(configPath, bak);
+    copyFileSync(presetPath, configPath);
+    configNote = existsSync(bak)
+      ? `harness.config.json written from ${pack.configPreset} (original preserved at harness.config.json.bak)`
+      : `harness.config.json written from ${pack.configPreset}`;
+  }
+
   process.stdout.write(`[domain-pack] activated ${pack.name}\n`);
   process.stdout.write(`  loops copied into .github/harness/loops/: ${copied.join(", ") || "(none)"}\n`);
+  if (overwritten.length) {
+    process.stdout.write(`  WARNING: replaced existing loop file(s) with different content: ${overwritten.join(", ")}\n`);
+  }
   process.stdout.write(`  ${configNote}\n`);
   process.stdout.write(`  Verify: node scripts/harness/run-loop.mjs --list\n`);
 }
@@ -153,9 +198,12 @@ function selfTest() {
   for (const name of packs) {
     const pack = loadPack(name);
     // Structural integrity
+    add(`${name}: pack.name matches directory`, pack.name === name, `pack.name is "${pack.name}", directory is "${name}"`);
     add(`${name}: has stages`, Array.isArray(pack.stages) && pack.stages.length > 0, "stages[] required");
     add(`${name}: has gates`, Array.isArray(pack.gates) && pack.gates.length > 0, "gates[] required");
     add(`${name}: has checks`, Array.isArray(pack.checks) && pack.checks.length > 0, "checks[] required");
+    const checksTarget = (pack.checks ?? []).every((c) => typeof c.run === "string" && /\{\{\s*deliverable\s*\}\}/.test(c.run));
+    add(`${name}: every check targets {{deliverable}}`, checksTarget, "a check.run has no {{deliverable}} token — it would not inspect the deliverable");
 
     for (const ref of ["skill", "configPreset"]) {
       if (pack[ref]) {
@@ -166,12 +214,24 @@ function selfTest() {
       const p = join(pack.dir, "loops", `${loop}.json`);
       const ok = existsSync(p);
       add(`${name}: loop ${loop} exists`, ok, p);
-      if (ok) {
-        try {
-          JSON.parse(readFileSync(p, "utf8"));
-        } catch (e) {
-          add(`${name}: loop ${loop} parses`, false, e.message);
-        }
+      if (!ok) continue;
+      let def;
+      try {
+        def = JSON.parse(readFileSync(p, "utf8"));
+      } catch (e) {
+        add(`${name}: loop ${loop} parses`, false, e.message);
+        continue;
+      }
+      // The loop's internal name must match its filename (run-loop resolves loops by filename).
+      add(`${name}: loop ${loop} name matches file`, def.name === loop, `internal name "${def.name}" != "${loop}"`);
+      // Every file the loop points an agent at must exist, or the agent is sent to a dead path.
+      for (const instr of def.instructions ?? []) {
+        add(`${name}: loop ${loop} instruction exists`, existsSync(join(repoRoot, instr)), instr);
+      }
+      // Every check script referenced by the loop must exist on disk.
+      for (const chk of def.checks ?? []) {
+        const m = /node\s+(\S+\.mjs)/.exec(chk.run ?? "");
+        if (m) add(`${name}: loop ${loop} check script exists`, existsSync(join(repoRoot, m[1])), m[1]);
       }
     }
 

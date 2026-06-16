@@ -22,7 +22,7 @@
  * Exit code: 0 if no blocking problem, 1 if a blocker (e.g. Node too old) is found.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,7 +54,11 @@ function onPath(bin) {
   for (const dir of (process.env.PATH || "").split(sep)) {
     if (!dir) continue;
     for (const ext of exts) {
-      try { if (existsSync(join(dir, bin + ext))) return true; } catch { /* ignore */ }
+      // Must be a regular file, not a same-named directory, to count as an installed CLI.
+      try {
+        const p = join(dir, bin + ext);
+        if (existsSync(p) && statSync(p).isFile()) return true;
+      } catch { /* ignore */ }
     }
   }
   return false;
@@ -73,6 +77,23 @@ function countPacks() {
   const dir = join(repoRoot, ".github", "harness", "domains");
   if (!existsSync(dir)) return 0;
   return readdirSync(dir).filter((n) => !n.startsWith("_") && existsSync(join(dir, n, "pack.json"))).length;
+}
+
+const MCP_CLIENTS = ["claude-code", "cursor", "vscode", "zed", "windsurf", "cline", "claude-desktop", "generic"];
+
+function isKnownClient(client) {
+  return typeof client === "string" && MCP_CLIENTS.includes(client);
+}
+
+function assertClient(client, flag) {
+  if (client === true || typeof client !== "string") {
+    process.stderr.write(`[doctor] ${flag} needs a client: ${MCP_CLIENTS.join(" | ")}\n`);
+    process.exit(2);
+  }
+  if (!isKnownClient(client)) {
+    process.stderr.write(`[doctor] unknown client "${client}". Valid: ${MCP_CLIENTS.join(" | ")}\n`);
+    process.exit(2);
+  }
 }
 
 function mcpEntry(client) {
@@ -151,7 +172,9 @@ function gather({ quick }) {
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   const config = readJson(join(repoRoot, "harness.config.json"));
   let mcpSdk = false;
-  try { require.resolve("@modelcontextprotocol/sdk/package.json"); mcpSdk = true; } catch { mcpSdk = false; }
+  // Resolve the exact subpath mcp-server.mjs imports — not package.json, which a package's "exports"
+  // map may not expose (that would give a false negative even when the SDK is installed).
+  try { require.resolve("@modelcontextprotocol/sdk/server/index.js"); mcpSdk = true; } catch { mcpSdk = false; }
   const isGit = existsSync(join(repoRoot, ".git"));
 
   const agents = [
@@ -222,12 +245,16 @@ function report(data) {
     if (data.selfTests.some((t) => t.status === "fail")) nextSteps.push("A self-test failed — inspect it directly (e.g. `node scripts/harness/eval/run-eval.mjs --self-test`).");
   }
 
-  // MCP registration guidance, targeted at a detected agent if possible.
+  // MCP registration: show the actual config for the detected client, plus how to get the others.
   const suggested = data.agents.find((a) => a.present)?.mcp || "claude-code";
+  const m = renderMcp(suggested);
   process.stdout.write(`\n${C.b}Connect the MCP server (read-only graph/memory/metrics tools)${C.x}\n`);
-  process.stdout.write(`  Print config for your client:  ${C.dim}node scripts/harness/doctor.mjs --mcp <client>${C.x}\n`);
-  process.stdout.write(`  Write it for you (project-local): ${C.dim}node scripts/harness/doctor.mjs --write-mcp ${suggested}${C.x}\n`);
-  process.stdout.write(`  ${C.dim}clients: claude-code | cursor | vscode | windsurf | cline | claude-desktop | zed | generic${C.x}\n`);
+  process.stdout.write(`  For ${C.b}${suggested}${C.x} — ${m.scope} config in ${C.dim}${m.file}${C.x} (key "${m.key}"):\n`);
+  process.stdout.write(`${m.json.split("\n").map((l) => `      ${l}`).join("\n")}\n`);
+  process.stdout.write(`  Another client: ${C.dim}node scripts/harness/doctor.mjs --mcp <${MCP_CLIENTS.join("|")}>${C.x}\n`);
+  if (m.scope === "project") {
+    process.stdout.write(`  Write it for you: ${C.dim}node scripts/harness/doctor.mjs --write-mcp ${suggested}${C.x}\n`);
+  }
 
   if (nextSteps.length) {
     process.stdout.write(`\n${C.b}Next steps${C.x}\n`);
@@ -241,9 +268,43 @@ function report(data) {
   return blocker ? 1 : 0;
 }
 
+// Validate the doctor's own pure logic — MCP config generation and client validation — so a
+// regression there is caught like every other harness component.
+function selfTest() {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail });
+
+  add("rejects unknown client", isKnownClient("nope") === false);
+  add("rejects boolean client", isKnownClient(true) === false);
+
+  for (const client of MCP_CLIENTS) {
+    let m;
+    try { m = renderMcp(client); } catch (e) { add(`${client}: renders`, false, e.message); continue; }
+    let parsed;
+    try { parsed = JSON.parse(m.json); } catch (e) { add(`${client}: valid JSON`, false, e.message); continue; }
+    add(`${client}: valid JSON`, true);
+    const root = m.key === "context_servers" ? parsed.context_servers : parsed[m.key];
+    const harness = root?.harness;
+    add(`${client}: harness entry under "${m.key}"`, Boolean(harness), `expected key ${m.key}`);
+    const argv = harness?.args || harness?.command?.args || [];
+    const pathArg = argv[argv.length - 1];
+    const isAbs = typeof pathArg === "string" && (pathArg.startsWith("/") || /^[A-Za-z]:[\\/]/.test(pathArg));
+    if (m.scope === "project") add(`${client}: relative server path`, pathArg === "scripts/harness/mcp-server.mjs", `got ${pathArg}`);
+    else add(`${client}: absolute server path`, isAbs, `got ${pathArg}`);
+  }
+
+  const passed = checks.every((c) => c.ok);
+  process.stdout.write(`[doctor] self-test — ${checks.length} check(s)\n`);
+  for (const c of checks) process.stdout.write(`  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`);
+  process.stdout.write(`[doctor] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`);
+  process.exit(passed ? 0 : 1);
+}
+
 const args = parseArgs(process.argv.slice(2));
-if (typeof args["write-mcp"] === "string") { writeMcp(args["write-mcp"]); process.exit(0); }
-if (typeof args.mcp === "string") {
+if (args["self-test"]) selfTest();
+if ("write-mcp" in args) { assertClient(args["write-mcp"], "--write-mcp"); writeMcp(args["write-mcp"]); process.exit(0); }
+if ("mcp" in args) {
+  assertClient(args.mcp, "--mcp");
   const m = renderMcp(args.mcp);
   process.stdout.write(`# ${args.mcp} — ${m.scope} config: ${m.file}\n# key: "${m.key}"\n\n${m.json}\n`);
   process.exit(0);

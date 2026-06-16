@@ -57,6 +57,7 @@ kit.
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes 15 graph/memory/vector + loop/report tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
 | **Domain & industry packs**               | [`.github/harness/domains/`](.github/harness/domains/), [`domain-pack.mjs`](scripts/harness/domain-pack.mjs)               | Re-skin the engine for non-software domains; ships 6 runnable packs + deterministic deliverable checks |
+| **Onboarding & CI**                        | [`doctor.mjs`](scripts/harness/doctor.mjs), [`selftest-all.mjs`](scripts/harness/selftest-all.mjs), [`harness-selftest.yml`](.github/workflows/harness-selftest.yml) | Environment-agnostic preflight + one-command regression gate (`npm run harness:selftest`) wired into CI |
 
 ## The three loop kinds
 
