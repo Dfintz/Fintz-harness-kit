@@ -10,9 +10,25 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+// @modelcontextprotocol/sdk is an OPTIONAL dependency, loaded lazily only when the stdio server is
+// actually started — so `--help` and `--list-tools` work without it, and a missing SDK yields a clear
+// install hint instead of a raw ERR_MODULE_NOT_FOUND stack trace.
+async function loadSdk() {
+  try {
+    const [{ Server }, { StdioServerTransport }, { CallToolRequestSchema, ListToolsRequestSchema }] =
+      await Promise.all([
+        import('@modelcontextprotocol/sdk/server/index.js'),
+        import('@modelcontextprotocol/sdk/server/stdio.js'),
+        import('@modelcontextprotocol/sdk/types.js'),
+      ]);
+    return { Server, StdioServerTransport, CallToolRequestSchema, ListToolsRequestSchema };
+  } catch {
+    throw new Error(
+      'The MCP stdio server needs the optional @modelcontextprotocol/sdk package. Run `npm install` ' +
+        'to add it. (`--list-tools` and scripts/harness/mcp-tools.mjs work without it.)'
+    );
+  }
+}
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const wrapperPath = join(repoRoot, 'scripts', 'harness', 'mcp-tools.mjs');
@@ -488,7 +504,8 @@ function showTools() {
   process.stdout.write(`${textPayload(payload)}\n`);
 }
 
-function createServer() {
+function createServer(sdk) {
+  const { Server, ListToolsRequestSchema, CallToolRequestSchema } = sdk;
   const server = new Server(
     {
       name: 'sc-fleet-harness-mcp',
@@ -587,8 +604,9 @@ async function main() {
     return;
   }
 
-  const server = createServer();
-  const transport = new StdioServerTransport();
+  const sdk = await loadSdk();
+  const server = createServer(sdk);
+  const transport = new sdk.StdioServerTransport();
   await server.connect(transport);
 }
 
