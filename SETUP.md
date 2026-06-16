@@ -141,6 +141,11 @@ Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The ser
 - **Gates:** the five architectural gates include a multi-tenant "4b" gate. Drop it if your project
   isn't multi-tenant; the workflow instructions note where examples are illustrative.
 - **Loops:** add your own under `.github/harness/loops/` using `_template.json` as a starting point.
+- **Domain packs:** to run the harness over a *non-software* deliverable (research memo, contract,
+  runbook, itinerary, business case), use a domain pack instead of the code loops. Six ship under
+  `.github/harness/domains/`; list them with `npm run harness:domains`, validate with
+  `npm run harness:domain:self-test`, and author your own from `.github/harness/domains/_template/`.
+  See `.github/harness/domains/README.md`.
 
 ## Requirements
 

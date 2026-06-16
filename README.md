@@ -51,6 +51,7 @@ kit.
 | **Knowledge graph**                       | [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs)                                                         | Optional structural memory (needs the Understand-Anything plugin)                                  |
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes 15 graph/memory/vector + loop/report tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
+| **Domain & industry packs**               | [`.github/harness/domains/`](.github/harness/domains/), [`domain-pack.mjs`](scripts/harness/domain-pack.mjs)               | Re-skin the engine for non-software domains; ships 6 runnable packs + deterministic deliverable checks |
 
 ## The three loop kinds
 
@@ -59,6 +60,31 @@ convergence   run until pass/fail checks are all green        (build-fix, test-f
 workflow      run rubric-graded passes to a terminal state    (review-fix, feature-cycle, ci-green)
 experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experiment)   ← autoresearch-style
 ```
+
+## Domain & industry packs
+
+The engine (loops, memory, review, observability, the *shape* of a gated stage machine) is
+domain-agnostic — only the content is software-specific. A **domain pack** swaps that content layer
+for another knowledge domain: it relabels the stages, supplies a domain gate set, and points the
+convergence checks at deterministic **deliverable checks** (`scripts/harness/domain-checks/*`) that
+read a written artifact — a research memo, a contract, a runbook — instead of compiling code.
+
+Six runnable packs ship in [`.github/harness/domains/`](.github/harness/domains/):
+`finance-research`, `scientific-research`, `legal-compliance`, `tourism`, `it-services`,
+`business-optimization` — plus an `_template` to author your own.
+
+```bash
+npm run harness:domains                                   # list packs
+node scripts/harness/domain-pack.mjs show finance-research # stages, gates, checks
+npm run harness:domain:check finance-research              # run the checks on the pack's good sample
+node scripts/harness/domain-pack.mjs check finance-research --deliverable my-memo.md
+node scripts/harness/domain-pack.mjs activate finance-research   # wire loops + config into the engine
+npm run harness:domain:self-test                           # validate ALL packs (the domain fitness gate)
+```
+
+`--self-test` is the domain analogue of the eval suite: for every pack, the **good** sample must pass
+all its checks and the **broken** sample must fail at least one — proving the checks discriminate.
+Full model and authoring guide: [`.github/harness/domains/README.md`](.github/harness/domains/README.md).
 
 ## Quick start
 
