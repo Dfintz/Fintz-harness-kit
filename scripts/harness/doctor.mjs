@@ -81,12 +81,16 @@ function countPacks() {
 
 const MCP_CLIENTS = ["claude-code", "cursor", "vscode", "zed", "windsurf", "cline", "claude-desktop", "generic"];
 
+function isKnownClient(client) {
+  return typeof client === "string" && MCP_CLIENTS.includes(client);
+}
+
 function assertClient(client, flag) {
   if (client === true || typeof client !== "string") {
     process.stderr.write(`[doctor] ${flag} needs a client: ${MCP_CLIENTS.join(" | ")}\n`);
     process.exit(2);
   }
-  if (!MCP_CLIENTS.includes(client)) {
+  if (!isKnownClient(client)) {
     process.stderr.write(`[doctor] unknown client "${client}". Valid: ${MCP_CLIENTS.join(" | ")}\n`);
     process.exit(2);
   }
@@ -264,7 +268,40 @@ function report(data) {
   return blocker ? 1 : 0;
 }
 
+// Validate the doctor's own pure logic — MCP config generation and client validation — so a
+// regression there is caught like every other harness component.
+function selfTest() {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail });
+
+  add("rejects unknown client", isKnownClient("nope") === false);
+  add("rejects boolean client", isKnownClient(true) === false);
+
+  for (const client of MCP_CLIENTS) {
+    let m;
+    try { m = renderMcp(client); } catch (e) { add(`${client}: renders`, false, e.message); continue; }
+    let parsed;
+    try { parsed = JSON.parse(m.json); } catch (e) { add(`${client}: valid JSON`, false, e.message); continue; }
+    add(`${client}: valid JSON`, true);
+    const root = m.key === "context_servers" ? parsed.context_servers : parsed[m.key];
+    const harness = root?.harness;
+    add(`${client}: harness entry under "${m.key}"`, Boolean(harness), `expected key ${m.key}`);
+    const argv = harness?.args || harness?.command?.args || [];
+    const pathArg = argv[argv.length - 1];
+    const isAbs = typeof pathArg === "string" && (pathArg.startsWith("/") || /^[A-Za-z]:[\\/]/.test(pathArg));
+    if (m.scope === "project") add(`${client}: relative server path`, pathArg === "scripts/harness/mcp-server.mjs", `got ${pathArg}`);
+    else add(`${client}: absolute server path`, isAbs, `got ${pathArg}`);
+  }
+
+  const passed = checks.every((c) => c.ok);
+  process.stdout.write(`[doctor] self-test — ${checks.length} check(s)\n`);
+  for (const c of checks) process.stdout.write(`  ${c.ok ? "PASS" : "FAIL"}  ${c.name}${c.ok ? "" : ` — ${c.detail}`}\n`);
+  process.stdout.write(`[doctor] ${passed ? "self-test PASSED" : "self-test FAILED"}\n`);
+  process.exit(passed ? 0 : 1);
+}
+
 const args = parseArgs(process.argv.slice(2));
+if (args["self-test"]) selfTest();
 if ("write-mcp" in args) { assertClient(args["write-mcp"], "--write-mcp"); writeMcp(args["write-mcp"]); process.exit(0); }
 if ("mcp" in args) {
   assertClient(args.mcp, "--mcp");
