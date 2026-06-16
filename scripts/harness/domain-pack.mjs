@@ -214,12 +214,24 @@ function selfTest() {
       const p = join(pack.dir, "loops", `${loop}.json`);
       const ok = existsSync(p);
       add(`${name}: loop ${loop} exists`, ok, p);
-      if (ok) {
-        try {
-          JSON.parse(readFileSync(p, "utf8"));
-        } catch (e) {
-          add(`${name}: loop ${loop} parses`, false, e.message);
-        }
+      if (!ok) continue;
+      let def;
+      try {
+        def = JSON.parse(readFileSync(p, "utf8"));
+      } catch (e) {
+        add(`${name}: loop ${loop} parses`, false, e.message);
+        continue;
+      }
+      // The loop's internal name must match its filename (run-loop resolves loops by filename).
+      add(`${name}: loop ${loop} name matches file`, def.name === loop, `internal name "${def.name}" != "${loop}"`);
+      // Every file the loop points an agent at must exist, or the agent is sent to a dead path.
+      for (const instr of def.instructions ?? []) {
+        add(`${name}: loop ${loop} instruction exists`, existsSync(join(repoRoot, instr)), instr);
+      }
+      // Every check script referenced by the loop must exist on disk.
+      for (const chk of def.checks ?? []) {
+        const m = /node\s+(\S+\.mjs)/.exec(chk.run ?? "");
+        if (m) add(`${name}: loop ${loop} check script exists`, existsSync(join(repoRoot, m[1])), m[1]);
       }
     }
 
