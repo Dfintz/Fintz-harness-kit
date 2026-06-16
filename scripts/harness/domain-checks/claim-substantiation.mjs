@@ -12,8 +12,15 @@
  */
 import { headingText, loadFile, nonCodeLines, runCli } from "./_lib.mjs";
 
-const CLAIM_RE =
-  /(\b\d+(?:\.\d+)?\s?%)|(\b(?:best|worst|guarantee[ds]?|proven|fastest|cheapest|safest|#1|number one|always|never|every time|100%|unmatched|industry[- ]leading)\b)/i;
+// A quantified figure (covers 100%), a superlative/absolute word, or a "#1"/"No. 1" ranking claim.
+// "#1" is matched separately because a leading \b can't sit before "#" (non-word to non-word).
+const PERCENT_RE = /\b\d+(?:\.\d+)?\s?%/;
+const SUPERLATIVE_RE =
+  /\b(?:best|worst|guarantee[ds]?|proven|fastest|cheapest|safest|number one|no\.?\s?1|always|never|every time|unmatched|industry[- ]leading)\b/i;
+const RANK1_RE = /#\s?1\b/;
+const CLAIM_RE = {
+  test: (line) => PERCENT_RE.test(line) || SUPERLATIVE_RE.test(line) || RANK1_RE.test(line),
+};
 const SOURCE_RE = /(\[\^[\w-]+\])|(\(source:\s*[^)]+\))/i;
 
 export default function run({ file, text }) {
@@ -48,9 +55,11 @@ runCli({
     const good =
       "Bookings rose 40%[^q3] last quarter.\n- Our tour is rated #1 by guests (source: 2025 survey).\n";
     const bad = "Bookings rose 40% last quarter.\nWe are the best in the region.\n";
+    const rank = "We are #1 in the region.\n";
     return [
       { name: "claims are sourced", opts: { text: good }, expectPass: true },
       { name: "unsourced claim fails", opts: { text: bad }, expectPass: false },
+      { name: "unsourced #1 ranking fails", opts: { text: rank }, expectPass: false },
     ];
   },
 });

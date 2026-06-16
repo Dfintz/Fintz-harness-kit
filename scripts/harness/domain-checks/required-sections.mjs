@@ -10,6 +10,17 @@
  */
 import { headingText, loadFile, nonCodeLines, runCli, splitList } from "./_lib.mjs";
 
+// Normalize a heading for comparison: drop leading list numbering ("1.", "1.2)") and a trailing
+// colon, so "## 1. Summary", "## Summary:" and "## Summary" all satisfy a required "Summary".
+function normalize(s) {
+  return s
+    .trim()
+    .replace(/^\d+(?:\.\d+)*[.)]?\s+/, "")
+    .replace(/\s*:\s*$/, "")
+    .trim()
+    .toLowerCase();
+}
+
 export default function run({ file, text, sections }) {
   const body = text ?? loadFile(file);
   const required = splitList(sections);
@@ -20,9 +31,9 @@ export default function run({ file, text, sections }) {
     nonCodeLines(body)
       .map(({ line }) => headingText(line))
       .filter(Boolean)
-      .map((h) => h.toLowerCase()),
+      .map(normalize),
   );
-  const missing = required.filter((s) => !present.has(s.toLowerCase()));
+  const missing = required.filter((s) => !present.has(normalize(s)));
   if (missing.length > 0) {
     return { pass: false, detail: `missing required section(s): ${missing.join(", ")}`, missing };
   }
@@ -35,10 +46,12 @@ runCli({
   selfTest: () => {
     const good = "# Memo\n\n## Summary\nx\n\n## Method\ny\n\n## References\nz\n";
     const bad = "# Memo\n\n## Summary\nx\n";
+    const decorated = "# Memo\n\n## 1. Summary:\nx\n\n## Method\ny\n\n## References\nz\n";
     const opts = { sections: "Summary|Method|References" };
     return [
       { name: "all sections present", opts: { text: good, ...opts }, expectPass: true },
       { name: "missing a section", opts: { text: bad, ...opts }, expectPass: false },
+      { name: "numbered/colon headings still match", opts: { text: decorated, ...opts }, expectPass: true },
     ];
   },
 });
