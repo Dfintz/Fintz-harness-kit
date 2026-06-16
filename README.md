@@ -8,6 +8,11 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
+> **New here?** Run `node scripts/harness/doctor.mjs` (or `npm run harness:doctor`). It checks your
+> runtime, shows what's available, runs the self-tests, and prints the exact MCP setup for *your*
+> editor or agent — Claude Code, Cursor, VS Code, Windsurf, Cline, Zed, JetBrains, or a plain
+> terminal. Per-environment recipes: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+
 ## Install
 
 The kit is packaged as an [Agent Skill](https://agentskills.io/) and a Claude Code plugin, so it
@@ -196,13 +201,18 @@ handles both runtimes (chat + embeddings); `vector-search.mjs` honors `--provide
 
 The harness ships a first-class MCP stdio server exposing **15 read/observe tools** — knowledge graph
 (7), memory (3), vector search (3), plus loop discovery (`harness-loops`) and metrics
-(`harness-report`). [`.vscode/mcp.json`](.vscode/mcp.json) registers it for VS Code; for Claude
-Code / Cursor use the same `command`/`args` in their MCP config.
+(`harness-report`). It is editor-neutral: project-local configs ship for Claude Code
+([`.mcp.json`](.mcp.json)), Cursor ([`.cursor/mcp.json`](.cursor/mcp.json)), and VS Code
+([`.vscode/mcp.json`](.vscode/mcp.json)). For any other client, generate the config:
 
 ```bash
-node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
-npm run harness:mcp:server                         # run the stdio server directly
+node scripts/harness/doctor.mjs --mcp <client>        # print config (claude-code|cursor|vscode|windsurf|cline|claude-desktop|zed|generic)
+node scripts/harness/doctor.mjs --write-mcp cursor     # or write the project-local file for you
+node scripts/harness/mcp-tools.mjs list-tools          # inspect the tool catalog (no SDK needed)
+npm run harness:mcp:server                             # run the stdio server directly (needs `npm install`)
 ```
+
+See [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md) for per-client setup.
 
 Loop **execution** stays CLI-only on purpose: a loop invokes an agent and runs for minutes, so
 exposing it as an auto-callable MCP tool (when the MCP client _is_ the agent) would recurse and time

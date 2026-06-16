@@ -16,6 +16,17 @@ runners, dashboard, MCP server, loop definitions) is what actually runs loops. T
 steps below give you that engine in your own repo — do this when you want the loops, experiments,
 dashboard, and MCP server runnable from your project.
 
+> **At any point, run the doctor** to see where you stand and what to do next, in whatever
+> environment you use (not just VS Code):
+>
+> ```bash
+> node scripts/harness/doctor.mjs        # or: npm run harness:doctor
+> ```
+>
+> It verifies Node/git, lists loops and domain packs, runs the self-tests, detects your agent CLIs,
+> and prints the exact MCP registration for your editor/agent. Per-environment recipes live in
+> [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+
 ## 1. Copy the kit into your repo
 
 Copy these into your project root (merge, don't overwrite your own files):
@@ -113,25 +124,21 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
 
 ## 6. (Optional) MCP integration
 
-The kit ships `.vscode/mcp.json`, which registers the harness MCP server for VS Code automatically.
-For Claude Code or Cursor, add the same stdio entry to their MCP config:
+The kit ships ready-made, project-local MCP configs for the common clients — `.mcp.json` (Claude
+Code), `.cursor/mcp.json` (Cursor), and `.vscode/mcp.json` (VS Code) — so they register the `harness`
+server on open. For any other client, let the doctor generate the right config (it knows each client's
+file path and config key, and uses an absolute path for global configs):
 
-```jsonc
-{
-  "servers": {
-    // Claude/Cursor use "mcpServers"
-    "harness": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["scripts/harness/mcp-server.mjs"],
-      "cwd": "/abs/path/to/your/repo",
-    },
-  },
-}
+```bash
+node scripts/harness/doctor.mjs --mcp windsurf          # print config for a client
+node scripts/harness/doctor.mjs --write-mcp cursor       # or write the project-local file (merges)
 ```
 
-Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The server is read-only
-(graph/memory/vector + `harness-loops`/`harness-report`); run loops from the CLI.
+Clients: `claude-code | cursor | vscode | windsurf | cline | claude-desktop | zed | generic`. The
+stdio server needs `npm install` (it pulls the optional `@modelcontextprotocol/sdk`). Verify the
+catalog with `node scripts/harness/mcp-tools.mjs list-tools` (no SDK needed). The server is read-only
+(graph/memory/vector + `harness-loops`/`harness-report`); run loops from the CLI. Full per-environment
+guide: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
 
 ## What to customize next
 

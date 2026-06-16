@@ -5,6 +5,9 @@ Entry point for any AI coding agent working in a repository that has adopted thi
 **Start here:** read [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md). It is the operating
 contract — it tells you what to load, what sequence to follow, and how to iterate until done.
 
+**Setting up the engine in this environment?** Run `node scripts/harness/doctor.mjs` for a preflight
+and the MCP registration for your client. Per-environment recipes: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+
 Quick map:
 
 - **Operating contract & stage machine:** [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md)
