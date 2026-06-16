@@ -8,6 +8,11 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
+> **New here?** Run `node scripts/harness/doctor.mjs` (or `npm run harness:doctor`). It checks your
+> runtime, shows what's available, runs the self-tests, and prints the exact MCP setup for *your*
+> editor or agent — Claude Code, Cursor, VS Code, Windsurf, Cline, Zed, JetBrains, or a plain
+> terminal. Per-environment recipes: [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md).
+
 ## Install
 
 The kit is packaged as an [Agent Skill](https://agentskills.io/) and a Claude Code plugin, so it
@@ -51,6 +56,7 @@ kit.
 | **Knowledge graph**                       | [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs)                                                         | Optional structural memory (needs the Understand-Anything plugin)                                  |
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes 15 graph/memory/vector + loop/report tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
+| **Domain & industry packs**               | [`.github/harness/domains/`](.github/harness/domains/), [`domain-pack.mjs`](scripts/harness/domain-pack.mjs)               | Re-skin the engine for non-software domains; ships 6 runnable packs + deterministic deliverable checks |
 
 ## The three loop kinds
 
@@ -59,6 +65,31 @@ convergence   run until pass/fail checks are all green        (build-fix, test-f
 workflow      run rubric-graded passes to a terminal state    (review-fix, feature-cycle, ci-green)
 experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experiment)   ← autoresearch-style
 ```
+
+## Domain & industry packs
+
+The engine (loops, memory, review, observability, the *shape* of a gated stage machine) is
+domain-agnostic — only the content is software-specific. A **domain pack** swaps that content layer
+for another knowledge domain: it relabels the stages, supplies a domain gate set, and points the
+convergence checks at deterministic **deliverable checks** (`scripts/harness/domain-checks/*`) that
+read a written artifact — a research memo, a contract, a runbook — instead of compiling code.
+
+Six runnable packs ship in [`.github/harness/domains/`](.github/harness/domains/):
+`finance-research`, `scientific-research`, `legal-compliance`, `tourism`, `it-services`,
+`business-optimization` — plus an `_template` to author your own.
+
+```bash
+npm run harness:domains                                   # list packs
+node scripts/harness/domain-pack.mjs show finance-research # stages, gates, checks
+npm run harness:domain:check finance-research              # run the checks on the pack's good sample
+node scripts/harness/domain-pack.mjs check finance-research --deliverable my-memo.md
+node scripts/harness/domain-pack.mjs activate finance-research   # wire loops + config into the engine
+npm run harness:domain:self-test                           # validate ALL packs (the domain fitness gate)
+```
+
+`--self-test` is the domain analogue of the eval suite: for every pack, the **good** sample must pass
+all its checks and the **broken** sample must fail at least one — proving the checks discriminate.
+Full model and authoring guide: [`.github/harness/domains/README.md`](.github/harness/domains/README.md).
 
 ## Quick start
 
@@ -170,13 +201,18 @@ handles both runtimes (chat + embeddings); `vector-search.mjs` honors `--provide
 
 The harness ships a first-class MCP stdio server exposing **15 read/observe tools** — knowledge graph
 (7), memory (3), vector search (3), plus loop discovery (`harness-loops`) and metrics
-(`harness-report`). [`.vscode/mcp.json`](.vscode/mcp.json) registers it for VS Code; for Claude
-Code / Cursor use the same `command`/`args` in their MCP config.
+(`harness-report`). It is editor-neutral: project-local configs ship for Claude Code
+([`.mcp.json`](.mcp.json)), Cursor ([`.cursor/mcp.json`](.cursor/mcp.json)), and VS Code
+([`.vscode/mcp.json`](.vscode/mcp.json)). For any other client, generate the config:
 
 ```bash
-node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
-npm run harness:mcp:server                         # run the stdio server directly
+node scripts/harness/doctor.mjs --mcp <client>        # print config (claude-code|cursor|vscode|windsurf|cline|claude-desktop|zed|generic)
+node scripts/harness/doctor.mjs --write-mcp cursor     # or write the project-local file for you
+node scripts/harness/mcp-tools.mjs list-tools          # inspect the tool catalog (no SDK needed)
+npm run harness:mcp:server                             # run the stdio server directly (needs `npm install`)
 ```
+
+See [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md) for per-client setup.
 
 Loop **execution** stays CLI-only on purpose: a loop invokes an agent and runs for minutes, so
 exposing it as an auto-callable MCP tool (when the MCP client _is_ the agent) would recurse and time
