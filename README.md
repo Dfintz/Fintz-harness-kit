@@ -173,15 +173,16 @@ stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 By default the shipped environment policy assigns each stage the model that benchmarks best for its
 dominant skill, across three providers so the enforced independence holds (`routing.stageModels`):
 
-- **Gemini 3.1 Pro** — Understand, Architect Challenge, Review Depth (long context + abstract/gate reasoning).
-- **Claude Opus 4.8** — Architect and Feedback (nuanced design + fresh-eyes adjudication).
-- **Claude Fable 5** — Implement (top agentic coder; verify availability, else fall back).
-- **GPT-5.5** — Review Breadth (systematic structured review).
+- **Gemini 3.1 Pro** — Understand, Architect Challenge, Review Depth (long context + abstract/gate reasoning; cheapest).
+- **Claude Opus 4.8** — Architect and Review Breadth (architectural design + code-review, Claude's distinctive strengths).
+- **Claude Fable 5** — Implement (top agentic coder; verify availability, else fall back to Opus 4.8 / GPT-5.5).
+- **GPT-5.5** — Feedback (lowest hallucination → calibrated adjudication).
 
 `prompt-router.mjs` validates the resolved per-stage models: implementer ≠ reviewers, Architect
-Challenge ≠ Architect, Feedback ≠ reviewers. A two-provider config still works — omit `stageModels`
-and set the `implementer` / `reviewer` / `arbiter` roles. Model ids are point-in-time (2026-06); keep
-the roles, refresh the ids as benchmarks move.
+Challenge ≠ Architect, Feedback ≠ reviewers. Full feedback-independence from the implementer needs a
+4th model — with three, Feedback collapses onto the implementer (see HARNESS.md "Why four models").
+A two-provider config still works — omit `stageModels` and set the `implementer` / `reviewer` /
+`arbiter` roles. Model ids are point-in-time (2026-06); keep the roles, refresh the ids as benchmarks move.
 
 ## Autoresearch with a local model
 

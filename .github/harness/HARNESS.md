@@ -37,22 +37,39 @@ three providers so the enforced independence constraints are easy to satisfy
 
 | Stage | Model | Why |
 | ----- | ----- | --- |
-| Understand | **Gemini 3.1 Pro** | 1M+ context, top comprehension/retrieval |
-| Architect | **Claude Opus 4.8** | nuanced, coding-aware design judgment |
-| Architect Challenge | **Gemini 3.1 Pro** | best abstract reasoning (ARC-AGI-2) finds flaws the Architect's own frame misses; ≠ Architect |
-| Implement | **Claude Fable 5** | top agentic coder (SWE-bench 95.0% Verified) — verify availability; fall back to Opus 4.8 / a codex model |
-| Review Breadth | **GPT-5.5** | systematic structured-reasoning reviewer; ≠ implementer |
-| Review Depth | **Gemini 3.1 Pro** | deep multi-hop architectural-gate reasoning |
-| Feedback | **Claude Opus 4.8** | fresh-eyes adjudication; ≠ the reviewers |
+| Understand | **Gemini 3.1 Pro** | ties Opus at ≤128K context, 2.5× cheaper; switch to Opus 4.8 for repos >256K tokens (Opus leads 1M multi-needle retrieval, 76%) |
+| Architect | **Claude Opus 4.8** | software-design judgment is Claude's most-cited strength (architectural reasoning/debugging) |
+| Architect Challenge | **Gemini 3.1 Pro** | ARC-AGI-2 77.1% vs GPT-5.5's 52.9% — best at the novel-flaw reasoning the Architect's own frame misses; ≠ Architect |
+| Implement | **Claude Fable 5** | top agentic coder (SWE-bench 95.0% Verified) — verify availability; fall back to Opus 4.8, or GPT-5.5 for terminal-heavy loops (Terminal-bench 83.4%) |
+| Review Breadth | **Claude Opus 4.8** | code review/debugging is Opus's distinctive strength, applied to the diff; ≠ implementer |
+| Review Depth | **Gemini 3.1 Pro** | abstract multi-hop reasoning for structural flaws + architectural gates; kept off Opus so Depth is provider-independent |
+| Feedback | **GPT-5.5** | lowest hallucination (4.2% w/ thinking) + structured calibration — targets adjudication's failure mode (invented/over-weighted issues); ≠ reviewers. *Close call vs Opus 4.8.* |
 
-The rotation: **Opus architects → Gemini challenges → Fable implements → GPT-5.5 reviews breadth →
-Gemini reviews depth → Opus adjudicates.** Numbers are point-in-time (2026-06) — treat the *roles*
-as durable and refresh the *model ids* as benchmarks move (see Maintenance Principle).
+The rotation: **Opus architects → Gemini challenges → Fable implements → Opus reviews breadth →
+Gemini reviews depth → GPT-5.5 adjudicates.** Each model lands on the stage matching its distinctive
+strength. Numbers are point-in-time (2026-06) — treat the *roles* as durable and refresh the *model
+ids* as benchmarks move (see Maintenance Principle).
 
 The separation is enforced, not just documented: `prompt-router.mjs` validates the resolved per-stage
 models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Feedback ≠ the reviewers.
 A two-provider config still works: omit `stageModels` and set the `implementer` / `reviewer` /
 `arbiter` roles.
+
+#### Why four models, not three
+
+After Architect, four roles must stay mutually independent: the constraints force **breadth ≠
+implement, depth ≠ implement, feedback ≠ breadth, feedback ≠ depth**. With only **three distinct
+models, Feedback mathematically collapses onto the implementer** — you cannot avoid both reviewers
+*and* the implementer at once. Full fresh-eyes separation (Feedback independent of the implementer
+too) needs a **fourth** model.
+
+| Scenario | Models | Feedback independence |
+| -------- | ------ | --------------------- |
+| **Ideal** (Fable available) | Opus · Gemini · Fable · GPT-5.5 | Full — Feedback (GPT-5.5) ≠ implementer (Fable) |
+| **Fable down** → 3 models | Opus · Gemini · GPT-5.5 | Partial — Feedback coincides with the implementer; the *important* bias (a reviewer grading its own findings) is still blocked. Add a 4th model (e.g. Grok 4.5 / DeepSeek V4 / a smaller Claude for the low-volume Feedback stage) to restore full separation. |
+
+The shipped `stageModels` is the ideal 4-model config; the role fallbacks (`implementer` /
+`reviewer` / `arbiter`) form a valid 3-model degenerate config for when `stageModels` is removed.
 
 ---
 
