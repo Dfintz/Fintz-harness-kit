@@ -79,18 +79,22 @@ The shipped `stageModels` is the ideal 4-model config; the role fallbacks (`impl
 
 #### Picking models per stage (wizard)
 
-Rather than hand-editing `stageModels`, run the wizard — it lists the catalog with each model's
-strength, enforces the separation rules as you go, and writes the config:
+Rather than hand-editing `stageModels`, run the wizard. Interactively it asks **which stages you
+want** and **the model for each** (a preset just prefills the suggested defaults), then writes the
+config:
 
 ```bash
-npm run harness:wizard                              # guided prompts
+npm run harness:wizard                              # guided prompts: include each stage? model for it?
 npm run harness:wizard -- --preset best --dry-run   # preview a preset (best | two-provider | budget)
 npm run harness:wizard -- --set implement=claude-fable-5 --set feedback=gpt-5.5 --yes
 npm run harness:wizard -- --preset best --stages understand,architect,implement,feedback --yes
 ```
 
-It refuses to write a selection that violates the per-stage independence rules (use `--force` to
-override). It shares `prompt-router.mjs`'s checker, so the wizard and the router never disagree.
+It **never blocks** your choice — picking a single stage, dropping the challenge/feedback stages, or
+reusing one model only prints a **warning** (the trade-off it implies). Pass `--strict` to turn
+warnings into a hard failure for CI gates. The independence warnings come from `prompt-router.mjs`'s
+own checker, so they match exactly what the router will *enforce* at runtime — a separation warning
+here becomes a hard error when the config is actually used.
 
 ---
 

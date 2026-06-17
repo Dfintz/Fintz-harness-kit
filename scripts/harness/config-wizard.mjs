@@ -87,7 +87,7 @@ function parseArgs(argv) {
   const flags = { _: [], set: {} };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--dry-run" || arg === "--yes" || arg === "--force" || arg === "--json" || arg === "--self-test" || arg === "--help") {
+    if (arg === "--dry-run" || arg === "--yes" || arg === "--strict" || arg === "--json" || arg === "--self-test" || arg === "--help") {
       flags[arg.slice(2)] = true;
     } else if (arg === "--preset") {
       flags.preset = argv[++i];
@@ -135,14 +135,51 @@ export function selectionsFromFlags(flags) {
   return { stages: orderedStages, models: activeModels };
 }
 
-/** Validate a selection. Returns { ok, errors }. */
-export function validateSelections({ stages, models }) {
-  const errors = [];
+// Stages whose absence is worth flagging, with the consequence of leaving them out.
+const RECOMMENDED_PRESENCE = {
+  "architect-challenge": "the Brief won't be cross-model challenged before Implement",
+  "review-breadth": "the implementation won't get a breadth review",
+  "review-depth": "the architectural gates won't be re-run on the diff",
+  feedback: "reviewer challenges won't be adjudicated",
+};
+
+/**
+ * Compute non-blocking warnings for a selection. The wizard never refuses a choice — it lets you
+ * build whatever pipeline you want (even a single stage) and surfaces the trade-offs. Note: the
+ * runtime router still ENFORCES the independence rules, so a separation warning here will become a
+ * hard error when the config is actually used.
+ */
+export function selectionWarnings({ stages, models }) {
+  const warnings = [];
   for (const s of stages) {
-    if (!models[s]) errors.push(`stage "${s}" is active but has no model assigned`);
+    if (!models[s]) warnings.push(`stage "${s}" is active but has no model assigned.`);
   }
-  errors.push(...stageSeparationErrors(models));
-  return { ok: errors.length === 0, errors };
+  for (const e of stageSeparationErrors(models)) {
+    warnings.push(`independence: ${e} — the router will reject this at runtime.`);
+  }
+  if (stages.length === 0) {
+    warnings.push("no stages selected — this clears the per-stage routing.");
+  } else if (stages.length === 1) {
+    warnings.push(
+      `only one stage ("${stages[0]}") selected — the gated pipeline and cross-model independence don't apply.`,
+    );
+  }
+  for (const [s, why] of Object.entries(RECOMMENDED_PRESENCE)) {
+    if (stages.length > 1 && !stages.includes(s)) {
+      warnings.push(`stage "${s}" excluded — ${why}.`);
+    }
+  }
+  const distinct = new Set(stages.map((s) => models[s]).filter(Boolean));
+  if (stages.length > 1 && distinct.size === 1) {
+    warnings.push(`all stages use the same model (${[...distinct][0]}) — no cross-model independence.`);
+  }
+  return warnings;
+}
+
+/** @returns {{ ok: boolean, warnings: string[] }} ok means "no warnings", never "refused". */
+export function validateSelections(sel) {
+  const warnings = selectionWarnings(sel);
+  return { ok: warnings.length === 0, warnings };
 }
 
 /** Build the harness.config.json patch from a selection (pure). */
@@ -192,38 +229,32 @@ async function runInteractive(flags) {
   };
 
   process.stdout.write(
-    "Harness stage-model wizard. Pick a preset or choose a model per stage.\n" +
-      `Presets: ${Object.keys(PRESETS).join(", ")}, or 'custom'.\n`,
+    "Harness stage-model wizard.\n" +
+      "You'll choose which stages to include and the model for each. Nothing is blocked — unusual\n" +
+      "choices just print a warning.\n",
   );
 
-  let selection;
-  const mode = (await ask("Preset or custom?", "best")).toLowerCase();
-  if (mode !== "custom" && PRESETS[mode]) {
-    selection = selectionsFromFlags({ preset: mode, set: {} });
-  } else {
-    const models = {};
-    const stages = [];
-    for (const stage of STAGE_ORDER) {
-      const include = (await ask(`Include stage "${stage}"? (y/n)`, "y")).toLowerCase();
-      if (include.startsWith("n")) continue;
-      stages.push(stage);
-      process.stdout.write(`  Models:\n${catalogMenu()}\n  (or type any model id)\n`);
-      const pick = await ask(`  Model for "${stage}"`, RECOMMENDED[stage]);
-      const byNum = MODEL_CATALOG[Number(pick) - 1];
-      models[stage] = byNum ? byNum.id : pick;
-    }
-    selection = selectionsFromFlags({ set: models, stages: stages.join(","), _: [] });
+  // A preset only PREFILLS the suggested default per stage; you still confirm each stage and model.
+  const seedName = (await ask(`Prefill defaults from a preset? (${Object.keys(PRESETS).join("/")}/none)`, "best")).toLowerCase();
+  const seed = PRESETS[seedName] ?? RECOMMENDED;
+
+  const models = {};
+  const stages = [];
+  for (const stage of STAGE_ORDER) {
+    const include = (await ask(`Include stage "${stage}"? (Y/n)`, "y")).toLowerCase();
+    if (include.startsWith("n")) continue;
+    stages.push(stage);
+    process.stdout.write(`  Models:\n${catalogMenu()}\n  (enter a number, type any model id, or accept the default)\n`);
+    const pick = await ask(`  Model for "${stage}"`, seed[stage] ?? RECOMMENDED[stage]);
+    const byNum = MODEL_CATALOG[Number(pick) - 1];
+    models[stage] = byNum ? byNum.id : pick;
   }
+  const selection = selectionsFromFlags({ set: models, stages: stages.join(","), _: [] });
 
   process.stdout.write(`${renderSummary(selection)}\n`);
-  const { ok, errors } = validateSelections(selection);
-  if (!ok) {
-    process.stdout.write(`[config-wizard] independence problems:\n  - ${errors.join("\n  - ")}\n`);
-    const proceed = (await ask("Write anyway? (y/n)", "n")).toLowerCase();
-    if (!proceed.startsWith("y")) {
-      rl.close();
-      fail("aborted — fix the conflicts and re-run.", 1);
-    }
+  const { warnings } = validateSelections(selection);
+  if (warnings.length) {
+    process.stdout.write(`[config-wizard] warnings (not blocking):\n  - ${warnings.join("\n  - ")}\n`);
   }
   const write = (await ask("Write to harness.config.json? (y/n)", "y")).toLowerCase();
   rl.close();
@@ -250,14 +281,18 @@ function runNonInteractive(flags) {
   if (selection.stages.length === 0) {
     fail("no stages selected — pass --preset, --set, or run interactively (no flags).");
   }
-  const { ok, errors } = validateSelections(selection);
+  const { ok, warnings } = validateSelections(selection);
   if (flags.json) {
-    process.stdout.write(`${JSON.stringify({ ...selection, ok, errors }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ...selection, ok, warnings }, null, 2)}\n`);
   } else {
     process.stdout.write(`${renderSummary(selection)}\n`);
+    if (warnings.length) {
+      process.stdout.write(`[config-wizard] warnings (not blocking):\n  - ${warnings.join("\n  - ")}\n`);
+    }
   }
-  if (!ok && !flags.force) {
-    fail(`independence problems (use --force to override):\n  - ${errors.join("\n  - ")}`, 1);
+  // Warnings never block by default; --strict turns them into a hard failure (for CI gates).
+  if (!ok && flags.strict) {
+    fail("aborting due to warnings (--strict).", 1);
   }
   if (flags["dry-run"]) {
     if (!flags.json) {
@@ -279,15 +314,24 @@ function runSelfTest() {
   const cases = [];
   for (const [name, models] of Object.entries(PRESETS)) {
     const sel = selectionsFromFlags({ preset: name, set: {} });
-    const { ok } = validateSelections(sel);
-    cases.push({ name: `preset "${name}" is separation-valid`, pass: ok });
+    const { warnings } = validateSelections(sel);
+    cases.push({ name: `preset "${name}" has no warnings`, pass: warnings.length === 0, detail: warnings.join("; ") });
   }
-  // A deliberate conflict must be caught.
+  // A deliberate conflict must be warned about (not blocked).
   const conflict = validateSelections({
     stages: ["implement", "review-breadth"],
     models: { implement: "m", "review-breadth": "m" },
   });
-  cases.push({ name: "conflict (implement == breadth) is rejected", pass: !conflict.ok });
+  cases.push({
+    name: "conflict (implement == breadth) is warned",
+    pass: conflict.warnings.some((w) => w.startsWith("independence:")),
+  });
+  // Picking a single stage warns but is allowed.
+  const single = validateSelections({ stages: ["architect"], models: { architect: "m" } });
+  cases.push({
+    name: "single-stage selection warns but is allowed",
+    pass: single.warnings.some((w) => w.includes("only one stage")),
+  });
 
   // Flag parsing: --set overrides preset; --stages subsets.
   const sel = selectionsFromFlags({
@@ -321,7 +365,8 @@ async function main() {
   if (flags.help) {
     process.stdout.write(
       "usage: config-wizard [--preset best|two-provider|budget] [--set stage=model]... " +
-        "[--stages a,b,c] [--dry-run|--yes] [--force] [--json] [--self-test]\n",
+        "[--stages a,b,c] [--dry-run|--yes] [--strict] [--json] [--self-test]\n" +
+        "  run with no flags for the interactive wizard. warnings never block unless --strict.\n",
     );
     return;
   }
