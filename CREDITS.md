@@ -145,3 +145,8 @@ These shaped the design and vocabulary; no code was copied from them.
 
 Released under the MIT License (see `LICENSE`). Adapted components retain their upstream licenses;
 where a file adapts upstream work, its header notes the source.
+
+## Original additions
+
+- skill-curate.mjs + skill-curation loop + memory/curation: inward skill-health curation (counterpart to technique triage).
+- .github/agents/: per-stage VS Code custom agents with model-pinning + handoffs that walk the stage machine.

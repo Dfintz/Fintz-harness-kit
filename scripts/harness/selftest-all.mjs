@@ -33,6 +33,7 @@ const SUITES = [
   { name: "handoff-check", cmd: ["scripts/harness/handoff-check.mjs", "--self-test"] },
   { name: "config-wizard", cmd: ["scripts/harness/config-wizard.mjs", "--self-test"] },
   { name: "command-validation", cmd: ["scripts/harness/command-validation.mjs", "--self-test"] },
+  { name: "skill-curate", cmd: ["scripts/harness/skill-curate.mjs", "--self-test"] },
   { name: "evolve-guard", cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"] },
 ];
 
