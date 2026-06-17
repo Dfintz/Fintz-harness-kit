@@ -77,6 +77,25 @@ too) needs a **fourth** model.
 The shipped `stageModels` is the ideal 4-model config; the role fallbacks (`implementer` /
 `reviewer` / `arbiter`) form a valid 3-model degenerate config for when `stageModels` is removed.
 
+#### Picking models per stage (wizard)
+
+Rather than hand-editing `stageModels`, run the wizard. Interactively it asks **which stages you
+want** and **the model for each** (a preset just prefills the suggested defaults), then writes the
+config:
+
+```bash
+npm run harness:wizard                              # guided prompts: include each stage? model for it?
+npm run harness:wizard -- --preset best --dry-run   # preview a preset (best | two-provider | budget)
+npm run harness:wizard -- --set implement=claude-fable-5 --set feedback=gpt-5.5 --yes
+npm run harness:wizard -- --preset best --stages understand,architect,implement,feedback --yes
+```
+
+It **never blocks** your choice — picking a single stage, dropping the challenge/feedback stages, or
+reusing one model only prints a **warning** (the trade-off it implies). Pass `--strict` to turn
+warnings into a hard failure for CI gates. The independence warnings come from `prompt-router.mjs`'s
+own checker, so they match exactly what the router will *enforce* at runtime — a separation warning
+here becomes a hard error when the config is actually used.
+
 ---
 
 ## Authority Chain
