@@ -184,6 +184,10 @@ Challenge ≠ Architect, Feedback ≠ reviewers. Full feedback-independence from
 A two-provider config still works — omit `stageModels` and set the `implementer` / `reviewer` /
 `arbiter` roles. Model ids are point-in-time (2026-06); keep the roles, refresh the ids as benchmarks move.
 
+To choose models per stage interactively, run the wizard (`npm run harness:wizard`) — it lists the
+catalog, enforces the independence rules, and writes `routing.stageModels`. Presets: `best`,
+`two-provider`, `budget`. Scriptable via `--preset` / `--set stage=model` / `--stages` / `--dry-run`.
+
 ## Autoresearch with a local model
 
 Works with **Ollama** (default, `:11434`) or **LM Studio** (OpenAI-compatible, `:1234`) — pick with

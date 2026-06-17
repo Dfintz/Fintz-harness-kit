@@ -217,26 +217,37 @@ function validateModelSeparation(config) {
   return { implementer, reviewer, arbiter, feedback: arbiter ?? implementer };
 }
 
-// Per-stage independence, checked on the RESOLVED per-stage models so it holds whether routing comes
-// from role defaults or explicit stageModels overrides:
+// Per-stage independence pairs (shared with the config wizard so the rules never drift):
 //  - the Architect Challenge must differ from the Architect (no grading your own plan),
 //  - the reviewers must differ from the implementer,
 //  - Feedback must differ from the reviewers it adjudicates.
-function validateStageSeparation(routing, mustDiffer) {
-  if (!mustDiffer) return;
-  const pairs = [
-    ["implement", "review-breadth"],
-    ["implement", "review-depth"],
-    ["architect-challenge", "architect"],
-    ["feedback", "review-breadth"],
-    ["feedback", "review-depth"],
-  ];
-  for (const [a, b] of pairs) {
-    if (routing[a] && routing[a] === routing[b]) {
-      fail(
-        `stage "${a}" and stage "${b}" must use different models (both are ${routing[a]}); adjust routing.stageModels or the model roles.`,
+export const STAGE_SEPARATION_PAIRS = [
+  ["implement", "review-breadth"],
+  ["implement", "review-depth"],
+  ["architect-challenge", "architect"],
+  ["feedback", "review-breadth"],
+  ["feedback", "review-depth"],
+];
+
+/** Pure check: returns a list of human-readable separation violations for a stage->model map. */
+export function stageSeparationErrors(routing) {
+  const errors = [];
+  for (const [a, b] of STAGE_SEPARATION_PAIRS) {
+    if (routing[a] && routing[b] && routing[a] === routing[b]) {
+      errors.push(
+        `stage "${a}" and stage "${b}" must use different models (both are ${routing[a]})`,
       );
     }
+  }
+  return errors;
+}
+
+// Checked on the RESOLVED per-stage models so it holds whether routing comes from role defaults or
+// explicit stageModels overrides.
+function validateStageSeparation(routing, mustDiffer) {
+  if (!mustDiffer) return;
+  for (const e of stageSeparationErrors(routing)) {
+    fail(`${e}; adjust routing.stageModels or the model roles.`);
   }
 }
 

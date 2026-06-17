@@ -77,6 +77,21 @@ too) needs a **fourth** model.
 The shipped `stageModels` is the ideal 4-model config; the role fallbacks (`implementer` /
 `reviewer` / `arbiter`) form a valid 3-model degenerate config for when `stageModels` is removed.
 
+#### Picking models per stage (wizard)
+
+Rather than hand-editing `stageModels`, run the wizard — it lists the catalog with each model's
+strength, enforces the separation rules as you go, and writes the config:
+
+```bash
+npm run harness:wizard                              # guided prompts
+npm run harness:wizard -- --preset best --dry-run   # preview a preset (best | two-provider | budget)
+npm run harness:wizard -- --set implement=claude-fable-5 --set feedback=gpt-5.5 --yes
+npm run harness:wizard -- --preset best --stages understand,architect,implement,feedback --yes
+```
+
+It refuses to write a selection that violates the per-stage independence rules (use `--force` to
+override). It shares `prompt-router.mjs`'s checker, so the wizard and the router never disagree.
+
 ---
 
 ## Authority Chain

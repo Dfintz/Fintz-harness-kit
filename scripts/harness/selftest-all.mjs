@@ -31,6 +31,7 @@ const SUITES = [
   { name: "otel export", cmd: ["scripts/harness/otel-export.mjs", "--self-test"] },
   { name: "plan-review", cmd: ["scripts/harness/plan-review.mjs", "--self-test"] },
   { name: "handoff-check", cmd: ["scripts/harness/handoff-check.mjs", "--self-test"] },
+  { name: "config-wizard", cmd: ["scripts/harness/config-wizard.mjs", "--self-test"] },
   { name: "command-validation", cmd: ["scripts/harness/command-validation.mjs", "--self-test"] },
   { name: "evolve-guard", cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"] },
 ];
