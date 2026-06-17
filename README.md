@@ -47,7 +47,7 @@ kit.
 
 | Capability                                | Where                                                                                                                      | Notes                                                                                              |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Workflow stage machine**                | [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md), [`.github/instructions/`](.github/instructions/)               | Understand → Architect → Implement → Review (breadth+depth) → Feedback, with 5 architectural gates |
+| **Workflow stage machine**                | [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md), [`.github/instructions/`](.github/instructions/)               | Understand → Architect → Architect Challenge (cross-model) → Implement → Review (breadth+depth) → Feedback, with 5 architectural gates |
 | **Convergence loops**                     | [`.github/harness/loops/`](.github/harness/loops/), [`run-loop.mjs`](scripts/harness/run-loop.mjs)                         | Iterate until checks (lint/type/build/test) go green                                               |
 | **Workflow loops**                        | same                                                                                                                       | Rubric-graded passes (review-fix, feature-cycle, ci-green)                                         |
 | **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
@@ -165,15 +165,17 @@ It does not intercept editor prompts by itself; instead it gives operators a det
 stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 
 - `harness:route` classifies a prompt as trivial or non-trivial.
-- `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
+- `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Architect Challenge → Implement → Review Breadth → Review Depth → Feedback.
 - `harness:handoff:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
 - `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
 - `harness:review` runs the plan-review workflow for backward compatibility.
 
 By default the shipped environment policy separates execution and judgment:
 
-- `gpt-5.3-codex` for Implement and fix loops.
-- `claude-opus-4.8` for Understand, Architect, Review Breadth, Review Depth, and Feedback.
+- `gpt-5.3-codex` for Implement and fix loops, the **Architect Challenge** (rival model that
+  pressure-tests the Brief before code), and **Feedback** (which must differ from the reviewer it
+  adjudicates; override with an optional `models.arbiter`).
+- `claude-opus-4.8` for Understand, Architect, Review Breadth, and Review Depth.
 
 ## Autoresearch with a local model
 

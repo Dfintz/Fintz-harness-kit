@@ -31,9 +31,17 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 
 ### Model Roles In The Shipped Environment Policy
 
-- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, Review Depth, and Feedback**.
-- **GPT-5.3 Codex** owns **Implement** and targeted fix loops.
+- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, and Review Depth**.
+- **GPT-5.3 Codex** owns **Implement**, targeted fix loops, and the **Architect Challenge** — the
+  rival model that pressure-tests the Architecture Brief before any code is written.
+- **Feedback** runs on a model **distinct from the reviewer whose findings it adjudicates** (running
+  it on the Review model would make it grade its own findings). In the shipped two-model policy that
+  is GPT-5.3 Codex; set an optional `models.arbiter` to route Feedback to a third model that authored
+  neither the review nor the implementation — the fresh-eyes ideal.
 - **Cross-model review** runs Codex first, then Opus as the independent challenger.
+
+The separation is enforced, not just documented: `prompt-router.mjs` requires implementer ≠ reviewer
+and refuses to resolve Feedback (or the Architect Challenge) to the reviewer model.
 
 ---
 
@@ -82,6 +90,12 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 │ 1 ARCHITECT  │  gates 1–5 → Architecture Brief
 └──────┬───────┘
        ▼
+┌────────────────────┐   ┌──────────────────────────────────────┐
+│ 1b ARCHITECT       │◄──┤ rival model re-runs gates 1–5 on the  │
+│    CHALLENGE       │   │ Brief: AGREE/DISPUTE + APPROVED/REVISE │
+│                    │──►│ material dispute → back to Architect;  │
+└──────┬─────────────┘   │ accepted → logged as risk in Brief     │
+       ▼                 └──────────────────────────────────────┘
 ┌──────────────┐     ┌────────────────────────────────────┐
 │ 2 IMPLEMENT  │◄────┤ review-fix loop (Blocker/Major     │
 └──────┬───────┘     │ findings route back to Implement)  │
@@ -97,7 +111,7 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 └──────┬───────┘
        ▼
 ┌──────────────┐
-│ 5 FEEDBACK   │  evaluate reviewer challenges → verdicts
+│ 5 FEEDBACK   │  evaluate reviewer challenges → verdicts (model ≠ reviewer)
 └──────────────┘
 ```
 
@@ -107,6 +121,7 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 | --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
 | 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (files, decisions, constraints, Do-NOTs, assumptions) |
+| 1b  | Architect Challenge | `.github/instructions/03-ARCHITECT.md` (STEP 6) | `plan-review --lens plan` (rival model)  | Per-gate AGREE/DISPUTE + APPROVED/REVISE; disputes routed back or logged as accepted risks |
 | 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Code + completed self-review checklist                                   |
 | 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings list (severity-tagged)                                          |
 | 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate verdicts + structural findings                                      |
@@ -125,9 +140,11 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
    stages 2, 4, and 5; save it to `memory/briefs/` per that directory's protocol so a later session
    inherits the gate decisions. Breadth findings from stage 3 are pasted into stage 4 to avoid
    duplication.
-4. **Honor the gates.** Stages 1 and 4 run the five architectural gates (Domain Alignment,
-   Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation).
-   Implementations that bypass a gate decision must be flagged, not silently merged.
+4. **Honor the gates.** Stages 1, 1b, and 4 run the five architectural gates (Domain Alignment,
+   Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation): Architect
+   decides them, the Architect Challenge re-runs them against the Brief with a rival model, and
+   Review Depth re-runs them against the implemented diff. Implementations that bypass a gate
+   decision must be flagged, not silently merged.
 5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
    used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`.
 

@@ -2,7 +2,7 @@
 name: harness
 description: >-
   Project-agnostic AI agent harness for driving non-trivial work to done. Provides a workflow
-  stage machine (Understand → Architect → Implement → Review-Breadth → Review-Depth → Feedback)
+  stage machine (Understand → Architect → Architect-Challenge → Implement → Review-Breadth → Review-Depth → Feedback)
   with five architectural gates, plus three loop kinds: convergence (iterate until lint/type/build/test
   are green), workflow (rubric-graded passes like review-fix / feature-cycle / ci-green), and
   autoresearch-style experiment loops (hill-climb a numeric metric, keep-if-improved else revert).

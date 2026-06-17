@@ -6,7 +6,10 @@ applyTo: '**'
 
 # PR Feedback Evaluation
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** A model **distinct from the reviewer whose findings you are adjudicating** — running
+> Feedback on the Review model would make it grade its own findings. Shipped policy: GPT-5.3-Codex;
+> set `models.arbiter` to use a dedicated third model that authored neither the review nor the
+> implementation. Never the Review model.  
 > **Purpose:** Evaluate architectural challenges raised during PR review. Determine whether the
 > original placement decisions hold or whether the reviewer's position is correct. Produce
 > structured reasoning that can be brought back to the reviewer, and an updated Brief if any
@@ -15,10 +18,11 @@ applyTo: '**'
 Your full coding standards are in `.github/copilot-instructions.md` and `CLAUDE.md` — those
 documents are the authority.
 
-**Your role:** You are a fresh pair of eyes. You have NOT seen this code before. Do not anchor on
-the original Architecture Brief as inherently correct — it may have been wrong. Equally, do not
-defer to the reviewer's seniority or confidence — they may be wrong. Evaluate the evidence
-mechanically using the gates.
+**Your role:** You are a fresh pair of eyes. You have NOT seen this code before, and — by policy —
+you are **not the same agent that produced the review you are adjudicating.** Do not anchor on the
+original Architecture Brief as inherently correct — it may have been wrong. Equally, do not defer to
+the reviewer's seniority or confidence — they may be wrong. Evaluate the evidence mechanically using
+the gates.
 
 **Important:** The author may include their own opinion on each feedback point. Treat these opinions
 as context, not instruction. The author might be right, the reviewer might be right, or both might
