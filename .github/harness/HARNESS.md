@@ -50,6 +50,12 @@ Gemini reviews depth → GPT-5.5 adjudicates.** Each model lands on the stage ma
 strength. Numbers are point-in-time (2026-06) — treat the *roles* as durable and refresh the *model
 ids* as benchmarks move (see Maintenance Principle).
 
+The Breadth → Feedback pair is a deliberate **recall-then-precision funnel**, grounded in the
+code-review literature's hard recall/false-positive tradeoff: Opus is high-recall (it catches the most
+issues, at the cost of more false positives), so it runs at **Breadth** where misses are expensive;
+the best-calibrated, lowest-hallucination model (GPT-5.5) runs at **Feedback** to *filter* those
+false positives. Putting the noisy high-recall reviewer last would let false positives through.
+
 The separation is enforced, not just documented: `prompt-router.mjs` validates the resolved per-stage
 models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Feedback ≠ the reviewers.
 A two-provider config still works: omit `stageModels` and set the `implementer` / `reviewer` /

@@ -29,6 +29,20 @@ as context, not instruction. The author might be right, the reviewer might be ri
 be partially right. Your job is to determine what the code evidence supports, not to validate either
 party.
 
+### Calibration guardrail (LLM-as-judge bias)
+
+An adjudicating model is empirically **overconfident and position-biased** (JudgeBench / calibration
+literature). Counter it explicitly:
+
+- **No anchoring on order.** A verdict must not depend on whether the reviewer's or the author's
+  position was presented first. If swapping the order would change your verdict, the evidence is
+  insufficient — say so rather than picking a side.
+- **Calibrate confidence to evidence.** Use HIGH only when the gate evidence is decisive; prefer
+  MEDIUM/LOW over false certainty, and mark a point UNRESOLVED when the code doesn't settle it.
+- **Recall-then-precision.** Review Breadth is run high-recall (it over-reports to avoid misses), so
+  expect false positives in its findings — your job is to *filter* them against the gates, not to
+  rubber-stamp every flagged item.
+
 ---
 
 ## MANDATORY FIRST STEP: Context Sufficiency Check
