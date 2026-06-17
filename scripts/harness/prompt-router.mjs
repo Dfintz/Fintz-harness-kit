@@ -214,20 +214,35 @@ function validateModelSeparation(config) {
       `implementer and reviewer must be different models in this repo (both are ${implementer}). Update harness.config.json.`,
     );
   }
-  // Feedback adjudicates the reviewer's challenges; it must never run on the reviewer model or it
-  // would grade its own findings. The Architect Challenge must likewise differ from the Architect.
-  const feedback = arbiter ?? implementer;
-  if (mustDiffer && feedback === reviewer) {
-    fail(
-      `feedback model (${feedback}) must differ from the reviewer model (${reviewer}); set models.arbiter or change models.implementer.`,
-    );
+  return { implementer, reviewer, arbiter, feedback: arbiter ?? implementer };
+}
+
+// Per-stage independence, checked on the RESOLVED per-stage models so it holds whether routing comes
+// from role defaults or explicit stageModels overrides:
+//  - the Architect Challenge must differ from the Architect (no grading your own plan),
+//  - the reviewers must differ from the implementer,
+//  - Feedback must differ from the reviewers it adjudicates.
+function validateStageSeparation(routing, mustDiffer) {
+  if (!mustDiffer) return;
+  const pairs = [
+    ["implement", "review-breadth"],
+    ["implement", "review-depth"],
+    ["architect-challenge", "architect"],
+    ["feedback", "review-breadth"],
+    ["feedback", "review-depth"],
+  ];
+  for (const [a, b] of pairs) {
+    if (routing[a] && routing[a] === routing[b]) {
+      fail(
+        `stage "${a}" and stage "${b}" must use different models (both are ${routing[a]}); adjust routing.stageModels or the model roles.`,
+      );
+    }
   }
-  return { implementer, reviewer, arbiter, feedback };
 }
 
 function buildModelRouting(config) {
   const { implementer, reviewer, feedback } = validateModelSeparation(config);
-  return {
+  const routing = {
     understand: reviewer,
     architect: reviewer,
     // Cross-model challenge of the Brief: the rival model pressure-tests the Architect's plan before
@@ -239,8 +254,18 @@ function buildModelRouting(config) {
     feedback,
     "build-fix": implementer,
     "test-fix": implementer,
-    "cross-model-review": `${implementer} -> ${reviewer}`,
   };
+  // Optional benchmark-tuned per-stage assignment overlays the role defaults (see docs/HARNESS.md).
+  const stageModels = config.routing?.stageModels ?? {};
+  for (const [stage, model] of Object.entries(stageModels)) {
+    if (model) routing[stage] = model;
+  }
+  validateStageSeparation(
+    routing,
+    config.routing?.requireDistinctReviewerAndImplementer !== false,
+  );
+  routing["cross-model-review"] = `${routing.implement} -> ${routing["review-depth"]}`;
+  return routing;
 }
 
 function resolveTaskText(flags) {
@@ -589,11 +614,12 @@ export function renderHandoffPlan(route) {
 }
 
 function printBanner(config) {
-  const { implementer, reviewer, feedback } = validateModelSeparation(config);
+  const r = buildModelRouting(config);
   process.stdout.write(
     `[prompt-router] Harness-first mode is ON for this repo.\n` +
       `[prompt-router] Non-trivial prompts route: understand -> architect -> architect-challenge -> implement -> review-breadth -> review-depth -> feedback\n` +
-      `[prompt-router] Model roles: implement=${implementer}; reasoning/review=${reviewer}; architect-challenge=${implementer}; feedback=${feedback} (must differ from reviewer); cross-model=${implementer} -> ${reviewer}\n` +
+      `[prompt-router] Stage models: understand=${r.understand}; architect=${r.architect}; architect-challenge=${r["architect-challenge"]}; implement=${r.implement}; review-breadth=${r["review-breadth"]}; review-depth=${r["review-depth"]}; feedback=${r.feedback}\n` +
+      `[prompt-router] cross-model review: ${r["cross-model-review"]}\n` +
       `[prompt-router] Trivial prompts may start at implement only when they are clearly one-file/low-risk.\n`,
   );
 }

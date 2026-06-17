@@ -381,7 +381,11 @@ Close each round with the uniform verdict:
 ### Routing the outcome
 
 - **Material DISPUTE →** route back to the Architect to revise the Brief, then re-challenge. Rounds
-  are bounded; a flagged deadlock beats a fake approval.
+  are bounded; a flagged deadlock beats a fake approval. Because this back-edge crosses a model
+  boundary (the challenger is a different model than the Architect), pass a **compact handoff** in the
+  [`HANDOFF_SPEC.md`](../harness/HANDOFF_SPEC.md) format — what was disputed, current Brief state,
+  what to revise — so the Architect resumes without re-deriving. Validate it with
+  `npm run harness:handoff:check -- <file>`.
 - **DISPUTE acknowledged but accepted →** record it in the Brief's **Risk and Assumption Register**
   (STEP 4) as an explicit accepted risk, with the reason it is tolerated.
 - **APPROVED →** the Brief is locked; hand off to Implement.

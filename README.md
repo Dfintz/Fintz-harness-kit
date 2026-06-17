@@ -170,12 +170,18 @@ stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 - `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
 - `harness:review` runs the plan-review workflow for backward compatibility.
 
-By default the shipped environment policy separates execution and judgment:
+By default the shipped environment policy assigns each stage the model that benchmarks best for its
+dominant skill, across three providers so the enforced independence holds (`routing.stageModels`):
 
-- `gpt-5.3-codex` for Implement and fix loops, the **Architect Challenge** (rival model that
-  pressure-tests the Brief before code), and **Feedback** (which must differ from the reviewer it
-  adjudicates; override with an optional `models.arbiter`).
-- `claude-opus-4.8` for Understand, Architect, Review Breadth, and Review Depth.
+- **Gemini 3.1 Pro** — Understand, Architect Challenge, Review Depth (long context + abstract/gate reasoning).
+- **Claude Opus 4.8** — Architect and Feedback (nuanced design + fresh-eyes adjudication).
+- **Claude Fable 5** — Implement (top agentic coder; verify availability, else fall back).
+- **GPT-5.5** — Review Breadth (systematic structured review).
+
+`prompt-router.mjs` validates the resolved per-stage models: implementer ≠ reviewers, Architect
+Challenge ≠ Architect, Feedback ≠ reviewers. A two-provider config still works — omit `stageModels`
+and set the `implementer` / `reviewer` / `arbiter` roles. Model ids are point-in-time (2026-06); keep
+the roles, refresh the ids as benchmarks move.
 
 ## Autoresearch with a local model
 

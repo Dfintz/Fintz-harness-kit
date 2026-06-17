@@ -31,17 +31,28 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 
 ### Model Roles In The Shipped Environment Policy
 
-- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, and Review Depth**.
-- **GPT-5.3 Codex** owns **Implement**, targeted fix loops, and the **Architect Challenge** — the
-  rival model that pressure-tests the Architecture Brief before any code is written.
-- **Feedback** runs on a model **distinct from the reviewer whose findings it adjudicates** (running
-  it on the Review model would make it grade its own findings). In the shipped two-model policy that
-  is GPT-5.3 Codex; set an optional `models.arbiter` to route Feedback to a third model that authored
-  neither the review nor the implementation — the fresh-eyes ideal.
-- **Cross-model review** runs Codex first, then Opus as the independent challenger.
+The shipped policy assigns each stage the model that benchmarks best for its dominant skill, across
+three providers so the enforced independence constraints are easy to satisfy
+(`routing.stageModels` in [`harness.config.json`](../../harness.config.json)):
 
-The separation is enforced, not just documented: `prompt-router.mjs` requires implementer ≠ reviewer
-and refuses to resolve Feedback (or the Architect Challenge) to the reviewer model.
+| Stage | Model | Why |
+| ----- | ----- | --- |
+| Understand | **Gemini 3.1 Pro** | 1M+ context, top comprehension/retrieval |
+| Architect | **Claude Opus 4.8** | nuanced, coding-aware design judgment |
+| Architect Challenge | **Gemini 3.1 Pro** | best abstract reasoning (ARC-AGI-2) finds flaws the Architect's own frame misses; ≠ Architect |
+| Implement | **Claude Fable 5** | top agentic coder (SWE-bench 95.0% Verified) — verify availability; fall back to Opus 4.8 / a codex model |
+| Review Breadth | **GPT-5.5** | systematic structured-reasoning reviewer; ≠ implementer |
+| Review Depth | **Gemini 3.1 Pro** | deep multi-hop architectural-gate reasoning |
+| Feedback | **Claude Opus 4.8** | fresh-eyes adjudication; ≠ the reviewers |
+
+The rotation: **Opus architects → Gemini challenges → Fable implements → GPT-5.5 reviews breadth →
+Gemini reviews depth → Opus adjudicates.** Numbers are point-in-time (2026-06) — treat the *roles*
+as durable and refresh the *model ids* as benchmarks move (see Maintenance Principle).
+
+The separation is enforced, not just documented: `prompt-router.mjs` validates the resolved per-stage
+models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Feedback ≠ the reviewers.
+A two-provider config still works: omit `stageModels` and set the `implementer` / `reviewer` /
+`arbiter` roles.
 
 ---
 
@@ -147,6 +158,18 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
    decision must be flagged, not silently merged.
 5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
    used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`.
+
+### Back-edge handoffs
+
+The forward path carries state through the Brief and `next-steps.md`. The two **loop back-edges**,
+however, cross a model boundary into an agent with no shared context, so they pass a **compact
+handoff** ([`HANDOFF_SPEC.md`](./HANDOFF_SPEC.md), bounded to 220 lines / 12KB):
+
+- **Architect Challenge → Architect** — a DISPUTE returns the Brief for revision.
+- **Review → Implement** — the `review-fix` loop returns Blocker/Major findings.
+
+Validate the handoff with `npm run harness:handoff:check -- <file>` (wired into `harness:selftest`).
+Do not write a handoff on the forward linear transitions — there it is redundant ceremony.
 
 ---
 
