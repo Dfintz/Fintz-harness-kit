@@ -85,6 +85,15 @@ If a Brief is present:
 - If any assumption appears to be contradicted by the files you have been given, STOP and flag it
   before writing code
 
+### Step 5b — Re-entry from the review-fix loop
+
+When you are re-entering Implement on the **review-fix back-edge** (Review returned Blocker/Major
+findings), expect a **compact handoff** in the [`HANDOFF_SPEC.md`](../harness/HANDOFF_SPEC.md) format
+rather than the full review transcript: Task Snapshot, Current State, the findings to fix under Next
+Steps, and References to the exact files. This crosses a model boundary (the reviewer is a different
+model), so the handoff — not re-derivation — is your context. If it is missing or fails
+`npm run harness:handoff:check`, request it before editing.
+
 ---
 
 ## MANDATORY SECOND STEP: Pre-Implementation Discovery

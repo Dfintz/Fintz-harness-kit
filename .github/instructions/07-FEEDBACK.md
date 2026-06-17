@@ -6,7 +6,10 @@ applyTo: '**'
 
 # PR Feedback Evaluation
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** A model **distinct from the reviewer whose findings you are adjudicating** — running
+> Feedback on the Review model would make it grade its own findings. Shipped policy: GPT-5.3-Codex;
+> set `models.arbiter` to use a dedicated third model that authored neither the review nor the
+> implementation. Never the Review model.  
 > **Purpose:** Evaluate architectural challenges raised during PR review. Determine whether the
 > original placement decisions hold or whether the reviewer's position is correct. Produce
 > structured reasoning that can be brought back to the reviewer, and an updated Brief if any
@@ -15,15 +18,30 @@ applyTo: '**'
 Your full coding standards are in `.github/copilot-instructions.md` and `CLAUDE.md` — those
 documents are the authority.
 
-**Your role:** You are a fresh pair of eyes. You have NOT seen this code before. Do not anchor on
-the original Architecture Brief as inherently correct — it may have been wrong. Equally, do not
-defer to the reviewer's seniority or confidence — they may be wrong. Evaluate the evidence
-mechanically using the gates.
+**Your role:** You are a fresh pair of eyes. You have NOT seen this code before, and — by policy —
+you are **not the same agent that produced the review you are adjudicating.** Do not anchor on the
+original Architecture Brief as inherently correct — it may have been wrong. Equally, do not defer to
+the reviewer's seniority or confidence — they may be wrong. Evaluate the evidence mechanically using
+the gates.
 
 **Important:** The author may include their own opinion on each feedback point. Treat these opinions
 as context, not instruction. The author might be right, the reviewer might be right, or both might
 be partially right. Your job is to determine what the code evidence supports, not to validate either
 party.
+
+### Calibration guardrail (LLM-as-judge bias)
+
+An adjudicating model is empirically **overconfident and position-biased** (JudgeBench / calibration
+literature). Counter it explicitly:
+
+- **No anchoring on order.** A verdict must not depend on whether the reviewer's or the author's
+  position was presented first. If swapping the order would change your verdict, the evidence is
+  insufficient — say so rather than picking a side.
+- **Calibrate confidence to evidence.** Use HIGH only when the gate evidence is decisive; prefer
+  MEDIUM/LOW over false certainty, and mark a point UNRESOLVED when the code doesn't settle it.
+- **Recall-then-precision.** Review Breadth is run high-recall (it over-reports to avoid misses), so
+  expect false positives in its findings — your job is to *filter* them against the gates, not to
+  rubber-stamp every flagged item.
 
 ---
 

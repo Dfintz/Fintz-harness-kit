@@ -21,9 +21,10 @@
 
 The control layer is everything that constrains the agent toward "done" and "safe."
 
-- **Stage machine:** Understand → Architect → Implement → Review (breadth+depth) → Feedback.
-- **Five architectural gates** (at Architect + Review-Depth): Domain Alignment, Generality, Data
-  Ownership, Layer Boundaries, Reuse (+ 4b Multi-Tenant Isolation where applicable).
+- **Stage machine:** Understand → Architect → Architect Challenge (cross-model) → Implement →
+  Review (breadth+depth) → Feedback. Feedback runs on a model distinct from the reviewer it adjudicates.
+- **Five architectural gates** (at Architect + Architect Challenge + Review-Depth): Domain Alignment,
+  Generality, Data Ownership, Layer Boundaries, Reuse (+ 4b Multi-Tenant Isolation where applicable).
 - **Loop termination:** convergence (checks green), workflow (rubric pass), experiment
   (keep-if-improved else revert), each bounded by `maxIterations` / `noImprovementStop`.
 - **Fitness function:** the deterministic eval suite (`scripts/harness/eval/`) — code, not model

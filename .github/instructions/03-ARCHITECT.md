@@ -343,6 +343,55 @@ committed Brief. The brief filename should map to the branch slug (for example,
 `-6nrbto` are tolerated). Flip the status to `implemented` when the feature ships; never delete a
 Brief — it is the record of _why_ the code is shaped the way it is.
 
+---
+
+## STEP 6: Independent Architecture Challenge (cross-model sub-stage)
+
+The Brief is **not final when you finish writing it.** Before Implement begins, a second,
+rival-provider model challenges it — the architectural analogue of cross-model review, run *before*
+any code exists, where a placement mistake is cheapest to fix. The model that authored the Brief does
+not grade its own plan; a different model holds it to the same five gates.
+
+This is stage **1b** in the harness stage machine (see `.github/harness/HARNESS.md`). It is executed
+by the existing `plan-review` loop with the **plan** lens:
+
+```bash
+node scripts/harness/plan-review.mjs --lens plan \
+  --plan .github/harness/memory/briefs/<feature-kebab-case>.md \
+  --reviewer "<rival-model cmd>"
+# or: npm run harness:plan-review -- --lens plan --plan <brief> --reviewer "<cmd>"
+```
+
+The challenger is **read-only**: it cannot edit the Brief; if it writes, the change is reverted and
+the round is flagged.
+
+### What the challenger produces
+
+Re-run Gates 1–5 (and Gate 4b when applicable) against the Brief as a hostile, independent reviewer.
+For each gate, emit one verdict with concrete evidence, quoting the part of the Brief you object to:
+
+> **Gate [N] — [name]: AGREE / DISPUTE**  
+> Evidence: [specific reference to the Brief or the codebase]
+
+Close each round with the uniform verdict:
+
+- `VERDICT: APPROVED` — you would stake your name on this plan; no material concern remains.
+- `VERDICT: REVISE` — list exactly what still blocks it.
+
+### Routing the outcome
+
+- **Material DISPUTE →** route back to the Architect to revise the Brief, then re-challenge. Rounds
+  are bounded; a flagged deadlock beats a fake approval. Because this back-edge crosses a model
+  boundary (the challenger is a different model than the Architect), pass a **compact handoff** in the
+  [`HANDOFF_SPEC.md`](../harness/HANDOFF_SPEC.md) format — what was disputed, current Brief state,
+  what to revise — so the Architect resumes without re-deriving. Validate it with
+  `npm run harness:handoff:check -- <file>`.
+- **DISPUTE acknowledged but accepted →** record it in the Brief's **Risk and Assumption Register**
+  (STEP 4) as an explicit accepted risk, with the reason it is tolerated.
+- **APPROVED →** the Brief is locked; hand off to Implement.
+
+**Do not let Implement start against a Brief that still has unresolved material disputes.**
+
 ## Task
 
 <task>
