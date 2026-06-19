@@ -35,6 +35,8 @@ const SUITES = [
   { name: "command-validation", cmd: ["scripts/harness/command-validation.mjs", "--self-test"] },
   { name: "skill-curate", cmd: ["scripts/harness/skill-curate.mjs", "--self-test"] },
   { name: "evolve-guard", cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"] },
+  { name: "simplify-debt", cmd: ["scripts/harness/simplify-debt.mjs", "--self-test"] },
+  { name: "harness-help", cmd: ["scripts/harness/harness-help.mjs", "--self-test"] },
 ];
 
 // Walk every .json under .github/harness and confirm it parses — a malformed loop/pack/config is a
