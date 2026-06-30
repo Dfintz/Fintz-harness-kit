@@ -242,6 +242,24 @@ export function stageSeparationErrors(routing) {
   return errors;
 }
 
+// Independent security/QA gate (SAW "never self-review"): the stage owning the security + QA gate
+// must be independent of the build side — the implementer AND the implementer-aligned Architect
+// Challenge. Non-collapsible even if requireDistinctReviewerAndImplementer is relaxed. Opt out via
+// routing.independentSecurityReview.enabled=false.
+export function securityGateSeparationErrors(routing, config) {
+  const sec = config?.routing?.independentSecurityReview;
+  if (sec?.enabled === false) return [];
+  const gateStage = sec?.gateStage ?? "review-depth";
+  const gate = routing[gateStage];
+  const errors = [];
+  if (gate && routing.implement && gate === routing.implement) {
+    errors.push(
+      `the independent security/QA gate "${gateStage}" must not be owned by the implementer model (both are ${gate}); a self-reviewed security gate defeats its purpose`,
+    );
+  }
+  return errors;
+}
+
 // Checked on the RESOLVED per-stage models so it holds whether routing comes from role defaults or
 // explicit stageModels overrides.
 function validateStageSeparation(routing, mustDiffer) {
@@ -275,7 +293,13 @@ function buildModelRouting(config) {
     routing,
     config.routing?.requireDistinctReviewerAndImplementer !== false,
   );
-  routing["cross-model-review"] = `${routing.implement} -> ${routing["review-depth"]}`;
+  for (const e of securityGateSeparationErrors(routing, config)) {
+    fail(
+      `${e}. Update harness.config.json or set routing.independentSecurityReview.enabled=false.`,
+    );
+  }
+  routing["cross-model-review"] =
+    `${routing.implement} -> ${routing["review-depth"]}`;
   return routing;
 }
 
@@ -453,7 +477,10 @@ function renderStagePrompt(pack, stageFile) {
   }
   // Implement and the Architect Challenge both work off the Brief, even when an upstream stage sits
   // between them and Architect — list it explicitly so it is never dropped.
-  if (stageFile.stage === "implement" || stageFile.stage === "architect-challenge") {
+  if (
+    stageFile.stage === "implement" ||
+    stageFile.stage === "architect-challenge"
+  ) {
     requiredInputs.push("architecture-brief.md");
   }
   if (stageFile.stage === "review-depth") {

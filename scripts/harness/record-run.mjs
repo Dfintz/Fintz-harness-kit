@@ -25,6 +25,7 @@ import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { notifyTransition } from "./notify.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const loopsDir = join(repoRoot, ".github", "harness", "loops");
@@ -330,6 +331,7 @@ const startedAt =
 const record = {
   loop: loopName,
   kind: "workflow",
+  status: "done",
   startedAt,
   finishedAt: nowIso,
   baseline: gitBaseline(),
@@ -347,6 +349,18 @@ try {
   writeFileSync(outFile, JSON.stringify(record, null, 2));
 } catch (err) {
   fail(`could not write run journal: ${err.message}`);
+}
+
+// Best-effort transition notification (Proposal A) — never let a sink failure change the exit.
+try {
+  notifyTransition({
+    loop: loopName,
+    kind: "workflow",
+    state: spec.terminalState,
+    journal: outFile,
+  });
+} catch {
+  /* notification is best-effort */
 }
 
 const passed = iterations.at(-1).rubric.filter((r) => r.pass).length;

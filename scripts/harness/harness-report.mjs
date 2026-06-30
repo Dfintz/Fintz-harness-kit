@@ -101,6 +101,39 @@ function stateOf(journal) {
     : "incomplete";
 }
 
+const LIVE_HEARTBEAT_STALE_MS = 15 * 60 * 1000;
+
+// Liveness for a run that journaled status:"running" at start. A pid can be OS-reused, so combine
+// process existence with heartbeat freshness before declaring a run dead.
+function isPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return !!err && err.code === "EPERM";
+  }
+}
+
+// Live lifecycle (Proposal A) layered on the terminal states, integrating the existing approval
+// markers for "waiting". Legacy journals without a status field read exactly as before (stateOf).
+function liveStateOf(journal, now = Date.now()) {
+  const approval = approvalOf(journal);
+  if (approval.required && approval.status === "pending") {
+    return "waiting";
+  }
+  if (journal.status === "running") {
+    if (isPidAlive(journal.pid)) return "running";
+    if (Number.isInteger(journal.pid) && journal.pid > 0) return "error";
+    const beatAt = Date.parse(journal.heartbeatAt ?? journal.startedAt ?? "");
+    const fresh = Number.isFinite(beatAt)
+      ? now - beatAt <= LIVE_HEARTBEAT_STALE_MS
+      : false;
+    return fresh ? "running" : "error";
+  }
+  return stateOf(journal);
+}
+
 function firstLine(text) {
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();
@@ -522,6 +555,26 @@ function computeMetrics(journals) {
       String(b.startedAt ?? "").localeCompare(String(a.startedAt ?? "")),
     );
 
+  const activeRuns = journals
+    .map((j) => ({
+      loop: j.loop,
+      kind: kindOf(j),
+      liveState: liveStateOf(j),
+      startedAt: j.startedAt ?? null,
+      heartbeatAt: j.heartbeatAt ?? null,
+      pid: j.pid ?? null,
+      file: j.file ?? null,
+    }))
+    .filter(
+      (r) =>
+        r.liveState === "running" ||
+        r.liveState === "waiting" ||
+        r.liveState === "error",
+    )
+    .sort((a, b) =>
+      String(b.startedAt ?? "").localeCompare(String(a.startedAt ?? "")),
+    );
+
   return {
     overall,
     loops,
@@ -529,6 +582,7 @@ function computeMetrics(journals) {
     rubric,
     experiments,
     recentRuns,
+    activeRuns,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -564,6 +618,16 @@ function esc(value) {
 }
 
 // ---------- terminal summary ----------
+
+function printActiveRuns(activeRuns) {
+  if (!activeRuns?.length) return;
+  console.log("\n=== Active runs (live) ===");
+  for (const r of activeRuns.slice(0, 12)) {
+    console.log(
+      `  ${String(r.loop).padEnd(20)} ${String(r.kind ?? "").padEnd(11)} ${String(r.liveState).padEnd(8)} hb=${fmtDate(r.heartbeatAt)}`,
+    );
+  }
+}
 
 function printSummary(metrics) {
   const { overall, loops, checks, rubric } = metrics;
@@ -811,6 +875,31 @@ function renderPendingApprovalsSection(recentRuns) {
     </section>`;
 }
 
+function renderActiveRunsSection(activeRuns) {
+  if (!activeRuns?.length) return "";
+  const rows = activeRuns
+    .map(
+      (r) => `<tr>
+        <td class="mono">${esc(r.loop)}</td>
+        <td class="muted">${esc(r.kind)}</td>
+        <td>${stateBadge(r.liveState)}</td>
+        <td class="muted">${esc(fmtDate(r.startedAt))}</td>
+        <td class="muted">${esc(fmtDate(r.heartbeatAt))}</td>
+        <td class="num mono muted">${esc(r.pid ?? "—")}</td>
+      </tr>`,
+    )
+    .join("");
+  return `
+    <h2 class="section-title">Active runs</h2>
+    <section class="panel">
+      <h2>Active runs <span class="subtitle">(live — running / waiting / error from heartbeat journals)</span></h2>
+      <table>
+        <thead><tr><th>Loop</th><th>Kind</th><th>State</th><th>Started</th><th>Heartbeat</th><th class="num">PID</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+}
+
 function renderPipelineSection(pipeline) {
   const scriptRows = pipeline.integrationScripts
     .map(
@@ -880,6 +969,7 @@ function renderHtml(metrics) {
     rubric,
     experiments,
     recentRuns,
+    activeRuns,
     memory,
     evals,
     pipeline,
@@ -1073,6 +1163,9 @@ function renderHtml(metrics) {
   .badge-stuck { color: var(--stuck); background: var(--stuck-bg); }
   .badge-blocked { color: var(--blocked); background: var(--blocked-bg); }
   .badge-incomplete { color: var(--incomplete); background: var(--incomplete-bg); }
+  .badge-running { color: var(--accent); background: var(--accent-soft); }
+  .badge-waiting { color: var(--blocked); background: var(--blocked-bg); }
+  .badge-error { color: var(--stuck); background: var(--stuck-bg); }
   .kind { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 5px; font-weight: 600; }
   .kind-convergence { color: var(--accent); background: var(--accent-soft); }
   .kind-workflow { color: var(--blocked); background: var(--blocked-bg); }
@@ -1098,6 +1191,7 @@ function renderHtml(metrics) {
     </header>
     ${renderMemorySection(memory)}
     ${renderPendingApprovalsSection(recentRuns)}
+    ${renderActiveRunsSection(activeRuns)}
     ${renderPipelineSection(pipeline)}
     ${renderEvalsSection(evals)}
     <h2 class="section-title">Loop runs</h2>
@@ -1145,6 +1239,7 @@ if (args.json) {
   process.exit(0);
 }
 
+printActiveRuns(metrics.activeRuns);
 printSummary(metrics);
 printExperiments(metrics.experiments);
 printMemory(metrics.memory);
