@@ -71,6 +71,10 @@ const SUITES = [
     cmd: ["scripts/harness/skill-curate.mjs", "--self-test"],
   },
   {
+    name: "memory-curate",
+    cmd: ["scripts/harness/memory-curate.mjs", "--self-test"],
+  },
+  {
     name: "evolve-guard",
     cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"],
   },
