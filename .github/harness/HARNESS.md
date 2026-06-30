@@ -57,9 +57,11 @@ the best-calibrated, lowest-hallucination model (GPT-5.5) runs at **Feedback** t
 false positives. Putting the noisy high-recall reviewer last would let false positives through.
 
 The separation is enforced, not just documented: `prompt-router.mjs` validates the resolved per-stage
-models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Feedback ≠ the reviewers.
-A two-provider config still works: omit `stageModels` and set the `implementer` / `reviewer` /
-`arbiter` roles.
+models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Feedback ≠ the reviewers. An
+**independent security/QA gate** also holds: the stage that owns the security/QA review (default
+`review-depth`) must never be the implementer's model (`routing.independentSecurityReview`; set
+`enabled: false` to opt out). A two-provider config still works: omit `stageModels` and set the
+`implementer` / `reviewer` / `arbiter` roles.
 
 #### Why four models, not three
 
@@ -298,9 +300,15 @@ protocol (see `LOOPS.md` § Native Execution). New loops are created by copying
 `loops/_template.json` — see `LOOPS.md` § Creating a Loop.
 
 Every run leaves a JSON journal in `.github/harness/runs/` (gitignored): convergence loops via
-`run-loop.mjs`, workflow loops/stages via `scripts/harness/record-run.mjs`. Aggregate them into a
-dashboard with `npm run harness:report` — per-loop convergence rates, slowest checks, and the rubric
-pass-rates that make Understand/Architect/Review activity measurable.
+`run-loop.mjs`, workflow loops/stages via `scripts/harness/record-run.mjs`. Runners now also write a
+**live start-of-run journal** (`status:"running"`, `pid`, `heartbeatAt`) and refresh the heartbeat
+each iteration, so the dashboard shows what is **running / waiting / error right now**, not only
+finished runs. Aggregate them with `npm run harness:report` — an **Active runs** panel plus per-loop
+convergence rates, slowest checks, and the rubric pass-rates that make Understand/Architect/Review
+activity measurable. A run still marked `running` whose pid is gone is reclassified `error`
+(crashed); `waiting` reuses the journal's approval markers. Fire a provider-agnostic notification on
+any transition via `harness.config.json` → `notify` (disabled by default; see
+[`LOOPS.md` § Live run-state & notifications](./LOOPS.md#live-run-state--notifications)).
 
 ---
 
@@ -325,6 +333,10 @@ Run with:
 ### Phase 4 — Observability
 
 - Journals: `.github/harness/runs/*.jsonl`
+- Live run-state: runners journal `status` (running/waiting/error) + `pid` + `heartbeatAt`;
+  `harness-report` renders an **Active runs** panel (`liveStateOf`)
+- Notifications: `scripts/harness/notify.mjs` fires a provider-agnostic, opt-in command on state
+  transitions (`harness.config.json` → `notify`)
 - Dashboard: `npm run harness:report`
 - OTLP/JSON export: `npm run harness:otel`
 

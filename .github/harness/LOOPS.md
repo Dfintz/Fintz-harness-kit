@@ -54,7 +54,8 @@ Every loop is a JSON file in `.github/harness/loops/` with this shape:
   [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Run with
   `scripts/harness/run-experiment.mjs` (use `--measure-only` to record just the baseline). Ends
   `converged` (net improvement), `exhausted` (budget spent, no gain), or `stuck` (no improvement for
-  `noImprovementStop` iterations).
+  `noImprovementStop` iterations). Fan several candidate edits out across parallel git worktrees
+  (beam search) with `run-experiment-parallel.mjs` — see § Parallel & beam experiments.
 
 ### Rubrics (workflow loops)
 
@@ -366,6 +367,53 @@ node scripts/harness/experiment-loop.mjs --experiments lint-debt-experiment \
 
 It never edits code itself — it only schedules the runner, which owns the measure → apply →
 keep-if-improved → journal protocol.
+
+#### Parallel & beam experiments
+
+`run-experiment.mjs` hill-climbs one candidate at a time on a single working tree.
+`scripts/harness/run-experiment-parallel.mjs` runs several candidates **concurrently, each in its
+own git worktree** (stronger isolation than the in-memory snapshot — it cannot touch your
+uncommitted work), then applies only the winner's declared `target` back to the main tree:
+
+```bash
+# Beam search: K candidate edits per step in K worktrees, keep the single best:
+node scripts/harness/run-experiment-parallel.mjs lint-debt-experiment --candidates 4 \
+  --agent "node scripts/harness/ollama-apply-agent.mjs --model qwen2.5-coder:14b"
+
+# Fan-out: several different experiments at once, apply each that improved:
+node scripts/harness/run-experiment-parallel.mjs --fanout lint-debt-experiment,other-exp
+```
+
+Each candidate invokes the **worktree's own** copy of `run-experiment.mjs` (so the metric command
+measures the worktree, not the main tree), reads its journal, and the orchestrator keeps the best by
+metric direction. Worktrees live under the gitignored `.github/harness/worktrees/` and are removed
+on completion (`--keep-worktrees` to inspect; `node scripts/harness/worktree.mjs prune` cleans
+orphans). The single-experiment engine is reused unchanged — only the orchestration is new. npm:
+`harness:experiment:parallel`.
+
+#### Live run-state & notifications
+
+Runners write the journal **at start** (not only at finish) with `status:"running"`, the process
+`pid`, and a `heartbeatAt` they refresh each iteration. `harness-report`'s `liveStateOf` then derives
+a live lifecycle on top of the terminal states: **running** (a live pid — slow iterations stay
+running, never falsely flagged), **waiting** (a pending approval marker), and **error** (still
+`status:"running"` but the pid is gone — crashed before finishing). Legacy journals without `status`
+read exactly as before; the dashboard shows these in an **Active runs** panel. Fire a notification on
+any transition by configuring `harness.config.json` → `notify` (disabled by default):
+
+```jsonc
+"notify": {
+  "enabled": true,
+  "on": ["converged", "stuck", "exhausted", "waiting", "error"],
+  "command": ["curl", "-s", "-X", "POST", "{webhook}", "-d", "{payload}"],
+  "webhookEnv": "SLACK_WEBHOOK"
+}
+```
+
+`scripts/harness/notify.mjs` spawns the command with `shell:false`; the template is split to argv
+first, then `{loop} {state} {kind} {metric} {journal} {payload} {webhook}` tokens and `$VAR`/`${VAR}`
+are substituted into argv elements (so an untrusted value can never inject a new argument). Examples:
+desktop `notify-send`, a Slack/Discord webhook `curl`, or `echo` to a log. npm: `harness:notify`.
 
 #### Meta-evolution: improving the harness itself (`harness-evolve`)
 
