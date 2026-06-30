@@ -18,25 +18,76 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const CHECK_DIR = "scripts/harness/domain-checks";
-const domainCheckTests = ["required-sections", "citation-integrity", "defined-terms", "figure-reconciliation", "claim-substantiation", "checklist-coverage"]
-  .map((name) => ({ name: `domain-check: ${name}`, cmd: [`${CHECK_DIR}/${name}.mjs`, "--self-test"] }));
+const domainCheckTests = [
+  "required-sections",
+  "citation-integrity",
+  "defined-terms",
+  "figure-reconciliation",
+  "claim-substantiation",
+  "checklist-coverage",
+].map((name) => ({
+  name: `domain-check: ${name}`,
+  cmd: [`${CHECK_DIR}/${name}.mjs`, "--self-test"],
+}));
 
 const SUITES = [
   ...domainCheckTests,
-  { name: "domain-pack", cmd: ["scripts/harness/domain-pack.mjs", "--self-test"] },
+  {
+    name: "domain-pack",
+    cmd: ["scripts/harness/domain-pack.mjs", "--self-test"],
+  },
   { name: "doctor", cmd: ["scripts/harness/doctor.mjs", "--self-test"] },
-  { name: "eval suite", cmd: ["scripts/harness/eval/run-eval.mjs", "--self-test"] },
+  {
+    name: "eval suite",
+    cmd: ["scripts/harness/eval/run-eval.mjs", "--self-test"],
+  },
   { name: "git-guard", cmd: ["scripts/harness/git-guard.mjs", "--self-test"] },
-  { name: "trace grader", cmd: ["scripts/harness/grade-trace.mjs", "--self-test"] },
-  { name: "otel export", cmd: ["scripts/harness/otel-export.mjs", "--self-test"] },
-  { name: "plan-review", cmd: ["scripts/harness/plan-review.mjs", "--self-test"] },
-  { name: "handoff-check", cmd: ["scripts/harness/handoff-check.mjs", "--self-test"] },
-  { name: "config-wizard", cmd: ["scripts/harness/config-wizard.mjs", "--self-test"] },
-  { name: "command-validation", cmd: ["scripts/harness/command-validation.mjs", "--self-test"] },
-  { name: "skill-curate", cmd: ["scripts/harness/skill-curate.mjs", "--self-test"] },
-  { name: "evolve-guard", cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"] },
-  { name: "simplify-debt", cmd: ["scripts/harness/simplify-debt.mjs", "--self-test"] },
-  { name: "harness-help", cmd: ["scripts/harness/harness-help.mjs", "--self-test"] },
+  {
+    name: "trace grader",
+    cmd: ["scripts/harness/grade-trace.mjs", "--self-test"],
+  },
+  {
+    name: "otel export",
+    cmd: ["scripts/harness/otel-export.mjs", "--self-test"],
+  },
+  {
+    name: "plan-review",
+    cmd: ["scripts/harness/plan-review.mjs", "--self-test"],
+  },
+  {
+    name: "handoff-check",
+    cmd: ["scripts/harness/handoff-check.mjs", "--self-test"],
+  },
+  {
+    name: "config-wizard",
+    cmd: ["scripts/harness/config-wizard.mjs", "--self-test"],
+  },
+  {
+    name: "command-validation",
+    cmd: ["scripts/harness/command-validation.mjs", "--self-test"],
+  },
+  {
+    name: "skill-curate",
+    cmd: ["scripts/harness/skill-curate.mjs", "--self-test"],
+  },
+  {
+    name: "evolve-guard",
+    cmd: ["scripts/harness/evolve-guard.mjs", "--self-test"],
+  },
+  {
+    name: "simplify-debt",
+    cmd: ["scripts/harness/simplify-debt.mjs", "--self-test"],
+  },
+  {
+    name: "harness-help",
+    cmd: ["scripts/harness/harness-help.mjs", "--self-test"],
+  },
+  { name: "notify", cmd: ["scripts/harness/notify.mjs", "--self-test"] },
+  { name: "worktree", cmd: ["scripts/harness/worktree.mjs", "--self-test"] },
+  {
+    name: "experiment-parallel",
+    cmd: ["scripts/harness/run-experiment-parallel.mjs", "--self-test"],
+  },
 ];
 
 // Walk every .json under .github/harness and confirm it parses — a malformed loop/pack/config is a
@@ -54,39 +105,78 @@ function jsonFiles(dir, acc = []) {
 
 function runJsonSweep() {
   const files = jsonFiles(join(repoRoot, ".github", "harness")).concat(
-    ["harness.config.json", ".mcp.json", ".cursor/mcp.json", ".vscode/mcp.json", "package.json"]
+    [
+      "harness.config.json",
+      ".mcp.json",
+      ".cursor/mcp.json",
+      ".vscode/mcp.json",
+      "package.json",
+    ]
       .map((f) => join(repoRoot, f))
       .filter((f) => existsSync(f)),
   );
   const bad = [];
   for (const f of files) {
-    try { JSON.parse(readFileSync(f, "utf8")); } catch (e) { bad.push(`${relative(repoRoot, f)}: ${e.message}`); }
+    try {
+      JSON.parse(readFileSync(f, "utf8"));
+    } catch (e) {
+      bad.push(`${relative(repoRoot, f)}: ${e.message}`);
+    }
   }
-  return { name: `json-validity (${files.length} files)`, pass: bad.length === 0, detail: bad.join("; ") };
+  return {
+    name: `json-validity (${files.length} files)`,
+    pass: bad.length === 0,
+    detail: bad.join("; "),
+  };
 }
 
 const results = [];
 for (const suite of SUITES) {
   if (!existsSync(join(repoRoot, suite.cmd[0]))) {
-    results.push({ name: suite.name, status: "skip", detail: "script not present" });
+    results.push({
+      name: suite.name,
+      status: "skip",
+      detail: "script not present",
+    });
     continue;
   }
-  const r = spawnSync("node", suite.cmd, { cwd: repoRoot, encoding: "utf8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
+  const r = spawnSync("node", suite.cmd, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 120000,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   const pass = r.status === 0;
-  results.push({ name: suite.name, status: pass ? "pass" : "fail", detail: pass ? "" : `exit ${r.status}\n${(r.stdout || "") + (r.stderr || "")}`.trim() });
+  results.push({
+    name: suite.name,
+    status: pass ? "pass" : "fail",
+    detail: pass
+      ? ""
+      : `exit ${r.status}\n${(r.stdout || "") + (r.stderr || "")}`.trim(),
+  });
 }
 const sweep = runJsonSweep();
-results.push({ name: sweep.name, status: sweep.pass ? "pass" : "fail", detail: sweep.detail });
+results.push({
+  name: sweep.name,
+  status: sweep.pass ? "pass" : "fail",
+  detail: sweep.detail,
+});
 
 const failed = results.filter((r) => r.status === "fail");
 if (process.argv.includes("--json")) {
-  process.stdout.write(`${JSON.stringify({ ok: failed.length === 0, results }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ ok: failed.length === 0, results }, null, 2)}\n`,
+  );
 } else {
   process.stdout.write(`\n[selftest-all] ${results.length} suite(s)\n`);
   for (const r of results) {
     const mark = r.status === "pass" ? "✓" : r.status === "skip" ? "·" : "✗";
-    process.stdout.write(`  ${mark} ${r.name}${r.status === "fail" ? `\n      ${r.detail.split("\n").join("\n      ")}` : ""}\n`);
+    process.stdout.write(
+      `  ${mark} ${r.name}${r.status === "fail" ? `\n      ${r.detail.split("\n").join("\n      ")}` : ""}\n`,
+    );
   }
-  process.stdout.write(`[selftest-all] ${failed.length === 0 ? "ALL GREEN" : `${failed.length} FAILED`}\n`);
+  process.stdout.write(
+    `[selftest-all] ${failed.length === 0 ? "ALL GREEN" : `${failed.length} FAILED`}\n`,
+  );
 }
 process.exit(failed.length === 0 ? 0 : 1);
