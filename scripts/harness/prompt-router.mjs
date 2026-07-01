@@ -152,6 +152,8 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--json" || arg === "--stdin" || arg === "--help") {
       flags[arg.slice(2)] = true;
+    } else if (arg === "--dry-run" || arg === "--safe") {
+      flags.dryRun = true;
     } else if (arg === "--out") {
       flags.out = argv[++i];
     } else if (arg === "--profile") {
@@ -682,6 +684,7 @@ function showHelp() {
           'node scripts/harness/prompt-router.mjs handoff --profile feature --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs handoff --profile review --task "review auth audit"',
           'node scripts/harness/prompt-router.mjs prompt-pack --profile feature --task "ship auth audit"',
+          'node scripts/harness/prompt-router.mjs handoff --profile feature --task "ship auth audit" --dry-run',
           'echo "typo in README" | node scripts/harness/prompt-router.mjs route --stdin --json',
         ],
         note: "Deterministic repo policy helper. It does not intercept editor prompts by itself; use it via session hooks and repo instructions.",
@@ -690,6 +693,35 @@ function showHelp() {
       2,
     )}\n`,
   );
+}
+
+function renderDryRunCommands(config) {
+  const commands =
+    config.commands && typeof config.commands === "object"
+      ? config.commands
+      : {};
+  const entries = Object.entries(commands).filter(
+    ([, cmd]) => typeof cmd === "string" && cmd,
+  );
+  const header =
+    "[prompt-router] DRY RUN — no models invoked, nothing written.\n";
+  if (!entries.length) return header;
+  const lines = entries.map(([name, cmd]) => `[prompt-router]   ${name}: ${cmd}`);
+  return `${header}[prompt-router] validation commands that gate this work:\n${lines.join("\n")}\n`;
+}
+
+function renderPromptPackDryRun(pack) {
+  const lines = [
+    `[prompt-router] DRY RUN — prompt pack NOT written.`,
+    `[prompt-router] would create: ${pack.packDir}`,
+    `[prompt-router] stages: ${pack.route.stages.join(" -> ")}`,
+  ];
+  for (const stageFile of pack.stageFiles) {
+    lines.push(
+      `[prompt-router]   ${stageFile.promptFile} -> ${stageFile.outputFile} (${stageFile.model})`,
+    );
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 async function main() {
@@ -727,6 +759,12 @@ async function main() {
 
   const route = planTask(task, config, { profile: flags.profile });
   if (command === "prompt-pack") {
+    if (flags.dryRun) {
+      process.stdout.write(
+        renderPromptPackDryRun(buildPromptPack(route, flags.out)),
+      );
+      return;
+    }
     const pack = writePromptPack(route, flags.out);
     if (flags.json) {
       process.stdout.write(
@@ -768,6 +806,9 @@ async function main() {
       ? renderHandoffPlan(route)
       : renderCompactRoute(route),
   );
+  if (flags.dryRun) {
+    process.stdout.write(renderDryRunCommands(config));
+  }
 }
 
 if (
