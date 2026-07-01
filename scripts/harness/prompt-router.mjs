@@ -246,7 +246,7 @@ export function stageSeparationErrors(routing) {
 // must be independent of the build side — the implementer AND the implementer-aligned Architect
 // Challenge. Non-collapsible even if requireDistinctReviewerAndImplementer is relaxed. Opt out via
 // routing.independentSecurityReview.enabled=false.
-export function securityGateSeparationErrors(routing, config) {
+export function securityGateSeparationErrors(routing, config, options = {}) {
   const sec = config?.routing?.independentSecurityReview;
   if (sec?.enabled === false) return [];
   const gateStage = sec?.gateStage ?? "review-depth";
@@ -261,7 +261,7 @@ export function securityGateSeparationErrors(routing, config) {
   }
   // Under degradation the gate's candidate list (primary + fallbacks) must stay disjoint from the
   // implementer's — otherwise a demoted run could collapse the security gate onto the implementer.
-  const stageModels = getNormalizedStageModels(config);
+  const stageModels = getNormalizedStageModels(config, options);
   const implementCandidates = stageCandidates(stageModels, "implement");
   const overlap = stageCandidates(stageModels, gateStage).find((model) =>
     implementCandidates.includes(model),
@@ -312,8 +312,15 @@ function normalizeStageModelEntry(entry) {
   return null;
 }
 
-function getNormalizedStageModels(config) {
-  const raw = config.routing?.stageModels ?? {};
+function getNormalizedStageModels(config, options = {}) {
+  const modelSet = options.modelSet ?? null;
+  const stageModelSets = config.routing?.stageModelSets ?? {};
+  const raw =
+    modelSet &&
+    stageModelSets[modelSet] &&
+    typeof stageModelSets[modelSet] === "object"
+      ? stageModelSets[modelSet]
+      : (config.routing?.stageModels ?? {});
   return Object.fromEntries(
     Object.entries(raw)
       .map(([stage, entry]) => [stage, normalizeStageModelEntry(entry)])
@@ -331,8 +338,8 @@ function stageCandidates(stageModels, stage) {
   ];
 }
 
-function buildStageModelFallbacks(config, stages) {
-  const stageModels = getNormalizedStageModels(config);
+function buildStageModelFallbacks(config, stages, options = {}) {
+  const stageModels = getNormalizedStageModels(config, options);
   return Object.fromEntries(
     stages
       .map((stage) => [stage, stageModels[stage]?.fallbacks ?? []])
@@ -345,7 +352,7 @@ function formatFallbacks(fallbacks) {
   return ` (fallback: ${fallbacks.join(" -> ")})`;
 }
 
-function buildModelRouting(config) {
+function buildModelRouting(config, options = {}) {
   const { implementer, reviewer, feedback } = validateModelSeparation(config);
   const routing = {
     understand: reviewer,
@@ -362,7 +369,7 @@ function buildModelRouting(config) {
   };
   // Optional benchmark-tuned per-stage assignment overlays the role defaults (see docs/HARNESS.md).
   // Entries may be a bare model id or { model, fallbacks }; normalize so both resolve to the model.
-  const stageModels = getNormalizedStageModels(config);
+  const stageModels = getNormalizedStageModels(config, options);
   for (const [stage, entry] of Object.entries(stageModels)) {
     if (entry?.model) routing[stage] = entry.model;
   }
@@ -370,7 +377,7 @@ function buildModelRouting(config) {
     routing,
     config.routing?.requireDistinctReviewerAndImplementer !== false,
   );
-  for (const e of securityGateSeparationErrors(routing, config)) {
+  for (const e of securityGateSeparationErrors(routing, config, options)) {
     fail(
       `${e}. Update harness.config.json or set routing.independentSecurityReview.enabled=false.`,
     );
@@ -392,13 +399,54 @@ function resolveTaskText(flags) {
   return "";
 }
 
+// Keyword-driven task classifier: the first matching rule in routing.taskClassMatrix selects a
+// profile / model set / mode; falling back to routing.defaultTaskClass when nothing matches.
+function ruleMatchesTask(text, rule) {
+  const anyKeywords = rule.matchAnyKeywords ?? [];
+  const allKeywords = rule.matchAllKeywords ?? [];
+  const noneKeywords = rule.matchNoneKeywords ?? [];
+  const anyOk =
+    anyKeywords.length === 0 ||
+    anyKeywords.some((keyword) => text.includes(keyword));
+  const allOk = allKeywords.every((keyword) => text.includes(keyword));
+  const noneOk = noneKeywords.every((keyword) => !text.includes(keyword));
+  return anyOk && allOk && noneOk;
+}
+
+function resolveTaskClassDecision(config, text) {
+  const matrix = config.routing?.taskClassMatrix ?? [];
+  const defaultTaskClassId = config.routing?.defaultTaskClass ?? null;
+  const matchedRule = matrix.find(
+    (rule) => rule && typeof rule === "object" && ruleMatchesTask(text, rule),
+  );
+  const rule =
+    matchedRule ??
+    (defaultTaskClassId
+      ? (matrix.find((r) => r?.id === defaultTaskClassId) ?? null)
+      : null);
+  if (!rule) return null;
+  return {
+    id: rule.id ?? null,
+    description: rule.description ?? null,
+    source: matchedRule ? "matrix" : "matrix-default",
+    modelSet: rule.modelSet ?? null,
+    profile: rule.profile ?? null,
+    mode: rule.mode ?? null,
+    stages: rule.stages ?? null,
+    reason: rule.reason ?? null,
+  };
+}
+
 export function planTask(taskText, config, options = {}) {
   const text = normalize(taskText);
   const routing = config.routing ?? {};
   const trivialKeywords = routing.trivialKeywords ?? [];
   const nonTrivialKeywords = routing.nonTrivialKeywords ?? [];
-  const profileName = options.profile ?? null;
+  const matrixDecision = resolveTaskClassDecision(config, text);
+  const profileName = options.profile ?? matrixDecision?.profile ?? null;
   const profile = getProfile(config, profileName);
+  const selectedModelSet =
+    profile?.modelSet ?? matrixDecision?.modelSet ?? null;
 
   const trivialHit = trivialKeywords.find((keyword) => text.includes(keyword));
   const nonTrivialHit = nonTrivialKeywords.find((keyword) =>
@@ -409,6 +457,7 @@ export function planTask(taskText, config, options = {}) {
     !profile && Boolean(trivialHit) && !nonTrivialHit && text.length < 180;
   const stages =
     profile?.stages ??
+    matrixDecision?.stages ??
     (trivial
       ? [routing.trivialStartsAt ?? "implement"]
       : (routing.nonTrivialStages ?? [
@@ -421,11 +470,13 @@ export function planTask(taskText, config, options = {}) {
           "feedback",
         ]));
 
-  const modelRouting = buildModelRouting(config);
+  const modelRouting = buildModelRouting(config, { modelSet: selectedModelSet });
 
   let why;
-  if (profile) {
+  if (profile && options.profile) {
     why = profile.description ?? `profile-selected handoff: ${profileName}`;
+  } else if (matrixDecision?.id) {
+    why = matrixDecision.reason ?? `task class matched: ${matrixDecision.id}`;
   } else if (trivial) {
     why = `matched trivial keyword: ${trivialHit}`;
   } else if (nonTrivialHit) {
@@ -438,8 +489,18 @@ export function planTask(taskText, config, options = {}) {
   return {
     task: String(taskText ?? "").trim(),
     profile: profileName,
-    mode: profile?.mode ?? (trivial ? "trivial" : "non-trivial"),
+    mode:
+      profile?.mode ??
+      matrixDecision?.mode ??
+      (trivial ? "trivial" : "non-trivial"),
     why,
+    modelSet: selectedModelSet,
+    routingDecision: {
+      id: matrixDecision?.id ?? null,
+      source:
+        matrixDecision?.source ?? (profile ? "profile" : "legacy-heuristic"),
+      profile: profileName,
+    },
     stages,
     models: Object.fromEntries(
       stages.map((stage) => [
@@ -447,7 +508,9 @@ export function planTask(taskText, config, options = {}) {
         modelRouting[stage] ?? modelRouting.implement,
       ]),
     ),
-    modelFallbacks: buildStageModelFallbacks(config, stages),
+    modelFallbacks: buildStageModelFallbacks(config, stages, {
+      modelSet: selectedModelSet,
+    }),
     crossModelReview: modelRouting["cross-model-review"],
   };
 }
@@ -706,6 +769,8 @@ function renderPromptPackSummary(pack) {
 export function renderCompactRoute(route) {
   return (
     `[prompt-router] ${route.mode.toUpperCase()} — ${route.why}\n` +
+    `[prompt-router] routing decision: ${route.routingDecision?.id ?? "legacy"} (source=${route.routingDecision?.source ?? "legacy"})\n` +
+    `[prompt-router] model set: ${route.modelSet ?? "default"}\n` +
     `[prompt-router] stages: ${route.stages.join(" -> ")}\n` +
     `[prompt-router] models: ${Object.entries(route.models)
       .map(
@@ -723,6 +788,8 @@ export function renderHandoffPlan(route) {
     `[prompt-router] operator handoff plan${profileSuffix}`,
     `[prompt-router] task: ${route.task || "<stdin>"}`,
     `[prompt-router] rationale: ${route.why}`,
+    `[prompt-router] routing decision: ${route.routingDecision?.id ?? "legacy"} (source=${route.routingDecision?.source ?? "legacy"})`,
+    `[prompt-router] model set: ${route.modelSet ?? "default"}`,
   ];
 
   route.stages.forEach((stage, index) => {
