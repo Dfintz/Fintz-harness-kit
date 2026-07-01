@@ -252,9 +252,23 @@ export function securityGateSeparationErrors(routing, config) {
   const gateStage = sec?.gateStage ?? "review-depth";
   const gate = routing[gateStage];
   const errors = [];
-  if (gate && routing.implement && gate === routing.implement) {
+  const primaryCollision =
+    gate && routing.implement && gate === routing.implement;
+  if (primaryCollision) {
     errors.push(
       `the independent security/QA gate "${gateStage}" must not be owned by the implementer model (both are ${gate}); a self-reviewed security gate defeats its purpose`,
+    );
+  }
+  // Under degradation the gate's candidate list (primary + fallbacks) must stay disjoint from the
+  // implementer's — otherwise a demoted run could collapse the security gate onto the implementer.
+  const stageModels = getNormalizedStageModels(config);
+  const implementCandidates = stageCandidates(stageModels, "implement");
+  const overlap = stageCandidates(stageModels, gateStage).find((model) =>
+    implementCandidates.includes(model),
+  );
+  if (overlap && !primaryCollision) {
+    errors.push(
+      `the independent security/QA gate "${gateStage}" shares a fallback candidate with the implementer (${overlap}); a degraded run could self-review`,
     );
   }
   return errors;
@@ -267,6 +281,68 @@ function validateStageSeparation(routing, mustDiffer) {
   for (const e of stageSeparationErrors(routing)) {
     fail(`${e}; adjust routing.stageModels or the model roles.`);
   }
+}
+
+// A stageModels entry may be a bare model id or an object { model, fallbacks: [...] }. Normalizing
+// both to { model, fallbacks } keeps the string form (what the config wizard writes) working while
+// letting authors add ordered degradation candidates the runtime falls through on a provider
+// outage / rate-limit. The runtime uses the first available candidate and logs which one won.
+function normalizeFallbackList(rawFallbacks, primaryModel) {
+  if (!Array.isArray(rawFallbacks)) return [];
+  const seen = new Set(primaryModel ? [primaryModel] : []);
+  const ids = [];
+  for (const item of rawFallbacks) {
+    const id = typeof item === "string" ? item : item?.model;
+    if (typeof id === "string" && id.trim() && !seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+function normalizeStageModelEntry(entry) {
+  if (typeof entry === "string") return { model: entry, fallbacks: [] };
+  if (entry && typeof entry === "object" && typeof entry.model === "string") {
+    return {
+      model: entry.model,
+      fallbacks: normalizeFallbackList(entry.fallbacks, entry.model),
+    };
+  }
+  return null;
+}
+
+function getNormalizedStageModels(config) {
+  const raw = config.routing?.stageModels ?? {};
+  return Object.fromEntries(
+    Object.entries(raw)
+      .map(([stage, entry]) => [stage, normalizeStageModelEntry(entry)])
+      .filter(([, entry]) => entry !== null),
+  );
+}
+
+// Ordered candidate list for a stage: the primary model plus its fallbacks.
+function stageCandidates(stageModels, stage) {
+  const entry = stageModels?.[stage];
+  if (!entry?.model) return [];
+  return [
+    entry.model,
+    ...(Array.isArray(entry.fallbacks) ? entry.fallbacks : []),
+  ];
+}
+
+function buildStageModelFallbacks(config, stages) {
+  const stageModels = getNormalizedStageModels(config);
+  return Object.fromEntries(
+    stages
+      .map((stage) => [stage, stageModels[stage]?.fallbacks ?? []])
+      .filter(([, fallbacks]) => Array.isArray(fallbacks) && fallbacks.length > 0),
+  );
+}
+
+function formatFallbacks(fallbacks) {
+  if (!Array.isArray(fallbacks) || fallbacks.length === 0) return "";
+  return ` (fallback: ${fallbacks.join(" -> ")})`;
 }
 
 function buildModelRouting(config) {
@@ -285,9 +361,10 @@ function buildModelRouting(config) {
     "test-fix": implementer,
   };
   // Optional benchmark-tuned per-stage assignment overlays the role defaults (see docs/HARNESS.md).
-  const stageModels = config.routing?.stageModels ?? {};
-  for (const [stage, model] of Object.entries(stageModels)) {
-    if (model) routing[stage] = model;
+  // Entries may be a bare model id or { model, fallbacks }; normalize so both resolve to the model.
+  const stageModels = getNormalizedStageModels(config);
+  for (const [stage, entry] of Object.entries(stageModels)) {
+    if (entry?.model) routing[stage] = entry.model;
   }
   validateStageSeparation(
     routing,
@@ -370,6 +447,7 @@ export function planTask(taskText, config, options = {}) {
         modelRouting[stage] ?? modelRouting.implement,
       ]),
     ),
+    modelFallbacks: buildStageModelFallbacks(config, stages),
     crossModelReview: modelRouting["cross-model-review"],
   };
 }
@@ -409,6 +487,7 @@ function buildPromptPack(route, outDir) {
       stage,
       index: index + 1,
       model: route.models[stage] ?? "unspecified",
+      fallbacks: route.modelFallbacks?.[stage] ?? [],
       promptFile: `${String(index + 1).padStart(2, "0")}-${stage}.md`,
       outputFile: meta.outputFile,
       title: meta.title,
@@ -440,7 +519,7 @@ function renderPromptPackReadme(pack) {
   const stageLines = pack.stageFiles
     .map(
       (stage) =>
-        `- ${stage.promptFile} -> ${stage.outputFile} (${stage.title}; model ${stage.model})`,
+        `- ${stage.promptFile} -> ${stage.outputFile} (${stage.title}; model ${stage.model}${formatFallbacks(stage.fallbacks)})`,
     )
     .join("\n");
   const sidecarLines = pack.sidecarFiles
@@ -457,7 +536,7 @@ function renderOrchestratorPrompt(pack) {
   const stageTable = pack.stageFiles
     .map(
       (stage) =>
-        `${stage.index}. ${stage.title} (${stage.model})\n   - Prompt: ${stage.promptFile}\n   - Required output: ${stage.outputFile}`,
+        `${stage.index}. ${stage.title} (${stage.model}${formatFallbacks(stage.fallbacks)})\n   - Prompt: ${stage.promptFile}\n   - Required output: ${stage.outputFile}`,
     )
     .join("\n");
   const sidecarTable = pack.sidecarFiles
@@ -501,7 +580,7 @@ function renderStagePrompt(pack, stageFile) {
     .map((line) => `- ${line}`)
     .join("\n");
 
-  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
+  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}${formatFallbacks(stageFile.fallbacks)}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
 }
 
 function renderNextStepsTemplate(pack) {
@@ -538,6 +617,7 @@ function writePromptPack(route, outDir) {
     rationale: pack.route.why,
     stages: pack.route.stages,
     models: pack.route.models,
+    modelFallbacks: pack.route.modelFallbacks ?? {},
     crossModelReview: pack.route.crossModelReview,
     generatedAt: new Date().toISOString(),
     packDir: pack.packDir,
@@ -557,6 +637,7 @@ function writePromptPack(route, outDir) {
         promptFile: stage.promptFile,
         outputFile: stage.outputFile,
         model: stage.model,
+        fallbacks: stage.fallbacks ?? [],
       })),
     },
   };
@@ -607,7 +688,7 @@ function renderPromptPackSummary(pack) {
 
   for (const stageFile of pack.stageFiles) {
     lines.push(
-      `[prompt-router] ${stageFile.promptFile} -> ${stageFile.outputFile} (${stageFile.model})`,
+      `[prompt-router] ${stageFile.promptFile} -> ${stageFile.outputFile} (${stageFile.model}${formatFallbacks(stageFile.fallbacks)})`,
     );
   }
   for (const sidecar of pack.sidecarFiles) {
@@ -627,7 +708,10 @@ export function renderCompactRoute(route) {
     `[prompt-router] ${route.mode.toUpperCase()} — ${route.why}\n` +
     `[prompt-router] stages: ${route.stages.join(" -> ")}\n` +
     `[prompt-router] models: ${Object.entries(route.models)
-      .map(([stage, model]) => `${stage}=${model}`)
+      .map(
+        ([stage, model]) =>
+          `${stage}=${model}${formatFallbacks(route.modelFallbacks?.[stage])}`,
+      )
       .join(", ")}\n` +
     `[prompt-router] cross-model review: ${route.crossModelReview}\n`
   );
@@ -643,7 +727,7 @@ export function renderHandoffPlan(route) {
 
   route.stages.forEach((stage, index) => {
     lines.push(
-      `[prompt-router] ${index + 1}. ${stage} -> ${route.models[stage]}`,
+      `[prompt-router] ${index + 1}. ${stage} -> ${route.models[stage]}${formatFallbacks(route.modelFallbacks?.[stage])}`,
     );
   });
 

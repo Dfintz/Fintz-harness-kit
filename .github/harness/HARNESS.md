@@ -63,6 +63,16 @@ models — implementer ≠ reviewers, Architect Challenge ≠ Architect, and Fee
 `enabled: false` to opt out). A two-provider config still works: omit `stageModels` and set the
 `implementer` / `reviewer` / `arbiter` roles.
 
+**Ordered model-role fallbacks.** Any `stageModels` entry may be a bare model id (e.g.
+`"architect": "claude-opus-4.8"`) _or_ an object with degradation candidates:
+`"architect": { "model": "claude-opus-4.8", "fallbacks": ["gpt-5.5"] }`. On a provider outage or
+per-model rate-limit the executing runtime uses the first available candidate and **must log which
+one won** so a silent demotion never hides a provider problem. `prompt-router` surfaces the ordered
+candidates in the handoff plan, `route`/prompt-pack output, and separation checks — and the security
+gate stays non-collapsible under degradation: the gate stage's candidate set (primary + fallbacks)
+must stay disjoint from the implementer's, so no fallback can quietly turn the security review into a
+self-review.
+
 #### Why four models, not three
 
 After Architect, four roles must stay mutually independent: the constraints force **breadth ≠
