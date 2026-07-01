@@ -177,13 +177,26 @@ function loadLessons() {
   return { count: files.length, recent };
 }
 
+function extractBriefOutline(text) {
+  const outline = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = /^##\s+(.+?)\s*$/.exec(line);
+    if (m) outline.push(m[1].replace(/[*_`]/g, "").trim());
+    if (outline.length >= 12) break;
+  }
+  return outline;
+}
+
 function loadBriefs() {
   const files = listMarkdown(briefsDir, new Set(["readme.md"]));
   const briefs = files.map((name) => {
     let status = "unknown";
     let title = name.replace(/\.md$/, "");
+    let outline = [];
     try {
-      const head = firstLine(readFileSync(join(briefsDir, name), "utf8"));
+      const text = readFileSync(join(briefsDir, name), "utf8");
+      const head = firstLine(text);
+      outline = extractBriefOutline(text);
       const matched = BRIEF_STATUSES.find((s) =>
         new RegExp(String.raw`[—-]\s*${s}\s*$`, "i").test(head),
       );
@@ -196,7 +209,7 @@ function loadBriefs() {
     } catch {
       // unreadable brief — keep filename as title
     }
-    return { name, title, status };
+    return { name, title, status, outline };
   });
   const byStatus = briefs.reduce(
     (acc, b) => ({ ...acc, [b.status]: (acc[b.status] ?? 0) + 1 }),
@@ -784,6 +797,37 @@ function briefStatusClass(status) {
   return "badge-incomplete";
 }
 
+function renderVisualPlanSection(memory) {
+  const active = (memory?.briefs?.briefs ?? []).filter(
+    (b) => b.status === "active",
+  );
+  if (!active.length) return "";
+  const cards = active
+    .slice(0, 8)
+    .map((brief) => {
+      const outline = Array.isArray(brief.outline) ? brief.outline : [];
+      const outlineItems = outline.map((h) => `<li>${esc(h)}</li>`).join("");
+      const steps = outline.length
+        ? `<ol class="plan-outline">${outlineItems}</ol>`
+        : '<p class="muted">No section outline.</p>';
+      return `
+      <div class="plan-card">
+        <div class="plan-head">
+          <span class="plan-title">${esc(brief.title)}</span>
+          <span class="badge ${briefStatusClass(brief.status)}">${esc(brief.status)}</span>
+        </div>
+        ${steps}
+        <div class="plan-file mono muted">${esc(brief.name)}</div>
+      </div>`;
+    })
+    .join("");
+  return `
+    <section class="panel">
+      <h2>Visual plan <span class="subtitle">(active Architecture Briefs — section outline)</span></h2>
+      <div class="plan-grid">${cards}</div>
+    </section>`;
+}
+
 function renderMemorySection(memory) {
   const graphCardValue = memory.graph.present
     ? `${memory.graph.ageDays}d`
@@ -1158,6 +1202,13 @@ function renderHtml(metrics) {
   .mono { font-family: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace; font-size: 13px; }
   .muted { color: var(--muted); }
   .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .plan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .plan-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--bg); }
+  .plan-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .plan-title { font-weight: 600; }
+  .plan-outline { margin: 4px 0 10px; padding-left: 20px; }
+  .plan-outline li { font-size: 13px; margin: 1px 0; }
+  .plan-file { font-size: 11px; }
   .badge-converged { color: var(--converged); background: var(--converged-bg); }
   .badge-exhausted { color: var(--exhausted); background: var(--exhausted-bg); }
   .badge-stuck { color: var(--stuck); background: var(--stuck-bg); }
@@ -1190,6 +1241,7 @@ function renderHtml(metrics) {
       <div class="refresh">Auto refresh every <span id="refresh-seconds">${refreshSeconds}</span>s · next reload in <span id="refresh-countdown">${refreshSeconds}</span>s</div>
     </header>
     ${renderMemorySection(memory)}
+    ${renderVisualPlanSection(memory)}
     ${renderPendingApprovalsSection(recentRuns)}
     ${renderActiveRunsSection(activeRuns)}
     ${renderPipelineSection(pipeline)}
