@@ -92,6 +92,10 @@ const SUITES = [
     name: "experiment-parallel",
     cmd: ["scripts/harness/run-experiment-parallel.mjs", "--self-test"],
   },
+  {
+    name: "scheduled-maintenance",
+    cmd: ["scripts/harness/scheduled-maintenance.mjs", "--self-test"],
+  },
 ];
 
 // Walk every .json under .github/harness and confirm it parses — a malformed loop/pack/config is a
