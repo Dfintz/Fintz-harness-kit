@@ -73,6 +73,15 @@ gate stays non-collapsible under degradation: the gate stage's candidate set (pr
 must stay disjoint from the implementer's, so no fallback can quietly turn the security review into a
 self-review.
 
+**Task-class routing (`taskClassMatrix` + `stageModelSets`).** Instead of one fixed per-stage map,
+routing can carry **named model sets** (`routing.stageModelSets`, e.g. `exploratory` vs
+`deterministic`) and a keyword rule list (`routing.taskClassMatrix`). `prompt-router` matches the task
+text against the ordered rules — the first hit picks a `profile` / `modelSet` / `mode` (falling back
+to `routing.defaultTaskClass`) — so mechanical/bounded work can run a codex-first `deterministic` set
+while ambiguous work stays on the `exploratory` set. Each set is validated independently, so the
+security/QA gate stays non-collapsible whichever set is selected. Trivial one-file prompts still
+short-circuit to Implement.
+
 #### Why four models, not three
 
 After Architect, four roles must stay mutually independent: the constraints force **breadth ≠
