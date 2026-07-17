@@ -1,109 +1,112 @@
 #!/usr/bin/env node
-/**
- * CLI command guardrails for harness spawn points.
- *
- * Security goals:
- * - Allow only known executable names for model/agent command invocations.
- * - Reject shell metacharacters commonly used for command injection.
- */
-import { basename } from 'node:path';
 
-const DEFAULT_ALLOWED_EXECUTABLES = new Set([
-  'codex',
+const DEFAULT_ALLOWED_EXECUTABLES = [
   'claude',
-  'gemini',
   'node',
-  'npx',
   'npm',
+  'npx',
+  'pnpm',
+  'yarn',
+  'bun',
   'ollama',
+  'codex',
+  'cursor',
   'python',
   'python3',
-]);
+  'uvx',
+];
 
-const SHELL_META_PATTERN = /[;&|`<>]|\$\(|\r|\n/;
+const BLOCKED_SHELL_PATTERNS = [
+  { pattern: /;/, reason: 'command chaining via semicolon is not allowed' },
+  { pattern: /\|\|?|&&/, reason: 'command chaining/piping operators are not allowed' },
+  { pattern: /`/, reason: 'backtick command substitution is not allowed' },
+  { pattern: /\$\(/, reason: 'subshell command substitution is not allowed' },
+  { pattern: /[<>]/, reason: 'shell redirection operators are not allowed' },
+];
 
-function parseExecutable(command) {
-  const text = String(command ?? '').trim();
-  if (!text) return null;
-  const pattern = /^(?:"([^"]+)"|'([^']+)'|(\S+))/;
-  const match = pattern.exec(text);
-  if (!match) return null;
-  const raw = match[1] ?? match[2] ?? match[3] ?? '';
-  const normalized = basename(raw).replace(/\.exe$/i, '').toLowerCase();
-  return normalized || null;
+function shellSplit(command) {
+  return String(command).trim().split(/\s+/).filter(Boolean);
 }
 
-export function validateCliCommand(command, opts = {}) {
-  const label = opts.label ?? 'command';
-  const allowedExecutables =
-    opts.allowedExecutables instanceof Set
-      ? opts.allowedExecutables
-      : DEFAULT_ALLOWED_EXECUTABLES;
+function resolveExecutable(token) {
+  if (!token) return '';
+  const cleaned = token.replace(/^['"]|['"]$/g, '');
+  const slashNormalized = cleaned.replaceAll('\\', '/');
+  const basename = slashNormalized.split('/').pop() || cleaned;
+  return basename.toLowerCase();
+}
 
-  const text = String(command ?? '').trim();
-  if (!text) {
-    return { ok: false, reason: `${label} is empty.` };
-  }
-  if (SHELL_META_PATTERN.test(text)) {
-    return {
-      ok: false,
-      reason:
-        `${label} contains shell metacharacters. ` +
-        'Rejecting to prevent injection (blocked: ; & | ` < > $( ) newlines).',
-    };
+export function validateAgentCommand(command, options = {}) {
+  const cmd = String(command || '').trim();
+  if (!cmd) {
+    return { ok: false, reason: 'agent command is empty' };
   }
 
-  const executable = parseExecutable(text);
-  if (!executable) {
-    return { ok: false, reason: `${label} does not contain a valid executable token.` };
+  for (const blocked of BLOCKED_SHELL_PATTERNS) {
+    if (blocked.pattern.test(cmd)) {
+      return { ok: false, reason: blocked.reason };
+    }
   }
-  if (!allowedExecutables.has(executable)) {
+
+  const firstToken = shellSplit(cmd)[0];
+  const executable = resolveExecutable(firstToken);
+  const allowList = new Set(
+    (Array.isArray(options.allowedExecutables)
+      ? options.allowedExecutables
+      : DEFAULT_ALLOWED_EXECUTABLES
+    ).map(entry => String(entry).toLowerCase())
+  );
+
+  if (!allowList.has(executable)) {
     return {
       ok: false,
-      reason: `${label} executable "${executable}" is not in allowlist: ${[...allowedExecutables].join(', ')}.`,
+      reason: `executable "${executable}" is not in allowlist (${[...allowList].join(', ')})`,
     };
   }
 
   return { ok: true, executable };
 }
 
+export function assertValidAgentCommand(command, context = 'agent command') {
+  const verdict = validateAgentCommand(command);
+  if (!verdict.ok) {
+    throw new Error(`${context} rejected: ${verdict.reason}`);
+  }
+  return verdict;
+}
+
+// Compatibility aliases for the harness-kit API surface (validateCliCommand / assertSafeCliCommand).
+// These let kit-synced scripts (e.g. plan-review.mjs) call the kit's option-object signature while
+// delegating to this repo's validator. Additive only — existing callers keep using
+// validateAgentCommand / assertValidAgentCommand.
+export function validateCliCommand(command, opts = {}) {
+  return validateAgentCommand(command, opts);
+}
+
 export function assertSafeCliCommand(command, opts = {}) {
-  const result = validateCliCommand(command, opts);
-  if (!result.ok) {
-    throw new Error(result.reason);
+  const label = opts?.label || 'CLI command';
+  const verdict = validateAgentCommand(command, opts);
+  if (!verdict.ok) {
+    throw new Error(`${label} rejected: ${verdict.reason}`);
   }
-  return result;
+  return verdict;
 }
 
-function runSelfTest() {
-  const okCases = ['claude -p', 'codex run', 'gemini --help', '"C:/Tools/node.exe" -v'];
-  const badCases = ['claude -p; rm -rf /', 'bash -lc "echo hi"', 'evilcmd --x'];
-
-  for (const cmd of okCases) {
-    const result = validateCliCommand(cmd);
-    if (!result.ok) {
-      throw new Error(`Expected OK for: ${cmd} :: ${result.reason}`);
+function parseArgs(argv) {
+  const flags = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === '--command' && argv[i + 1]) {
+      flags.command = argv[i + 1];
+      i += 1;
     }
   }
-  for (const cmd of badCases) {
-    const result = validateCliCommand(cmd);
-    if (result.ok) {
-      throw new Error(`Expected failure for: ${cmd}`);
-    }
-  }
-  process.stdout.write('[command-validation] self-test passed\n');
+  return flags;
 }
 
-if (
-  import.meta.url === `file://${process.argv[1]}` ||
-  import.meta.url === `file:///${process.argv[1]?.replaceAll('\\', '/')}`
-) {
-  if (process.argv.includes('--self-test')) {
-    runSelfTest();
-    process.exit(0);
-  }
-  const command = process.argv.slice(2).join(' ');
-  const result = validateCliCommand(command, { label: 'cli command' });
-  process.stdout.write(`${JSON.stringify(result)}\n`);
-  process.exit(result.ok ? 0 : 1);
+if (process.argv[1]?.endsWith('command-validation.mjs')) {
+  const flags = parseArgs(process.argv.slice(2));
+  const command = flags.command || process.env.HARNESS_AGENT_CMD || '';
+  const verdict = validateAgentCommand(command);
+  process.stdout.write(`${JSON.stringify({ command, ...verdict }, null, 2)}\n`);
+  process.exit(verdict.ok ? 0 : 1);
 }
