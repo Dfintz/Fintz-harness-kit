@@ -1,52 +1,36 @@
 #!/usr/bin/env node
-// Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama, LM Studio).
 /**
  * MCP-ready wrappers for harness graph + memory + vector tools.
  *
  * This script does not implement an MCP transport server on its own.
  * It exposes stable JSON commands that an MCP server can call directly.
- *
- * Usage examples:
- *   node scripts/harness/mcp-tools.mjs list-tools
- *   node scripts/harness/mcp-tools.mjs graph-status
- *   node scripts/harness/mcp-tools.mjs graph-neighbors --node-id "file:backend/src/app.ts" --depth 2
- *   node scripts/harness/mcp-tools.mjs memory-search --query "tenant" --scope lessons --limit 10
- *   node scripts/harness/mcp-tools.mjs vector-search --query "tenant isolation" --scope all --top 5
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { buildMcpListPayload, mcpToolSpecs } from './mcp-contracts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const graphCliPath = join(repoRoot, 'scripts', 'harness', 'graph.mjs');
 const vectorCliPath = join(repoRoot, 'scripts', 'harness', 'vector-search.mjs');
+const memoryLinkCliPath = join(repoRoot, 'scripts', 'harness', 'memory-link-index.mjs');
 const reportCliPath = join(repoRoot, 'scripts', 'harness', 'harness-report.mjs');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
 const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
+const understandingDir = join(repoRoot, '.github', 'harness', 'memory', 'understanding');
+const reviewsDir = join(repoRoot, '.github', 'harness', 'memory', 'reviews');
+const radarDir = join(repoRoot, '.github', 'harness', 'memory', 'radar');
+const spotcheckDir = join(repoRoot, '.github', 'harness', 'memory', 'spotcheck');
+const memoryRootDir = join(repoRoot, '.github', 'harness', 'memory');
+const memoryRootResolved = resolve(memoryRootDir);
 const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
+const toolByName = new Map(mcpToolSpecs.map(spec => [spec.name, spec]));
 
 function toWorkspacePath(pathValue) {
-  return relative(repoRoot, pathValue).replace(/\\/g, '/');
+  return relative(repoRoot, pathValue).replaceAll('\\', '/');
 }
-
-const TOOL_NAMES = [
-  'graph-status',
-  'graph-neighbors',
-  'graph-dependents',
-  'graph-path',
-  'graph-layers',
-  'graph-layer',
-  'graph-hubs',
-  'memory-list',
-  'memory-read',
-  'memory-search',
-  'vector-status',
-  'vector-index',
-  'vector-search',
-  'harness-loops',
-  'harness-report',
-];
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -77,28 +61,63 @@ function parseArgs(argv) {
 
 function normalizeScope(scope) {
   const value = String(scope || 'all').toLowerCase();
-  if (value === 'lessons' || value === 'briefs' || value === 'all') {
+  if (
+    value === 'lessons' ||
+    value === 'briefs' ||
+    value === 'understanding' ||
+    value === 'reviews' ||
+    value === 'radar' ||
+    value === 'spotcheck' ||
+    value === 'memory' ||
+    value === 'all'
+  ) {
     return value;
   }
-  throw new Error(`Invalid scope "${scope}". Expected lessons, briefs, or all.`);
+  throw new Error(
+    `Invalid scope "${scope}". Expected lessons, briefs, understanding, reviews, radar, spotcheck, memory, or all.`
+  );
 }
 
 function getScopeDirs(scope) {
+  if (scope === 'memory') {
+    return [
+      { scope: 'lessons', dir: lessonsDir },
+      { scope: 'briefs', dir: briefsDir },
+    ];
+  }
   if (scope === 'lessons') return [{ scope: 'lessons', dir: lessonsDir }];
   if (scope === 'briefs') return [{ scope: 'briefs', dir: briefsDir }];
+  if (scope === 'understanding') return [{ scope: 'understanding', dir: understandingDir }];
+  if (scope === 'reviews') return [{ scope: 'reviews', dir: reviewsDir }];
+  if (scope === 'radar') return [{ scope: 'radar', dir: radarDir }];
+  if (scope === 'spotcheck') return [{ scope: 'spotcheck', dir: spotcheckDir }];
   return [
     { scope: 'lessons', dir: lessonsDir },
     { scope: 'briefs', dir: briefsDir },
+    { scope: 'understanding', dir: understandingDir },
+    { scope: 'reviews', dir: reviewsDir },
+    { scope: 'radar', dir: radarDir },
+    { scope: 'spotcheck', dir: spotcheckDir },
   ];
 }
 
+function assertWithinMemoryRoot(pathValue) {
+  const absolute = resolve(pathValue); // NOSONAR - immediately constrained to memory root
+  const rel = relative(memoryRootResolved, absolute);
+  if (rel.startsWith('..') || isAbsolute(rel)) {
+    throw new Error(`Refusing to access path outside memory root: ${pathValue}`);
+  }
+  return absolute;
+}
+
 function listMarkdownFiles(dir) {
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
+  const safeDir = assertWithinMemoryRoot(dir);
+  if (!existsSync(safeDir)) return [];
+  return readdirSync(safeDir)
     .filter(
       file => file.endsWith('.md') && file !== '_template.md' && file.toLowerCase() !== 'readme.md'
     )
-    .filter(file => statSync(join(dir, file)).isFile())
+    .filter(file => statSync(assertWithinMemoryRoot(join(safeDir, file))).isFile())
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -114,10 +133,11 @@ function firstMeaningfulLine(content) {
 function readMemoryEntries(scope) {
   const entries = [];
   for (const item of getScopeDirs(scope)) {
-    const files = listMarkdownFiles(item.dir);
+    const safeDir = assertWithinMemoryRoot(item.dir);
+    const files = listMarkdownFiles(safeDir);
     for (const file of files) {
-      const absolutePath = join(item.dir, file);
-      const content = readFileSync(absolutePath, 'utf8');
+      const absolutePath = assertWithinMemoryRoot(join(safeDir, file));
+      const content = readFileSync(absolutePath, 'utf8'); // NOSONAR - root-constrained memory file
       entries.push({
         scope: item.scope,
         name: file,
@@ -169,8 +189,6 @@ function runVectorCli(args) {
   return runCli(vectorCliPath, args);
 }
 
-// Read all loop definitions directly (fast, no spawn). Mirrors the runners' loaders
-// but returns a compact, JSON-friendly catalog for agents to discover what exists.
 function readLoopCatalog() {
   if (!existsSync(loopsDir)) return [];
   const loops = [];
@@ -202,114 +220,11 @@ function printJson(data, code = 0) {
   process.exit(code);
 }
 
-function listToolsPayload() {
-  return {
-    tools: [
-      {
-        name: 'graph-status',
-        description: 'Returns graph freshness and drift against HEAD.',
-      },
-      {
-        name: 'graph-neighbors',
-        description: 'Returns neighboring nodes for a graph node id.',
-        input: { nodeId: 'string', depth: 'number?', type: 'string?' },
-      },
-      {
-        name: 'graph-dependents',
-        description: 'Returns files that depend on a file path.',
-        input: { filePath: 'string' },
-      },
-      {
-        name: 'graph-path',
-        description: 'Returns a shortest path between two node ids.',
-        input: { srcId: 'string', dstId: 'string' },
-      },
-      {
-        name: 'graph-layers',
-        description: 'Returns all architectural layers and counts.',
-      },
-      {
-        name: 'graph-layer',
-        description: 'Returns all nodes in a named layer.',
-        input: { name: 'string' },
-      },
-      {
-        name: 'graph-hubs',
-        description: 'Returns highest-degree hubs.',
-        input: { top: 'number?', type: 'string?' },
-      },
-      {
-        name: 'memory-list',
-        description: 'Lists harness memory lessons/briefs with summaries.',
-        input: { scope: 'lessons|briefs|all' },
-      },
-      {
-        name: 'memory-read',
-        description: 'Reads a lesson or brief by name.',
-        input: { scope: 'lessons|briefs|all', name: 'string' },
-      },
-      {
-        name: 'memory-search',
-        description: 'Searches lessons/briefs by filename, summary, and body.',
-        input: { query: 'string', scope: 'lessons|briefs|all', limit: 'number?' },
-      },
-      {
-        name: 'vector-status',
-        description: 'Reports local vector-index status and corpus coverage.',
-      },
-      {
-        name: 'vector-index',
-        description: 'Builds or refreshes local embeddings for memory and graph corpora.',
-        input: {
-          scope: 'all|memory|lessons|briefs|graph',
-          provider: 'ollama|lmstudio?',
-          model: 'string?',
-          host: 'string?',
-          maxTextChars: 'number?',
-          graphLimit: 'number?',
-          timeoutMs: 'number?',
-          force: 'boolean?',
-          verbose: 'boolean?',
-        },
-      },
-      {
-        name: 'vector-search',
-        description: 'Runs semantic retrieval over the local vector index.',
-        input: {
-          query: 'string',
-          scope: 'all|memory|lessons|briefs|graph?',
-          provider: 'ollama|lmstudio?',
-          top: 'number?',
-          minScore: 'number?',
-          model: 'string?',
-          host: 'string?',
-          maxTextChars: 'number?',
-          graphLimit: 'number?',
-          timeoutMs: 'number?',
-          force: 'boolean?',
-          noAutoIndex: 'boolean?',
-          verbose: 'boolean?',
-        },
-      },
-      {
-        name: 'harness-loops',
-        description:
-          'Lists available harness loops (convergence/workflow/experiment) with kind, description, and metric. Read-only; execute loops via the CLI, not MCP.',
-      },
-      {
-        name: 'harness-report',
-        description:
-          'Returns aggregated harness metrics (loops, checks, rubric, experiments, recent runs, memory) as JSON. Read-only.',
-      },
-    ],
-  };
-}
-
 function showHelp() {
   printJson({
     usage: {
       command: 'node scripts/harness/mcp-tools.mjs <tool> [--flags]',
-      tools: TOOL_NAMES,
+      tools: [...toolByName.keys()],
     },
     examples: [
       'node scripts/harness/mcp-tools.mjs list-tools',
@@ -347,70 +262,51 @@ function toFiniteNumber(value, fallback) {
   return number;
 }
 
-function pushFlagValue(args, flags, key) {
-  if (flags[key] === undefined) return;
-  args.push(`--${key}`, requireValue(flags, key, `--${key} requires a value`));
-}
-
-function pushPositiveFlagValue(args, flags, key) {
-  if (flags[key] === undefined) return;
-  const value = requireValue(flags, key, `--${key} requires a value`);
-  args.push(`--${key}`, String(toPositiveInt(value)));
-}
-
-function pushNumberFlagValue(args, flags, key) {
-  if (flags[key] === undefined) return;
-  const value = requireValue(flags, key, `--${key} requires a value`);
-  args.push(`--${key}`, String(toFiniteNumber(value)));
-}
-
-function pushBooleanFlag(args, flags, key) {
-  if (flags[key] === undefined) return;
-  if (flags[key] !== true) {
-    throw new Error(`--${key} does not take a value`);
+function cliArgsToFlags(cliArgs) {
+  const flags = { _: [] };
+  for (let i = 0; i < cliArgs.length; i += 1) {
+    const token = cliArgs[i];
+    if (!token.startsWith('--')) {
+      flags._.push(token);
+      continue;
+    }
+    const key = token.slice(2);
+    const next = cliArgs[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      flags[key] = true;
+      continue;
+    }
+    flags[key] = next;
+    i += 1;
   }
-  args.push(`--${key}`);
+  return flags;
 }
 
-function handleGraphTool(toolName, flags) {
-  if (!existsSync(graphCliPath)) {
-    printJson({ ok: false, error: `graph CLI not found at ${graphCliPath}` }, 2);
+function pushRequiredValueArg(args, flags, flagName, message) {
+  if (flags[flagName] !== undefined) {
+    args.push(`--${flagName}`, requireValue(flags, flagName, message));
   }
-
-  let response;
-  if (toolName === 'graph-status') {
-    response = runGraphCli(['status', '--json']);
-  } else if (toolName === 'graph-neighbors') {
-    const nodeId = requireValue(flags, 'node-id', 'graph-neighbors requires --node-id');
-    const args = ['neighbors', nodeId, '--json'];
-    if (flags.depth) args.push('--depth', String(toPositiveInt(flags.depth, 1)));
-    if (typeof flags.type === 'string') args.push('--type', flags.type);
-    response = runGraphCli(args);
-  } else if (toolName === 'graph-dependents') {
-    const filePath = requireValue(flags, 'file-path', 'graph-dependents requires --file-path');
-    response = runGraphCli(['dependents', filePath, '--json']);
-  } else if (toolName === 'graph-path') {
-    const srcId = requireValue(flags, 'src-id', 'graph-path requires --src-id');
-    const dstId = requireValue(flags, 'dst-id', 'graph-path requires --dst-id');
-    response = runGraphCli(['path', srcId, dstId, '--json']);
-  } else if (toolName === 'graph-layers') {
-    response = runGraphCli(['layers', '--json']);
-  } else if (toolName === 'graph-layer') {
-    const name = requireValue(flags, 'name', 'graph-layer requires --name');
-    response = runGraphCli(['layer', name, '--json']);
-  } else if (toolName === 'graph-hubs') {
-    const args = ['hubs', '--json'];
-    if (flags.top) args.push('--top', String(toPositiveInt(flags.top, 10)));
-    if (typeof flags.type === 'string') args.push('--type', flags.type);
-    response = runGraphCli(args);
-  } else {
-    throw new Error(`Unsupported graph tool: ${toolName}`);
-  }
-
-  printJson(response, response.ok ? 0 : 1);
 }
 
-function handleMemoryList(flags) {
+function pushOptionalPositiveIntArg(args, flags, flagName) {
+  if (flags[flagName] !== undefined) {
+    args.push(`--${flagName}`, String(toPositiveInt(flags[flagName])));
+  }
+}
+
+function pushOptionalFiniteNumberArg(args, flags, flagName) {
+  if (flags[flagName] !== undefined) {
+    args.push(`--${flagName}`, String(toFiniteNumber(flags[flagName])));
+  }
+}
+
+function pushOptionalBooleanFlag(args, flags, flagName) {
+  if (flags[flagName] === true) {
+    args.push(`--${flagName}`);
+  }
+}
+
+function executeMemoryList(flags) {
   const scope = normalizeScope(flags.scope);
   const entries = readMemoryEntries(scope)
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
@@ -421,10 +317,10 @@ function handleMemoryList(flags) {
       summary: entry.summary,
       mtimeMs: entry.mtimeMs,
     }));
-  printJson({ ok: true, scope, count: entries.length, entries });
+  return { ok: true, scope, count: entries.length, entries };
 }
 
-function handleMemoryRead(flags) {
+function executeMemoryRead(flags) {
   const scope = normalizeScope(flags.scope || 'all');
   const name = requireValue(flags, 'name', 'memory-read requires --name');
   const normalizedName = name.endsWith('.md') ? name : `${name}.md`;
@@ -432,10 +328,10 @@ function handleMemoryRead(flags) {
   const entries = readMemoryEntries(scope);
   const match = entries.find(entry => entry.name.toLowerCase() === normalizedName.toLowerCase());
   if (!match) {
-    printJson({ ok: false, error: `Memory file not found: ${normalizedName}`, scope }, 1);
+    return { ok: false, error: `Memory file not found: ${normalizedName}`, scope };
   }
 
-  printJson({
+  return {
     ok: true,
     scope: match.scope,
     name: match.name,
@@ -443,10 +339,10 @@ function handleMemoryRead(flags) {
     summary: match.summary,
     mtimeMs: match.mtimeMs,
     content: match.content,
-  });
+  };
 }
 
-function handleMemorySearch(flags) {
+function executeMemorySearch(flags) {
   const query = requireValue(flags, 'query', 'memory-search requires --query').toLowerCase();
   const scope = normalizeScope(flags.scope || 'all');
   const limit = toPositiveInt(flags.limit, 20);
@@ -474,70 +370,163 @@ function handleMemorySearch(flags) {
       mtimeMs: entry.mtimeMs,
     }));
 
-  printJson({
+  return {
     ok: true,
     scope,
     query,
     limit,
     count: entries.length,
     entries,
-  });
+  };
 }
 
-function handleVectorTool(toolName, flags) {
-  if (!existsSync(vectorCliPath)) {
-    printJson({ ok: false, error: `vector CLI not found at ${vectorCliPath}` }, 2);
+function executeGraphTool(toolName, flags) {
+  if (!existsSync(graphCliPath)) {
+    return { ok: false, error: `graph CLI not found at ${graphCliPath}` };
   }
 
-  let response;
-  if (toolName === 'vector-status') {
-    response = runVectorCli(['status']);
-  } else if (toolName === 'vector-index') {
-    const args = ['index'];
-    pushFlagValue(args, flags, 'scope');
-    pushFlagValue(args, flags, 'provider');
-    pushFlagValue(args, flags, 'model');
-    pushFlagValue(args, flags, 'host');
-    pushPositiveFlagValue(args, flags, 'max-text-chars');
-    pushPositiveFlagValue(args, flags, 'graph-limit');
-    pushPositiveFlagValue(args, flags, 'timeout-ms');
-    pushBooleanFlag(args, flags, 'force');
-    pushBooleanFlag(args, flags, 'verbose');
-    response = runVectorCli(args);
-  } else if (toolName === 'vector-search') {
-    const query = requireValue(flags, 'query', 'vector-search requires --query');
-    const args = ['search', '--query', query];
-    pushFlagValue(args, flags, 'scope');
-    pushFlagValue(args, flags, 'provider');
-    pushPositiveFlagValue(args, flags, 'top');
-    pushNumberFlagValue(args, flags, 'min-score');
-    pushFlagValue(args, flags, 'model');
-    pushFlagValue(args, flags, 'host');
-    pushPositiveFlagValue(args, flags, 'max-text-chars');
-    pushPositiveFlagValue(args, flags, 'graph-limit');
-    pushPositiveFlagValue(args, flags, 'timeout-ms');
-    pushBooleanFlag(args, flags, 'force');
-    pushBooleanFlag(args, flags, 'no-auto-index');
-    pushBooleanFlag(args, flags, 'verbose');
-    response = runVectorCli(args);
-  } else {
+  const handlers = {
+    'graph-status': () => ['status', '--json'],
+    'graph-neighbors': () => {
+      const nodeId = requireValue(flags, 'node-id', 'graph-neighbors requires --node-id');
+      const args = ['neighbors', nodeId, '--json'];
+      if (flags.depth) args.push('--depth', String(toPositiveInt(flags.depth, 1)));
+      if (typeof flags.type === 'string') args.push('--type', flags.type);
+      return args;
+    },
+    'graph-dependents': () => {
+      const filePath = requireValue(flags, 'file-path', 'graph-dependents requires --file-path');
+      return ['dependents', filePath, '--json'];
+    },
+    'graph-path': () => {
+      const srcId = requireValue(flags, 'src-id', 'graph-path requires --src-id');
+      const dstId = requireValue(flags, 'dst-id', 'graph-path requires --dst-id');
+      return ['path', srcId, dstId, '--json'];
+    },
+    'graph-layers': () => ['layers', '--json'],
+    'graph-layer': () => {
+      const name = requireValue(flags, 'name', 'graph-layer requires --name');
+      return ['layer', name, '--json'];
+    },
+    'graph-hubs': () => {
+      const args = ['hubs', '--json'];
+      if (flags.top) args.push('--top', String(toPositiveInt(flags.top, 10)));
+      if (typeof flags.type === 'string') args.push('--type', flags.type);
+      return args;
+    },
+  };
+
+  const handler = handlers[toolName];
+  if (!handler) {
+    throw new Error(`Unsupported graph tool: ${toolName}`);
+  }
+  return runGraphCli(handler());
+}
+
+function buildVectorIndexArgs(flags) {
+  const args = ['index'];
+  pushRequiredValueArg(args, flags, 'scope', '--scope requires a value');
+  pushRequiredValueArg(args, flags, 'provider', '--provider requires a value');
+  pushRequiredValueArg(args, flags, 'model', '--model requires a value');
+  pushRequiredValueArg(args, flags, 'host', '--host requires a value');
+  pushOptionalPositiveIntArg(args, flags, 'max-text-chars');
+  pushOptionalPositiveIntArg(args, flags, 'graph-limit');
+  pushOptionalPositiveIntArg(args, flags, 'timeout-ms');
+  pushOptionalBooleanFlag(args, flags, 'force');
+  pushOptionalBooleanFlag(args, flags, 'verbose');
+  return args;
+}
+
+function buildVectorSearchArgs(flags) {
+  const query = requireValue(flags, 'query', 'vector-search requires --query');
+  const args = ['search', '--query', query];
+  pushRequiredValueArg(args, flags, 'scope', '--scope requires a value');
+  pushRequiredValueArg(args, flags, 'provider', '--provider requires a value');
+  pushOptionalPositiveIntArg(args, flags, 'top');
+  pushOptionalFiniteNumberArg(args, flags, 'min-score');
+  pushRequiredValueArg(args, flags, 'model', '--model requires a value');
+  pushRequiredValueArg(args, flags, 'host', '--host requires a value');
+  pushOptionalPositiveIntArg(args, flags, 'max-text-chars');
+  pushOptionalPositiveIntArg(args, flags, 'graph-limit');
+  pushOptionalPositiveIntArg(args, flags, 'timeout-ms');
+  pushOptionalBooleanFlag(args, flags, 'force');
+  pushOptionalBooleanFlag(args, flags, 'no-auto-index');
+  pushOptionalBooleanFlag(args, flags, 'verbose');
+  return args;
+}
+
+function executeVectorTool(toolName, flags) {
+  if (!existsSync(vectorCliPath)) {
+    return { ok: false, error: `vector CLI not found at ${vectorCliPath}` };
+  }
+
+  const handlers = {
+    'vector-status': () => ['status'],
+    'vector-index': () => buildVectorIndexArgs(flags),
+    'vector-search': () => buildVectorSearchArgs(flags),
+  };
+
+  const handler = handlers[toolName];
+  if (!handler) {
     throw new Error(`Unsupported vector tool: ${toolName}`);
   }
-
-  printJson(response, response.ok ? 0 : 1);
+  return runVectorCli(handler());
 }
 
-function handleHarnessLoops() {
+function executeHarnessLoops() {
   const loops = readLoopCatalog();
-  printJson({ ok: true, count: loops.length, loops });
+  return { ok: true, count: loops.length, loops };
 }
 
-function handleHarnessReport() {
+function executeHarnessReport() {
   if (!existsSync(reportCliPath)) {
-    printJson({ ok: false, error: `report CLI not found at ${reportCliPath}` }, 2);
+    return { ok: false, error: `report CLI not found at ${reportCliPath}` };
   }
-  const response = runCli(reportCliPath, ['--json']);
-  printJson(response, response.ok ? 0 : 1);
+  return runCli(reportCliPath, ['--json']);
+}
+
+function executeMemoryLinkTool(toolName, flags) {
+  if (!existsSync(memoryLinkCliPath)) {
+    return { ok: false, error: `memory-link CLI not found at ${memoryLinkCliPath}` };
+  }
+
+  const handlers = {
+    'memory-link-status': () => ['status'],
+    'memory-link-search': () => {
+      const query = requireValue(flags, 'query', 'memory-link-search requires --query');
+      const args = ['search', '--query', query];
+      if (flags.top) args.push('--top', String(toPositiveInt(flags.top, 10)));
+      return args;
+    },
+  };
+
+  const handler = handlers[toolName];
+  if (!handler) {
+    throw new Error(`Unsupported memory-link tool: ${toolName}`);
+  }
+  return runCli(memoryLinkCliPath, handler());
+}
+
+function executeToolWithFlags(toolName, flags) {
+  if (toolName.startsWith('graph-')) return executeGraphTool(toolName, flags);
+  if (toolName === 'memory-list') return executeMemoryList(flags);
+  if (toolName === 'memory-read') return executeMemoryRead(flags);
+  if (toolName === 'memory-search') return executeMemorySearch(flags);
+  if (toolName.startsWith('memory-link-')) return executeMemoryLinkTool(toolName, flags);
+  if (toolName.startsWith('vector-')) return executeVectorTool(toolName, flags);
+  if (toolName === 'harness-loops') return executeHarnessLoops();
+  if (toolName === 'harness-report') return executeHarnessReport();
+  throw new Error(`Unknown tool: ${toolName}`);
+}
+
+export function executeMcpTool(toolName, args = {}) {
+  const spec = toolByName.get(toolName);
+  if (!spec) {
+    throw new Error(`Unknown tool: ${toolName}`);
+  }
+  const cliArgs = spec.toCliArgs(args);
+  const flags = cliArgsToFlags(cliArgs);
+  return executeToolWithFlags(toolName, flags);
 }
 
 function main() {
@@ -550,56 +539,28 @@ function main() {
   }
 
   if (tool === 'list-tools') {
-    printJson(listToolsPayload());
+    printJson(buildMcpListPayload());
     return;
   }
 
-  if (tool.startsWith('graph-')) {
-    handleGraphTool(tool, flags);
-    return;
+  if (!toolByName.has(tool)) {
+    throw new Error(`Unknown tool: ${tool}`);
   }
 
-  if (tool === 'memory-list') {
-    handleMemoryList(flags);
-    return;
-  }
-
-  if (tool === 'memory-read') {
-    handleMemoryRead(flags);
-    return;
-  }
-
-  if (tool === 'memory-search') {
-    handleMemorySearch(flags);
-    return;
-  }
-
-  if (tool.startsWith('vector-')) {
-    handleVectorTool(tool, flags);
-    return;
-  }
-
-  if (tool === 'harness-loops') {
-    handleHarnessLoops();
-    return;
-  }
-
-  if (tool === 'harness-report') {
-    handleHarnessReport();
-    return;
-  }
-
-  throw new Error(`Unknown tool: ${tool}`);
+  const response = executeToolWithFlags(tool, flags);
+  printJson(response, response.ok ? 0 : 1);
 }
 
-try {
-  main();
-} catch (error) {
-  printJson(
-    {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    },
-    2
-  );
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    main();
+  } catch (error) {
+    printJson(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      2
+    );
+  }
 }
