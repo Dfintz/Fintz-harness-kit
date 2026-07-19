@@ -21,6 +21,7 @@ dashboard, and MCP server runnable from your project.
 Copy these into your project root (merge, don't overwrite your own files):
 
 ```
+.github/copilot-instructions.md   # GitHub Copilot App entrypoint for the harness
 .github/harness/         # harness contract, loops, memory protocol
 .github/instructions/    # workflow stage instructions (02–07)
 scripts/harness/         # runners, agents, dashboard, config loader
@@ -32,6 +33,9 @@ CREDITS.md
 
 Merge the `harness:*` and `dashboard:*` scripts from this kit's [`package.json`](package.json) into
 your project's `package.json`.
+
+If you use the GitHub Copilot App, keep `.github/copilot-instructions.md` committed. It is the repo
+surface Copilot reads to discover the harness entrypoint and standards.
 
 ## 2. Edit `harness.config.json`
 
