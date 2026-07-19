@@ -29,8 +29,8 @@ memory/
 
 ## Read protocol (session start)
 
-1. List `lessons/` and read the one-line summaries (first line of each file). Read a lesson in full
-   only when it touches the task at hand.
+1. List `lessons/` and read the one-line summaries (the `summary:` frontmatter field if present,
+   otherwise the first line of each file). Read a lesson in full only when it touches the task at hand.
 2. Before architecting or implementing in an area, check `briefs/` for a prior Brief covering it —
    gate decisions already made there are not re-litigated, they are followed or explicitly
    challenged via the Feedback stage.
@@ -60,3 +60,29 @@ Rules (one lesson per file, format in [`lessons/_template.md`](./lessons/_templa
 
 > This kit ships the protocol and structure only — no lessons. Your project's lessons accumulate
 > here as agents work.
+
+## OKF-compatible frontmatter (optional)
+
+Memory files may carry a YAML frontmatter block following the [Open Knowledge Format
+(OKF)](https://cloud.google.com/blog/products/data-analytics/how-the-open-knowledge-format-can-improve-data-sharing/)
+v0.1 convention — a directory of Markdown files with YAML frontmatter. This is **additive**: the body
+format above is unchanged, and any agent that ignores frontmatter still reads the file correctly. The
+payoff is that the trust and provenance signals this harness already reasons about *by folder* become
+**machine-readable**, so an OKF-aware agent (or the OKF HTML visualizer) can consume this memory
+without going through the kit's MCP server.
+
+Fields used by this harness (all optional; see [`lessons/_template.md`](./lessons/_template.md)):
+
+| Field         | Meaning                                                                    |
+| ------------- | -------------------------------------------------------------------------- |
+| `summary`     | The scannable one-line summary (read at session start instead of the H1).  |
+| `type`        | `lesson` or `brief`.                                                       |
+| `status`      | Lessons: `promoted` \| `quarantine`. Briefs: `active` \| `implemented` \| `superseded`. |
+| `source`      | Provenance: `human` \| `loop:<name>` \| `research` (supersedes the inline `origin:` tag). |
+| `reviewed_by` | Who promoted the entry — required before `status: promoted`.               |
+| `created` / `updated` | ISO dates; bump `updated` when you amend.                          |
+| `tags`        | `kebab-case` topics for retrieval.                                         |
+
+Frontmatter does not change the trust model: a file is trusted because it lives in `lessons/`, not
+because its frontmatter says `status: promoted`. The field records the decision; the directory still
+enforces it.

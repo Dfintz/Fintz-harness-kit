@@ -150,6 +150,7 @@ description and the files being touched.
 | `infrastructure`      | Bicep IaC, Azure Container Apps, Docker, GitHub Actions, deploy scripts |
 | `security-encryption` | Auth, encryption, GDPR, consent, audit logging, TOTP/WebAuthn, SSO      |
 | `star-citizen-domain` | Ships, fleets, activities, mining, trading, bounties, RSI sync, crew    |
+| `teach-agent`         | Machine-first guidance curation, promotion gates, and agent teachability |
 | `understand-process`  | Any non-trivial change (always pairs with stage 0)                      |
 
 Multiple skills can apply: a fleet API feature loads `star-citizen-domain` + `backend-service`; an
