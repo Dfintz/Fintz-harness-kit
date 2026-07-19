@@ -38,11 +38,16 @@ files; get it by either installing the Claude Code **plugin** (bundles everythin
 kit scaffold per [`SETUP.md`](SETUP.md). Replace `<owner>/harness-kit` with wherever you publish this
 kit.
 
+For the **GitHub Copilot App inside a repository**, the scaffold also ships
+`.github/copilot-instructions.md`. Once the kit is present in a repo, Copilot can load the harness
+entrypoint directly from that file.
+
 ## What's inside
 
 | Capability                                | Where                                                                                                                      | Notes                                                                                              |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | **Workflow stage machine**                | [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md), [`.github/instructions/`](.github/instructions/)               | Understand → Architect → Implement → Review (breadth+depth) → Feedback, with 5 architectural gates |
+| **GitHub Copilot app entrypoint**         | [`.github/copilot-instructions.md`](.github/copilot-instructions.md)                                                       | Repository-level bootstrap for Copilot that points it at the harness contract                      |
 | **Convergence loops**                     | [`.github/harness/loops/`](.github/harness/loops/), [`run-loop.mjs`](scripts/harness/run-loop.mjs)                         | Iterate until checks (lint/type/build/test) go green                                               |
 | **Workflow loops**                        | same                                                                                                                       | Rubric-graded passes (review-fix, feature-cycle, ci-green)                                         |
 | **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
