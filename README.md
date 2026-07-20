@@ -150,10 +150,18 @@ stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 - `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
 - `harness:review` runs the plan-review workflow for backward compatibility.
 
-By default the shipped environment policy separates execution and judgment:
+By default the shipped environment policy separates execution and judgment using a
+**three-tier capability model**:
 
-- `gpt-5.3-codex` for Implement and fix loops.
-- `claude-opus-4.8` for Understand, Architect, Review Breadth, Review Depth, and Feedback.
+| Tier | Stages | Default | Pinned example |
+|---|---|---|---|
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto | `claude-opus-4.8` |
+| **balanced-coding** | Implement, `build-fix`, `test-fix` | Copilot Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` |
+| **fast-cheap-local** | Experiment loops, lint-debt, enrichment, triage | — | `qwen2.5-coder:14b` via Ollama/LM Studio |
+
+Copilot Auto is a safe default for the hosted tiers. Pin a specific model in `harness.config.json`
+only when you need consistent identity for reproducible evals or cross-model review. The router
+enforces that `models.implementer ≠ models.reviewer` to prevent single-model echo chambers.
 
 ## Autoresearch with a local model
 

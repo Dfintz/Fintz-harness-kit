@@ -6,7 +6,8 @@ applyTo: '**'
 
 # Code Review — Breadth Pass
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — breadth
+> review requires sustained coverage across many categories without losing track of prior findings.
 > **Purpose:** Find as many concrete, actionable issues as possible through systematic compliance
 > checking, functional correctness analysis, and test coverage assessment.
 

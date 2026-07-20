@@ -6,8 +6,9 @@ applyTo: '**'
 
 # Understand Workflow
 
-> **Model:** GPT-5.3-Codex **Purpose:** Require architecture-aware context using Understand before
-> planning, implementation, and review.
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
+> requires sustained multi-hop context-holding across the component graph.
+> **Purpose:** Require architecture-aware context using Understand before planning, implementation, and review.
 
 Your core standards remain in `.github/copilot-instructions.md` and `CLAUDE.md`. This file adds an
 Understand operating mode to improve agent reasoning and reduce blind edits.

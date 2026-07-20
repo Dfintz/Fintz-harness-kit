@@ -6,7 +6,9 @@ applyTo: '**'
 
 # Code Review — Architectural Depth Pass
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — depth
+> review requires reasoning about multi-hop ownership boundaries and multi-tenant isolation that
+> weaker models consistently miss.
 > **Purpose:** Reason deeply about ownership, abstraction layers, domain alignment, service
 > boundaries, and multi-hop design flaws that breadth-first review misses. The question is not
 > whether the code is correct — it is whether the structure is right.

@@ -71,7 +71,8 @@ Never proceed with an unresolved doubt that maps to a high-impact assumption.
 
 ## When to Invoke Cross-Model Review
 
-This repo's harness already assigns Opus to Review Breadth/Depth. Invoke a cross-model pass when:
+This repo's harness assigns a **high-reasoning** model to Review Breadth/Depth (see `harness.config.json §
+models.reviewer`). Invoke a cross-model pass when:
 
 1. A doubt touches security (auth, encryption, data isolation, GDPR).
 2. A doubt challenges an existing Architecture Brief decision.
