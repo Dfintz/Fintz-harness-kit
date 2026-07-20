@@ -169,7 +169,8 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 ### Stage Contract (applies to every stage)
 
 1. **Memory before discovery.** Consult the two memory surfaces before re-deriving anything: the
-   committed knowledge graph (`.understand-anything/knowledge-graph.json`) for structure, and the
+   committed knowledge graph snapshot (provider-selected; default
+   `.understand-anything/knowledge-graph.json`) for structure, and the
    harness memory store ([`memory/`](./memory/README.md)) for lessons and prior Architecture Briefs.
    Rediscovering what a previous session already recorded is wasted budget.
 2. **Context Sufficiency Check first.** Every stage instruction begins with one. Inventory what you
@@ -331,14 +332,12 @@ See `LOOPS.md` for scoring semantics and loop protocol details.
 Persistent, committed memory keeps sessions from rediscovering what earlier sessions learned. Full
 protocol: [`memory/README.md`](./memory/README.md).
 
-- **Structure** — `.understand-anything/knowledge-graph.json` (Understand-Anything graph:
-  components, layers, dependencies; edges carry a `confidence` tag — `EXTRACTED` for AST-derived
-  facts). Committed; refresh incrementally with `/understand` and commit the result. Caches under
-  `.understand-anything/` stay gitignored. **Query it, don't read it** — the graph is
-  multi-megabyte;
-  `npm run harness:graph -- <status|banner|neighbors|dependents|path|layers|layer|hubs>` returns
-  only the slice you need (`scripts/harness/graph.mjs`). `status` is the freshness gate from
-  stage 0.
+- **Structure** — provider-agnostic graph surface (default Understand-Anything path
+  `.understand-anything/knowledge-graph.json`, optional Graphify path via `graph.provider` and
+  `graph.graphify.path` in `harness.config.json`). Committed structural snapshots are queried through
+  `scripts/harness/graph.mjs`; **query it, don't read it**. Use
+  `npm run harness:graph -- <status|provider-status|banner|neighbors|dependents|path|layers|layer|hubs>`
+  to fetch only the slice you need. `status` remains the stage-0 freshness gate.
 - **Lessons** — `memory/lessons/`: one non-obvious, hard-won fact per file; first line is the
   scannable summary. Write via the `remember` skill (Claude Code) or the protocol directly.
   Agent-local lesson stores (e.g. Copilot's memory tool) are promoted into this committed store with
@@ -367,7 +366,7 @@ runner). It is an efficiency adapter, not a dependency — nothing in the harnes
 Implemented scaffolding (optional, all adapters):
 
 1. **MCP wrappers plus first-class stdio transport.** `scripts/harness/mcp-tools.mjs` exposes stable
-   JSON command wrappers for `graph.mjs` plus `memory/lessons/` and `memory/briefs/`, and
+   JSON command wrappers for provider-agnostic graph queries (`graph.mjs`) plus `memory/lessons/` and `memory/briefs/`, and
    `scripts/harness/mcp-server.mjs` exposes the same tools through MCP tool schema + stdio
    transport: `npm run harness:mcp -- list-tools` and `npm run harness:mcp:server`.
 2. **Dockerized deterministic graph refresh.** `scripts/harness/refresh-graph.mjs` runs

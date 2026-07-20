@@ -71,6 +71,27 @@ export const mcpToolSpecs = [
     toCliArgs: () => [],
   },
   {
+    name: 'graph-provider-status',
+    description:
+      'Returns provider configuration/availability for understand-anything, graphify, or both.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
+    name: 'graph-genui-status',
+    description:
+      'Returns graph GenUI/HTTP render readiness including graph.html path and serveability.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
+    name: 'graph-events',
+    description:
+      'Returns recent structured graph events (refresh/query fallback/degradation) for observability.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
     name: 'graph-neighbors',
     description: 'Returns neighboring nodes for a graph node id.',
     inputSchema: objectSchema(

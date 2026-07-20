@@ -7,7 +7,7 @@ Two complementary memory surfaces can exist in a project that adopts this harnes
 
 | Surface                                    | What it remembers                                                                    | Who writes it                                                 |
 | ------------------------------------------ | ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| Knowledge graph (optional, see SETUP)      | Code structure: components, layers, dependencies, call sites                         | The graph pipeline (regenerate incrementally; commit results) |
+| Knowledge graph (optional, see SETUP)      | Code structure: components, layers, dependencies, call sites                         | The selected graph provider pipeline (default Understand-Anything; commit results) |
 | `.github/harness/memory/` (this directory) | Everything the graph can't: lessons, gotchas, settled decisions, Architecture Briefs | Any agent, following the protocol below                       |
 
 The knowledge graph answers "how does this codebase fit together"; this directory answers "what did

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * MCP-ready wrappers for harness graph + memory + vector tools.
+ * MCP-ready wrappers for harness provider-agnostic graph + memory + vector tools.
  *
  * This script does not implement an MCP transport server on its own.
  * It exposes stable JSON commands that an MCP server can call directly.
@@ -231,6 +231,9 @@ function showHelp() {
     examples: [
       'node scripts/harness/mcp-tools.mjs list-tools',
       'node scripts/harness/mcp-tools.mjs graph-status',
+      'node scripts/harness/mcp-tools.mjs graph-provider-status',
+      'node scripts/harness/mcp-tools.mjs graph-genui-status',
+      'node scripts/harness/mcp-tools.mjs graph-events',
       'node scripts/harness/mcp-tools.mjs graph-neighbors --node-id "file:backend/src/app.ts" --depth 2',
       'node scripts/harness/mcp-tools.mjs memory-search --query "tenant" --scope all --limit 5',
       'node scripts/harness/mcp-tools.mjs vector-search --query "tenant isolation" --scope all --top 8',
@@ -391,6 +394,9 @@ function executeGraphTool(toolName, flags) {
 
   const handlers = {
     'graph-status': () => ['status', '--json'],
+    'graph-provider-status': () => ['provider-status', '--json'],
+    'graph-genui-status': () => ['genui-status', '--json'],
+    'graph-events': () => ['events', '--json'],
     'graph-neighbors': () => {
       const nodeId = requireValue(flags, 'node-id', 'graph-neighbors requires --node-id');
       const args = ['neighbors', nodeId, '--json'];

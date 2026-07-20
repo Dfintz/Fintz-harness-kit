@@ -155,6 +155,20 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 
 ---
 
+### Provider-status helper: `graph-provider-status`
+
+Use the MCP wrapper/server tool `graph-provider-status` to inspect configured provider mode
+(`understand-anything`, `graphify`, `both`), active graph paths, and availability before relying on
+graph evidence in an Understand pass.
+
+Use `graph-genui-status` to fetch provider-agnostic `graph.html` serving readiness metadata for HTTP/GenUI consumers.
+Use `graph-events` to read structured graph lifecycle events (`refresh.start|refresh.success|refresh.fail|query.fallback|degradation`).
+
+All graph status surfaces now share core contract fields:
+`provider`, `activeProviders`, `queryGraphPath`, `refreshReadiness`, `degradationReason`.
+
+---
+
 ## Integration with Harness Workflow
 
 ### Understand Stage
@@ -167,7 +181,7 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 └──────────────────────────────────────────┘
    │
    ├─ 1. Check graph freshness
-   │     (→ `.understand-anything/knowledge-graph.json`)
+   │     (→ provider-selected graph snapshot; inspect with `graph-provider-status`)
    │
    ├─ 2. Run /understand-chat on task
    │     (→ graph-based component discovery)

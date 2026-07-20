@@ -23,9 +23,10 @@ Use the local Understand graph as a first-class input to coding decisions so age
 
 ### Phase 1: Graph Readiness
 
-1. Ensure `.understand-anything/knowledge-graph.json` exists.
-2. Check freshness against `git rev-parse HEAD`.
-3. Refresh with `/understand` (or `/understand --full` for larger shifts) when stale.
+1. Run `npm run harness:graph -- provider-status` to confirm the active graph provider/path.
+2. Ensure the active graph snapshot exists.
+3. Check freshness against `git rev-parse HEAD`.
+4. Refresh with `/understand` (or `/understand --full` for larger shifts) when stale.
 
 ### Phase 2: Task Discovery
 

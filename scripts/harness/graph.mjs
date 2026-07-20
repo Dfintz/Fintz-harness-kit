@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
  * Harness knowledge-graph CLI — query and maintain
- * .understand-anything/knowledge-graph.json without reading the whole 5+ MB file
+ * provider-selected graph snapshots without reading multi-megabyte JSON
  * into an agent's context.
  *
  * Usage:
  *   node scripts/harness/graph.mjs status [--json]
+ *   node scripts/harness/graph.mjs provider-status [--json]
+ *   node scripts/harness/graph.mjs genui-status [--json]
+ *   node scripts/harness/graph.mjs events [--limit N] [--json]
  *   node scripts/harness/graph.mjs banner
  *   node scripts/harness/graph.mjs neighbors <nodeId> [--depth N] [--type T] [--json]
  *   node scripts/harness/graph.mjs dependents <filePath> [--json]
@@ -27,9 +30,16 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildGraphStatusCore,
+  buildGraphGenUiPayload,
+  buildProviderStatusPayload,
+  loadGraphForQuery,
+  readGraphEvents,
+} from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const graphPath = join(repoRoot, '.understand-anything', 'knowledge-graph.json');
+const configPath = join(repoRoot, 'harness.config.json');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
 const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
 const BRANCH_TYPE_PREFIXES = new Set([
@@ -61,20 +71,27 @@ function parseFlags(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--json') flags.json = true;
+    else if (a === '--provider') flags.provider = argv[++i];
     else if (a === '--depth') flags.depth = Number(argv[++i]);
     else if (a === '--type') flags.type = argv[++i];
     else if (a === '--top') flags.top = Number(argv[++i]);
+    else if (a === '--limit') flags.limit = Number(argv[++i]);
     else if (a.startsWith('--')) die(`Unknown option: ${a}`);
     else flags._.push(a);
   }
   return flags;
 }
 
-function loadGraph() {
-  if (!existsSync(graphPath)) {
-    die(`No knowledge graph at ${graphPath}. Generate it with the Understand-Anything plugin.`);
+function loadGraphContext(flags) {
+  try {
+    return loadGraphForQuery({
+      repoRoot,
+      configPath,
+      overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+    });
+  } catch (error) {
+    die(error instanceof Error ? error.message : String(error), 1);
   }
-  return JSON.parse(readFileSync(graphPath, 'utf8'));
 }
 
 function git(args) {
@@ -233,12 +250,37 @@ function short(sha) {
   return sha ? sha.slice(0, 8) : '(none)';
 }
 
-function cmdStatus(graph, flags) {
+function cmdStatus(graphContext, flags) {
+  const { graph, providerId, graphPath } = graphContext;
   const s = computeStatus(graph);
+  const workspaceGraphPath = graphPath.replaceAll('\\', '/');
+  const core = buildGraphStatusCore({
+    repoRoot,
+    configPath,
+    overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+    probe: true,
+  });
   if (flags.json) {
-    console.log(JSON.stringify(s, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...core,
+          ...s,
+          graphPath: workspaceGraphPath,
+        },
+        null,
+        2
+      )
+    );
   } else {
     console.log(`Knowledge graph: ${statusLine(s)}`);
+    console.log(
+      `  provider: ${core.provider} (query backend: ${providerId}, graph: ${workspaceGraphPath})`
+    );
+    console.log(`  refresh readiness: ${core.refreshReadiness.ready ? 'ready' : 'degraded'}`);
+    if (core.degradationReason) {
+      console.log(`  degradation: ${core.degradationReason}`);
+    }
     console.log(`  graph commit: ${short(s.graphCommit)}   HEAD: ${short(s.head)}`);
     if (!s.fresh && s.commitsBehind) {
       console.log('  → refresh incrementally with /understand and commit the updated graph.');
@@ -267,7 +309,8 @@ function listMarkdown(dir) {
     .map(f => ({ file: join(dir, f), name: f, mtime: statSync(join(dir, f)).mtimeMs }));
 }
 
-function cmdBanner(graph) {
+function cmdBanner(graphContext) {
+  const { graph, providerId, providerState, graphPath } = graphContext;
   const s = computeStatus(graph);
   const lessons = listMarkdown(lessonsDir).sort((a, b) => b.mtime - a.mtime);
   const briefs = listMarkdown(briefsDir);
@@ -275,6 +318,9 @@ function cmdBanner(graph) {
 
   console.log('─── Harness memory ───────────────────────────────────────────');
   console.log(`Knowledge graph: ${statusLine(s)}`);
+  console.log(
+    `Graph provider: ${providerState.selectedProvider} (query backend: ${providerId}, graph: ${graphPath.replaceAll('\\', '/')})`
+  );
   if (!s.fresh && s.commitsBehind) {
     console.log('  Run `npm run harness:graph -- status` then /understand to refresh.');
   }
@@ -474,7 +520,14 @@ function cmdHubs(graph, flags) {
   for (const r of ranked) console.log(`  ${String(r.degree).padStart(4)}  [${r.type}] ${r.id}`);
 }
 
-function cmdAnnotate(graph) {
+function cmdAnnotate(graphContext) {
+  const { graph, graphPath, providerId } = graphContext;
+  if (providerId !== 'understand-anything') {
+    die(
+      `annotate is only supported for understand-anything graphs. Current query backend: ${providerId}.`,
+      2
+    );
+  }
   let changed = 0;
   for (const e of graph.edges) {
     if (!e.confidence) {
@@ -560,33 +613,125 @@ function main() {
   const flags = parseFlags(rest);
   if (!cmd || cmd === '--help' || cmd === '-h') {
     die(
-      'Usage: graph.mjs <status|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check>'
+      'Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
     );
   }
   if (cmd === 'brief-check') {
     return cmdBriefCheck(flags);
   }
+  if (cmd === 'provider-status') {
+    let payload;
+    try {
+      payload = buildProviderStatusPayload({
+        repoRoot,
+        configPath,
+        overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+      });
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error), 1);
+    }
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`Selected graph provider: ${payload.selectedProvider}`);
+    for (const providerId of payload.activeProviders) {
+      const details = payload.active[providerId];
+      console.log(`  ${providerId}: available=${details.available ? 'yes' : 'no'} query=${details.querySupported ? 'yes' : 'no'} refresh=${details.refreshSupported ? 'yes' : 'no'}`);
+      console.log(`    graph: ${details.graphPath} (${details.graphPathExists ? 'present' : 'missing'})`);
+      if (providerId === 'understand-anything') {
+        console.log(`    pluginRoot: ${details.pluginRoot ?? '(not set)'}`);
+      } else {
+        console.log(`    graphHtml: ${details.graphHtmlPath} (${details.graphHtmlExists ? 'present' : 'missing'})`);
+        console.log(
+          `    refreshCommand: ${details.refreshCommandConfigured ? 'configured' : 'not configured'} (cwd=${details.refreshCwd})`
+        );
+        console.log(
+          `    graphify-signal: cli=${details.cliAvailable === null ? 'n/a' : details.cliAvailable ? 'yes' : 'no'}, env=${details.signalPresent ? 'yes' : 'no'}`
+        );
+      }
+    }
+    return;
+  }
+  if (cmd === 'genui-status') {
+    let payload;
+    try {
+      payload = buildGraphGenUiPayload({
+        repoRoot,
+        configPath,
+        overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+      });
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error), 1);
+    }
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`Graph GenUI status (provider=${payload.selectedProvider})`);
+    console.log(`  query backend: ${payload.queryProvider ?? '(none)'}`);
+    console.log(`  query graph: ${payload.queryGraphPath ?? '(none)'}`);
+    console.log(
+      `  graph.html: ${payload.graphHtml.configuredPath} (${payload.graphHtml.exists ? 'present' : 'missing'})`
+    );
+    console.log(
+      `  served via HTTP: ${payload.graphHtml.httpPath ?? 'disabled (path outside repo root or missing)'}`
+    );
+    for (const note of payload.notes ?? []) {
+      console.log(`  note: ${note}`);
+    }
+    return;
+  }
+  if (cmd === 'events') {
+    const limit = Number.isFinite(flags.limit) && flags.limit > 0 ? Math.floor(flags.limit) : 20;
+    let payload;
+    try {
+      payload = {
+        ...buildGraphStatusCore({
+          repoRoot,
+          configPath,
+          overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+          probe: true,
+        }),
+        ...readGraphEvents({ repoRoot, configPath, limit }),
+      };
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error), 1);
+    }
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`Graph events (provider=${payload.provider}, count=${payload.count ?? 0})`);
+    console.log(`  log path: ${payload.path}`);
+    for (const event of payload.events || []) {
+      console.log(
+        `  ${event.timestamp || '(no-ts)'} ${event.eventType || '(unknown)'}${event.degradationReason ? ` — ${event.degradationReason}` : ''}`
+      );
+    }
+    return;
+  }
 
-  const graph = loadGraph();
+  const graphContext = loadGraphContext(flags);
   switch (cmd) {
     case 'status':
-      return cmdStatus(graph, flags);
+      return cmdStatus(graphContext, flags);
     case 'banner':
-      return cmdBanner(graph);
+      return cmdBanner(graphContext);
     case 'neighbors':
-      return cmdNeighbors(graph, flags);
+      return cmdNeighbors(graphContext.graph, flags);
     case 'dependents':
-      return cmdDependents(graph, flags);
+      return cmdDependents(graphContext.graph, flags);
     case 'path':
-      return cmdPath(graph, flags);
+      return cmdPath(graphContext.graph, flags);
     case 'layers':
-      return cmdLayers(graph, flags);
+      return cmdLayers(graphContext.graph, flags);
     case 'layer':
-      return cmdLayer(graph, flags);
+      return cmdLayer(graphContext.graph, flags);
     case 'hubs':
-      return cmdHubs(graph, flags);
+      return cmdHubs(graphContext.graph, flags);
     case 'annotate':
-      return cmdAnnotate(graph);
+      return cmdAnnotate(graphContext);
     default:
       return die(`Unknown command: ${cmd}`);
   }

@@ -53,7 +53,7 @@ entrypoint directly from that file.
 | **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
 | **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`)                      |
 | **Memory**                                | [`.github/harness/memory/`](.github/harness/memory/)                                                                       | Committed lessons + Architecture Briefs (structure only — no lessons shipped)                      |
-| **Knowledge graph**                       | [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs)                                                         | Optional structural memory (needs the Understand-Anything plugin)                                  |
+| **Knowledge graph providers**             | [`graph-provider.mjs`](scripts/harness/graph-provider.mjs), [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs) | Provider abstraction (`understand-anything` default, optional `graphify`) with deterministic refresh backends (`understand-anything` and configurable `graphify`) |
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes graph/memory/vector + routing/catalog/discovery tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
 | **Capability catalog**                    | [`harness-catalog.mjs`](scripts/harness/harness-catalog.mjs), [`llms.txt`](llms.txt), [`.github/harness/catalog/`](.github/harness/catalog/) | Machine-readable taxonomy + intent profiles for external agent/tool recommendation |
@@ -72,6 +72,9 @@ experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experim
 # 1. Point the harness at your project's commands.
 #    Edit harness.config.json: set project.name, project.description, and commands.*
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  # sanity-check
+npm run harness:graph:provider                     # inspect graph provider + paths
+npm run harness:graph:genui                        # inspect GenUI graph.html readiness
+npm run harness:graph:parity -- --local-only       # provider parity self-test matrix (local)
 
 # Optional: preview the repo's harness routing and operator handoff plans.
 # PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
@@ -196,6 +199,9 @@ same `command`/`args` in their MCP config.
 ```bash
 node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
 npm run harness:mcp:server                         # run the stdio server directly
+npm run harness:mcp -- graph-provider-status       # inspect active graph provider availability
+npm run harness:mcp -- graph-genui-status          # inspect graph.html serving readiness
+npm run harness:mcp -- graph-events                # read structured refresh/fallback/degradation events
 npm run harness:mcp -- harness-catalog             # read taxonomy + profiles
 npm run harness:mcp -- harness-pick-profile --task "add memory retrieval path"
 npm run harness:mcp -- harness-tool-discover --intent drop-in-memory --limit 6
@@ -216,7 +222,7 @@ out. The MCP surface is for discovery and context, not for driving loops.
 
 - Node.js ≥ 20 (uses built-in `fetch`; no install needed for the core loops).
 - Optional: Docker (dashboard/graph sidecars), Ollama or LM Studio (local-LLM loops), the Understand-Anything
-  plugin (knowledge graph).
+  plugin (deterministic graph refresh), Graphify (optional alternate graph provider).
 
 For the `graph-refresh` sidecar, plugin dependency bootstrapping is now hardened by default: when
 the plugin is mounted at `/opt/understand-plugin`, the loop copies it to a writable runtime path and
@@ -236,6 +242,18 @@ node scripts/harness/graph-refresh-loop.mjs --preflight-only --plugin-root <plug
 
 The compose sidecar now runs this preflight first and exits with one actionable error if
 prerequisites are missing.
+
+Graph provider selection lives in `harness.config.json`:
+
+- `graph.provider: "understand-anything"` (default) keeps the current deterministic flow.
+- `graph.provider: "graphify"` executes Graphify deterministic refresh via `graph.graphify.refreshCommand` and reads the resulting `graph.graphify.path`.
+- `graph.provider: "both"` refreshes Understand-Anything and Graphify backends in one run (Graphify refresh runs when `graph.graphify.refreshCommand` is configured).
+- `graph.sync.rebuildVectorIndex` / `graph.sync.rebuildMemoryLinkIndex` (optional) trigger post-refresh index rebuild hooks so vector + memory-link stay in sync with the active provider graph.
+- `graph.observability.eventsPath` stores structured graph lifecycle events (`refresh.start|refresh.success|refresh.fail|query.fallback|degradation`) consumed by MCP + dashboard surfaces.
+- `graph.graphHtmlPath` / `graph.graphify.graphHtmlPath` is now wired to HTTP and GenUI status surfaces:
+  - `GET /graph.html` on `report-server.mjs` serves configured graph HTML when present and repo-safe.
+  - `GET /genui/graph.json` exposes provider-agnostic graph render metadata for GenUI consumers.
+  - `GET /graph-events.json` exposes recent structured graph lifecycle events.
 
 ## License
 
