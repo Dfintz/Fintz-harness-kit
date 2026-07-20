@@ -29,6 +29,9 @@ Surface selection rule:
 - Reusable multi-step procedure -> skill
 - Different tools / policy / output ownership -> agent or handoff
 - External evidence -> MCP wrapper or MCP server
+- **Task too large for one session?** -> use [wayfinder](https://github.com/mattpocock/skills/tree/main/skills/engineering/wayfinder) to chart a decision-ticket map first; each ticket maps to one harness run
+
+If the router output includes intent `wayfinder` (matched by keywords: "multi-session", "too big for one session", "chart the map", "fog of war"), do not enter the stage machine directly — chart the wayfinder map first, then run the harness per resolved ticket.
 
 If graph is stale and source code will be changed:
 

@@ -1,3 +1,8 @@
+---
+name: deterministic-validation
+description: Define and enforce objective exit criteria, proof selection, and completion checks. Use when proving a change is done and during loop convergence checks.
+---
+
 # Skill: Deterministic Validation
 
 > Use when: A task spans multiple phases, uses subagents or mixed model roles, or could drift if the

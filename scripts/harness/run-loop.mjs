@@ -22,6 +22,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeCliCommand } from "./command-validation.mjs";
 import { resolveTokens } from "./config.mjs";
+import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const loopsDir = join(repoRoot, ".github", "harness", "loops");
@@ -167,11 +168,16 @@ function failureSignature(failures) {
 }
 
 function composeFixPrompt(loop, failures, iteration, journal) {
+  // Check outputs are external tool output (lint/build/test) and may contain file excerpts
+  // with injection phrases. Wrap each as untrusted before embedding in the agent prompt.
+  // The code fence is placed inside the untrusted block so the output remains legible to the
+  // agent while the security boundary is still in effect.
   const failureBlocks = failures
-    .map(
-      (f) =>
-        `### Check "${f.name}" (\`${f.run}\`) failed:\n\`\`\`\n${f.output}\n\`\`\``,
-    )
+    .map((f) => {
+      const fenced = `\`\`\`\n${f.output ?? ''}\n\`\`\``;
+      const { block } = wrapUntrusted(fenced, { source: `check:${f.name}` });
+      return `### Check "${f.name}" (\`${f.run}\`) failed:\n${block}`;
+    })
     .join("\n\n");
   const historyLines = journal
     .filter(

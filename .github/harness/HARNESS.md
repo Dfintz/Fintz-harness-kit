@@ -43,11 +43,11 @@ govern _what kind_ of capability a stage requires. Pinned examples show which mo
 each tier today, but treat them as examples, not requirements: any model in the same capability
 class works.
 
-| Tier | Stages | Copilot default | Pinned example | Rationale |
+| Tier | Stages | Copilot default | Pinned examples | Rationale |
 |---|---|---|---|---|
-| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4.8` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection |
-| **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
-| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b` via Ollama/LM Studio | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4.8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
+| **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
+| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
 
 **Cross-model review:** implementer and reviewer must differ. The router enforces
 `models.implementer ≠ models.reviewer`. If both are on Copilot Auto, explicitly select distinct
@@ -154,17 +154,32 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 └──────────────┘
 ```
 
+> **Multi-session work?** When the task is too large for a single run — the destination isn't yet
+> visible and the full journey spans multiple sessions — use the
+> [**wayfinder skill**](https://github.com/mattpocock/skills/tree/main/skills/engineering/wayfinder)
+> before entering this stage machine. Wayfinder charts a shared decision-ticket map on the repo's
+> issue tracker, then resolves tickets one at a time. Each resolved ticket typically feeds one
+> harness run. See `harness.config.json` `routing.intentProfiles.wayfinder` for the profile and
+> keywords the router uses to detect wayfinder-scale tasks.
+
 ### Stage Reference
 
 | #   | Stage          | Instruction file                                 | Claude Code skill                        | Mandatory output                                                         |
 | --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
 | 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 1′  | Architect Challenge *(manual opt-in)* | `.github/agents/architect-challenge.agent.md` | — | VERDICT: APPROVED \| REVISE \| BLOCKED on the Brief |
 | 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Delivered change + proof summary + self-review summary                   |
 | 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + proof summary + surgical boundary note             |
 | 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings ledger (severity, evidence, impact, confidence, fix)            |
 | 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate ledger + structural findings + Brief divergences                    |
 | 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict record + Brief updates + response notes                          |
+
+> **Architect Challenge:** Stage 1′ is a manual opt-in that runs a cross-model adversarial review
+> on the Architecture Brief before implementation. It is **not** auto-emitted by the prompt router.
+> Invoke it explicitly with `npm run harness:plan-review -- --lens plan` when the change is high-risk
+> or when a second opinion on the Brief is desired. The workflow-stage prompt templates include
+> inline guidance for cases when the route omits this stage.
 
 ### Stage Contract (applies to every stage)
 
@@ -211,12 +226,26 @@ description and the files being touched.
 | `budget-aware-execution`            | Cost-aware tool/model selection and bounded execution                         |
 | `teach-agent`                       | Machine-first guidance curation, promotion gates, and agent teachability      |
 | `setup-harness-bootstrap`           | Adopting the harness in a new repository or workflow surface                  |
-| `remember`                          | Persisting reusable lessons and Architecture Briefs to harness memory         |
-| `run-loop`                          | Native execution of workflow loops using checked-in loop JSON and guardrails  |
+| `retrieval-quality-ops`             | A/B evaluation of retrieval stacks (vector-only vs contextual+BM25+rerank)    |
+| `remember` *(Claude Code only)*     | Persisting reusable lessons and Architecture Briefs to harness memory. Non-Claude agents: follow the write protocol in `memory/README.md` directly. |
+| `run-loop` *(Claude Code only)*     | Native execution of workflow loops using checked-in loop JSON and guardrails. Non-Claude agents: follow the loop JSON as protocol per `LOOPS.md § Native Execution`. |
 | `pr`                                | PR creation, verification, and review-before-ship workflow                    |
 
 Repositories may add domain specialists under `.github/skills/` or `.claude/skills/`, but they
 should only be listed in `registry.json` once the skill files are actually checked in.
+
+### Sidecar Prompts (optional, generated by `harness:prompt-pack`)
+
+When running `npm run harness:prompt-pack`, two optional sidecar prompt files are generated
+alongside the main stage prompts:
+
+| Sidecar | Purpose | When to use |
+|---|---|---|
+| `optional-scout.md` | Parallel research — find reuse opportunities, missing context, and adjacent risks | Highest value before or during Understand and Architect |
+| `optional-challenger.md` | Independent challenge — pressure-test assumptions, risks, and review blind spots | After architecture or implementation artifacts exist; can run in parallel with breadth review |
+
+Both sidecars are optional and do not replace canonical harness stages. Run them with a
+high-reasoning model; write output to `scout-notes.md` or `challenger-findings.md` respectively.
 
 ### Workflow Skills (stage executors)
 
@@ -338,6 +367,12 @@ protocol: [`memory/README.md`](./memory/README.md).
   `scripts/harness/graph.mjs`; **query it, don't read it**. Use
   `npm run harness:graph -- <status|provider-status|banner|neighbors|dependents|path|layers|layer|hubs>`
   to fetch only the slice you need. `status` remains the stage-0 freshness gate.
+
+  > **Graph disabled?** If `graph.enabled` is `false` in `harness.config.json` (the harness-kit
+  > default for new adopters), `npm run harness:graph -- status` will exit non-zero with "Graph file
+  > not found." This is expected — set `graph.enabled = true` and run the graph provider pipeline to
+  > populate the snapshot. Until then, the stage-0 gate degrades gracefully: continue with explicit
+  > reduced-confidence annotation and ground discoveries in direct file reads.
 - **Lessons** — `memory/lessons/`: one non-obvious, hard-won fact per file; first line is the
   scannable summary. Write via the `remember` skill (Claude Code) or the protocol directly.
   Agent-local lesson stores (e.g. Copilot's memory tool) are promoted into this committed store with

@@ -1,3 +1,8 @@
+---
+name: doubt-driven-development
+description: Security and correctness skepticism for high-stakes changes. Use for security changes, irreversible operations, and cross-model review of production behavior.
+---
+
 # Skill: Doubt-Driven Development
 
 > Use when: Stakes are high (production, security, irreversible action), working in unfamiliar code,

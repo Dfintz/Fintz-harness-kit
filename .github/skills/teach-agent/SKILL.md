@@ -1,3 +1,8 @@
+---
+name: teach-agent
+description: Convert repository domain knowledge into machine-operational guidance for agents. Use when curating lessons, authoring skill docs, or gating knowledge promotion.
+---
+
 # Skill: Teach Agent
 
 > Use when: You need to convert repository domain knowledge into machine-operational guidance that

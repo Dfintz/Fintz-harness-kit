@@ -1,3 +1,8 @@
+---
+name: context-engineering
+description: Session memory hygiene, task-switch checkpointing, and compact handoff authoring. Use at session start and when switching tasks to preserve and recover context.
+---
+
 # Skill: Context Engineering
 
 > Use when: Starting any harness session, switching tasks, or when agent output quality drops and

@@ -1,3 +1,8 @@
+---
+name: understand-process
+description: Graph-first impact analysis and dependency discovery for any non-trivial change. Use at stage 0 (Understand) to run the graph freshness gate, map changed/affected components, and identify blast radius.
+---
+
 # Skill: Understand-Driven Development
 
 > **Use when:** Planning, implementing, reviewing, or risk-assessing any non-trivial change in this

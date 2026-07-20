@@ -1,3 +1,8 @@
+---
+name: budget-aware-execution
+description: Cost-aware tool and model selection, token budget tracking, and bounded execution. Use for long-running or loop-heavy tasks.
+---
+
 # Skill: Budget-Aware Execution
 
 > Use when: Starting substantial multi-stage, loop-driven, or parallel-wave work; running a harness

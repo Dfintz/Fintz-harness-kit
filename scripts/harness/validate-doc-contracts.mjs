@@ -57,11 +57,18 @@ function collectMarkdownFiles() {
     ".claude/skills",
     "skills/harness/SKILL.md",
   ].map((path) => join(repoRoot, path));
+  // Runtime artifacts in runs/ and committed memory records in memory/ are not
+  // operator-facing documentation. Exclude them from script-reference checks to
+  // keep validator output focused on harness source files.
+  const excludedPrefixes = [
+    join(repoRoot, ".github", "harness", "runs"),
+    join(repoRoot, ".github", "harness", "memory"),
+  ];
   const files = [];
   for (const root of roots) {
     walkFiles(
       root,
-      (path) => path.endsWith(".md"),
+      (path) => path.endsWith(".md") && !excludedPrefixes.some((ex) => path.startsWith(ex)),
       files,
     );
   }
