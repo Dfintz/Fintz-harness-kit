@@ -32,13 +32,14 @@
  *   GET /healthz     -> "ok" (liveness)
  *   GET /graph.html  -> provider-configured graph html if present/safe
  *   GET /genui/graph.json -> graph render payload for GenUI consumers
+ *   GET /graph-events.json -> recent structured graph lifecycle events
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildGraphGenUiPayload } from './graph-provider.mjs';
+import { buildGraphGenUiPayload, readGraphEvents } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const configPath = join(repoRoot, 'harness.config.json');
@@ -90,6 +91,7 @@ function showHelp() {
           'GET /metrics.json',
           'GET /graph.html',
           'GET /genui/graph.json',
+          'GET /graph-events.json',
           'GET /healthz',
         ],
         envFallbacks: [
@@ -203,6 +205,22 @@ function serveGraphGenUi(res) {
   }
 }
 
+function serveGraphEvents(res) {
+  try {
+    const payload = readGraphEvents({ repoRoot, configPath, limit: 50 });
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    res.end(JSON.stringify({ ok: true, ...payload }));
+  } catch (error) {
+    res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(
+      JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })
+    );
+  }
+}
+
 function serveGraphHtml(res) {
   try {
     const payload = getGraphGenUiPayload();
@@ -254,6 +272,10 @@ function createDashboardServer() {
     }
     if (path === '/genui/graph.json' || path === '/genui/graph') {
       serveGraphGenUi(res);
+      return;
+    }
+    if (path === '/graph-events.json') {
+      serveGraphEvents(res);
       return;
     }
     if (path === '/graph.html') {

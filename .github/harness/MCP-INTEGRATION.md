@@ -162,6 +162,10 @@ Use the MCP wrapper/server tool `graph-provider-status` to inspect configured pr
 graph evidence in an Understand pass.
 
 Use `graph-genui-status` to fetch provider-agnostic `graph.html` serving readiness metadata for HTTP/GenUI consumers.
+Use `graph-events` to read structured graph lifecycle events (`refresh.start|refresh.success|refresh.fail|query.fallback|degradation`).
+
+All graph status surfaces now share core contract fields:
+`provider`, `activeProviders`, `queryGraphPath`, `refreshReadiness`, `degradationReason`.
 
 ---
 

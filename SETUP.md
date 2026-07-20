@@ -59,6 +59,14 @@ This is the only required step. Point the tokens at your project's real commands
   "graph": {
     "provider": "understand-anything", // or "graphify" | "both"
     "path": ".understand-anything/knowledge-graph.json",
+    "sync": {
+      "rebuildVectorIndex": false,
+      "rebuildMemoryLinkIndex": false,
+      "continueOnSyncError": false
+    },
+    "observability": {
+      "eventsPath": ".github/harness/runs/graph-events.jsonl"
+    },
     "graphify": {
       "path": ".graphify/knowledge-graph.json",
       "graphHtmlPath": ".graphify/graph.html",
@@ -130,6 +138,7 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
 # Inspect provider abstraction + availability:
 npm run harness:graph:provider
 npm run harness:graph:genui
+npm run harness:graph:parity -- --local-only
 ```
 
 ## 6. (Optional) MCP integration

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { assertSafeCliCommand } from './command-validation.mjs';
 
 export const GRAPH_PROVIDER_VALUES = ['understand-anything', 'graphify', 'both'];
@@ -9,6 +9,7 @@ export const DEFAULT_GRAPH_PROVIDER = 'understand-anything';
 export const DEFAULT_UA_GRAPH_PATH = '.understand-anything/knowledge-graph.json';
 export const DEFAULT_GRAPHIFY_GRAPH_PATH = '.graphify/knowledge-graph.json';
 export const DEFAULT_GRAPHIFY_HTML_PATH = '.graphify/graph.html';
+export const DEFAULT_GRAPH_EVENTS_PATH = '.github/harness/runs/graph-events.jsonl';
 
 function toWorkspacePath(repoRoot, absolutePath) {
   return relative(repoRoot, absolutePath).replaceAll('\\', '/');
@@ -29,6 +30,21 @@ function readHarnessConfig(configPath) {
   const parsed = JSON.parse(raw);
   if (!parsed || typeof parsed !== 'object') return {};
   return parsed;
+}
+
+function parseJsonLines(rawText) {
+  return String(rawText || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(line => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 function stringOrUndefined(value) {
@@ -97,6 +113,11 @@ export function resolveGraphProviderState({
     graphConfig.graphify && typeof graphConfig.graphify === 'object'
       ? graphConfig.graphify
       : {};
+  const syncConfig = graphConfig.sync && typeof graphConfig.sync === 'object' ? graphConfig.sync : {};
+  const observabilityConfig =
+    graphConfig.observability && typeof graphConfig.observability === 'object'
+      ? graphConfig.observability
+      : {};
   const selectedProvider = normalizeGraphProvider(overrideProvider ?? graphConfig.provider);
   const activeProviders = activeProvidersFor(selectedProvider);
 
@@ -114,6 +135,11 @@ export function resolveGraphProviderState({
   const graphifyRefreshCommand = stringOrUndefined(graphifyConfig.refreshCommand);
   const graphifyRefreshCwd = toAbsoluteMaybe(repoRoot, graphifyConfig.refreshCwd) ?? repoRoot;
   const uaPluginRoot = stringOrUndefined(graphConfig.pluginRoot);
+  const graphEventsPath = toAbsolutePath(
+    repoRoot,
+    observabilityConfig.eventsPath,
+    DEFAULT_GRAPH_EVENTS_PATH
+  );
 
   const graphifyCliAvailable = probe ? probeGraphifyCli() : null;
   const graphifySignal = Boolean(graphifySignalsPresent());
@@ -150,6 +176,14 @@ export function resolveGraphProviderState({
         cliAvailable: graphifyCliAvailable,
         signalPresent: graphifySignal,
       },
+    },
+    sync: {
+      rebuildVectorIndex: syncConfig.rebuildVectorIndex === true,
+      rebuildMemoryLinkIndex: syncConfig.rebuildMemoryLinkIndex === true,
+      continueOnSyncError: syncConfig.continueOnSyncError === true,
+    },
+    observability: {
+      eventsPath: graphEventsPath,
     },
   };
 }
@@ -188,7 +222,48 @@ export function resolveGraphQueryTarget(state) {
 
 export function loadGraphForQuery({ repoRoot, configPath, overrideProvider } = {}) {
   const state = resolveGraphProviderState({ repoRoot, configPath, overrideProvider, probe: false });
-  const target = resolveGraphQueryTarget(state);
+  let target;
+  try {
+    target = resolveGraphQueryTarget(state);
+  } catch (error) {
+    emitGraphEvent({
+      repoRoot,
+      configPath,
+      eventType: 'degradation',
+      coreStatus: {
+        provider: state.selectedProvider,
+        activeProviders: state.activeProviders,
+        queryGraphPath: null,
+        refreshReadiness: computeRefreshReadiness(state),
+        degradationReason: error instanceof Error ? error.message : String(error),
+      },
+      details: { phase: 'query.resolve' },
+    });
+    throw error;
+  }
+  if (
+    state.selectedProvider === 'both' &&
+    target.providerId === 'graphify' &&
+    !existsSync(state.providers['understand-anything'].graphPath)
+  ) {
+    emitGraphEvent({
+      repoRoot,
+      configPath,
+      eventType: 'query.fallback',
+      coreStatus: {
+        provider: state.selectedProvider,
+        activeProviders: state.activeProviders,
+        queryProvider: target.providerId,
+        queryGraphPath: toWorkspacePath(repoRoot, target.graphPath),
+        refreshReadiness: computeRefreshReadiness(state),
+        degradationReason: 'understand-anything graph missing; query fallback to graphify',
+      },
+      details: {
+        fallbackFrom: 'understand-anything',
+        fallbackTo: 'graphify',
+      },
+    });
+  }
   if (!existsSync(target.graphPath)) {
     throw new Error(`Graph file not found at ${target.graphPath}.`);
   }
@@ -206,6 +281,135 @@ export function loadGraphForQuery({ repoRoot, configPath, overrideProvider } = {
     providerId: target.providerId,
     graphPath: target.graphPath,
     graph,
+  };
+}
+
+function computeRefreshReadiness(state) {
+  const byProvider = {};
+  for (const providerId of state.activeProviders) {
+    const provider = state.providers[providerId];
+    if (providerId === 'understand-anything') {
+      const pluginRoot = stringOrUndefined(provider.pluginRoot);
+      const ready = Boolean(pluginRoot) && !pluginRoot.startsWith('<');
+      byProvider[providerId] = {
+        supported: provider.refreshSupported,
+        ready,
+        reason: ready
+          ? null
+          : 'graph.pluginRoot is required for understand-anything refresh.',
+      };
+      continue;
+    }
+    const ready = Boolean(provider.refreshCommand);
+    byProvider[providerId] = {
+      supported: provider.refreshSupported,
+      ready,
+      reason: ready
+        ? null
+        : 'graph.graphify.refreshCommand is required for graphify refresh.',
+    };
+  }
+  const blocked = Object.entries(byProvider)
+    .filter(([, readiness]) => !readiness.ready)
+    .map(([providerId, readiness]) => `${providerId}: ${readiness.reason}`);
+  return {
+    ready: blocked.length === 0,
+    requiredProviders: state.activeProviders,
+    byProvider,
+    reason: blocked.length > 0 ? blocked.join(' | ') : null,
+  };
+}
+
+export function buildGraphStatusCore({
+  repoRoot,
+  configPath,
+  overrideProvider,
+  probe = true,
+} = {}) {
+  const state = resolveGraphProviderState({
+    repoRoot,
+    configPath,
+    overrideProvider,
+    probe,
+  });
+  let queryTarget = null;
+  let queryError = null;
+  try {
+    queryTarget = resolveGraphQueryTarget(state);
+  } catch (error) {
+    queryError = error instanceof Error ? error.message : String(error);
+  }
+  const refreshReadiness = computeRefreshReadiness(state);
+  const degradationReason = queryError || refreshReadiness.reason || null;
+  return {
+    provider: state.selectedProvider,
+    selectedProvider: state.selectedProvider,
+    activeProviders: state.activeProviders,
+    queryProvider: queryTarget?.providerId ?? null,
+    queryGraphPath: queryTarget?.graphPath ? toWorkspacePath(repoRoot, queryTarget.graphPath) : null,
+    refreshReadiness,
+    degradationReason,
+  };
+}
+
+export function emitGraphEvent({
+  repoRoot,
+  configPath,
+  eventType,
+  coreStatus,
+  details,
+} = {}) {
+  if (!repoRoot) return { ok: false, error: 'emitGraphEvent requires repoRoot' };
+  if (typeof eventType !== 'string' || eventType.trim().length === 0) {
+    return { ok: false, error: 'emitGraphEvent requires eventType' };
+  }
+  const state = resolveGraphProviderState({ repoRoot, configPath, probe: false });
+  const payload = {
+    timestamp: new Date().toISOString(),
+    eventType: eventType.trim(),
+    provider: coreStatus?.provider ?? state.selectedProvider,
+    activeProviders: coreStatus?.activeProviders ?? state.activeProviders,
+    queryProvider: coreStatus?.queryProvider ?? null,
+    queryGraphPath: coreStatus?.queryGraphPath ?? null,
+    refreshReadiness: coreStatus?.refreshReadiness ?? computeRefreshReadiness(state),
+    degradationReason: coreStatus?.degradationReason ?? null,
+    details: details && typeof details === 'object' ? details : undefined,
+  };
+  try {
+    mkdirSync(dirname(state.observability.eventsPath), { recursive: true });
+    appendFileSync(state.observability.eventsPath, `${JSON.stringify(payload)}\n`, 'utf8');
+    return {
+      ok: true,
+      eventPath: toWorkspacePath(repoRoot, state.observability.eventsPath),
+      event: payload,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      event: payload,
+    };
+  }
+}
+
+export function readGraphEvents({ repoRoot, configPath, limit = 20 } = {}) {
+  const state = resolveGraphProviderState({ repoRoot, configPath, probe: false });
+  const eventPath = state.observability.eventsPath;
+  if (!existsSync(eventPath)) {
+    return {
+      exists: false,
+      path: toWorkspacePath(repoRoot, eventPath),
+      events: [],
+    };
+  }
+  const parsed = parseJsonLines(readFileSync(eventPath, 'utf8'));
+  const boundedLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.floor(Number(limit))) : 20;
+  const events = parsed.slice(-boundedLimit);
+  return {
+    exists: true,
+    path: toWorkspacePath(repoRoot, eventPath),
+    count: parsed.length,
+    events,
   };
 }
 
@@ -265,6 +469,7 @@ export function resolveRefreshBackends(state) {
 }
 
 export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvider } = {}) {
+  const core = buildGraphStatusCore({ repoRoot, configPath, overrideProvider, probe: true });
   const state = resolveGraphProviderState({
     repoRoot,
     configPath,
@@ -296,13 +501,14 @@ export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvi
   }
 
   return {
-    selectedProvider: state.selectedProvider,
-    activeProviders: state.activeProviders,
+    ...core,
     active,
+    observability: readGraphEvents({ repoRoot, configPath, limit: 5 }),
   };
 }
 
 export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider } = {}) {
+  const core = buildGraphStatusCore({ repoRoot, configPath, overrideProvider, probe: true });
   const state = resolveGraphProviderState({
     repoRoot,
     configPath,
@@ -315,20 +521,9 @@ export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider 
   const htmlWithinRepo = isPathWithinRoot(repoRoot, htmlAbsolutePath);
   const htmlExists = existsSync(htmlAbsolutePath);
   const httpPath = htmlWithinRepo ? '/graph.html' : null;
-  const queryTarget = (() => {
-    try {
-      return resolveGraphQueryTarget(state);
-    } catch {
-      return null;
-    }
-  })();
-
   return {
     ok: true,
-    selectedProvider: state.selectedProvider,
-    activeProviders: state.activeProviders,
-    queryProvider: queryTarget?.providerId ?? null,
-    queryGraphPath: queryTarget?.graphPath ? toWorkspacePath(repoRoot, queryTarget.graphPath) : null,
+    ...core,
     graphHtml: {
       configuredPath: toWorkspacePath(repoRoot, htmlAbsolutePath),
       absolutePath: htmlAbsolutePath,
@@ -344,5 +539,6 @@ export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider 
               ? 'Configured graphHtmlPath is outside repo root; report server will refuse to serve it.'
               : 'Configured graphHtmlPath does not exist yet; run graph refresh/export first.',
           ],
+    observability: readGraphEvents({ repoRoot, configPath, limit: 10 }),
   };
 }

@@ -74,6 +74,7 @@ experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experim
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  # sanity-check
 npm run harness:graph:provider                     # inspect graph provider + paths
 npm run harness:graph:genui                        # inspect GenUI graph.html readiness
+npm run harness:graph:parity -- --local-only       # provider parity self-test matrix (local)
 
 # Optional: preview the repo's harness routing and operator handoff plans.
 # PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
@@ -192,6 +193,7 @@ node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
 npm run harness:mcp:server                         # run the stdio server directly
 npm run harness:mcp -- graph-provider-status       # inspect active graph provider availability
 npm run harness:mcp -- graph-genui-status          # inspect graph.html serving readiness
+npm run harness:mcp -- graph-events                # read structured refresh/fallback/degradation events
 npm run harness:mcp -- harness-catalog             # read taxonomy + profiles
 npm run harness:mcp -- harness-pick-profile --task "add memory retrieval path"
 npm run harness:mcp -- harness-tool-discover --intent drop-in-memory --limit 6
@@ -238,9 +240,12 @@ Graph provider selection lives in `harness.config.json`:
 - `graph.provider: "understand-anything"` (default) keeps the current deterministic flow.
 - `graph.provider: "graphify"` executes Graphify deterministic refresh via `graph.graphify.refreshCommand` and reads the resulting `graph.graphify.path`.
 - `graph.provider: "both"` refreshes Understand-Anything and Graphify backends in one run (Graphify refresh runs when `graph.graphify.refreshCommand` is configured).
+- `graph.sync.rebuildVectorIndex` / `graph.sync.rebuildMemoryLinkIndex` (optional) trigger post-refresh index rebuild hooks so vector + memory-link stay in sync with the active provider graph.
+- `graph.observability.eventsPath` stores structured graph lifecycle events (`refresh.start|refresh.success|refresh.fail|query.fallback|degradation`) consumed by MCP + dashboard surfaces.
 - `graph.graphHtmlPath` / `graph.graphify.graphHtmlPath` is now wired to HTTP and GenUI status surfaces:
   - `GET /graph.html` on `report-server.mjs` serves configured graph HTML when present and repo-safe.
   - `GET /genui/graph.json` exposes provider-agnostic graph render metadata for GenUI consumers.
+  - `GET /graph-events.json` exposes recent structured graph lifecycle events.
 
 ## License
 

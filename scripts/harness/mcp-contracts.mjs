@@ -85,6 +85,13 @@ export const mcpToolSpecs = [
     toCliArgs: () => [],
   },
   {
+    name: 'graph-events',
+    description:
+      'Returns recent structured graph events (refresh/query fallback/degradation) for observability.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
     name: 'graph-neighbors',
     description: 'Returns neighboring nodes for a graph node id.',
     inputSchema: objectSchema(

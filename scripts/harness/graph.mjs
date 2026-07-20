@@ -8,6 +8,7 @@
  *   node scripts/harness/graph.mjs status [--json]
  *   node scripts/harness/graph.mjs provider-status [--json]
  *   node scripts/harness/graph.mjs genui-status [--json]
+ *   node scripts/harness/graph.mjs events [--limit N] [--json]
  *   node scripts/harness/graph.mjs banner
  *   node scripts/harness/graph.mjs neighbors <nodeId> [--depth N] [--type T] [--json]
  *   node scripts/harness/graph.mjs dependents <filePath> [--json]
@@ -30,9 +31,11 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  buildGraphStatusCore,
   buildGraphGenUiPayload,
   buildProviderStatusPayload,
   loadGraphForQuery,
+  readGraphEvents,
 } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -72,6 +75,7 @@ function parseFlags(argv) {
     else if (a === '--depth') flags.depth = Number(argv[++i]);
     else if (a === '--type') flags.type = argv[++i];
     else if (a === '--top') flags.top = Number(argv[++i]);
+    else if (a === '--limit') flags.limit = Number(argv[++i]);
     else if (a.startsWith('--')) die(`Unknown option: ${a}`);
     else flags._.push(a);
   }
@@ -247,16 +251,21 @@ function short(sha) {
 }
 
 function cmdStatus(graphContext, flags) {
-  const { graph, providerId, providerState, graphPath } = graphContext;
+  const { graph, providerId, graphPath } = graphContext;
   const s = computeStatus(graph);
   const workspaceGraphPath = graphPath.replaceAll('\\', '/');
+  const core = buildGraphStatusCore({
+    repoRoot,
+    configPath,
+    overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+    probe: true,
+  });
   if (flags.json) {
     console.log(
       JSON.stringify(
         {
+          ...core,
           ...s,
-          selectedProvider: providerState.selectedProvider,
-          queryProvider: providerId,
           graphPath: workspaceGraphPath,
         },
         null,
@@ -266,8 +275,12 @@ function cmdStatus(graphContext, flags) {
   } else {
     console.log(`Knowledge graph: ${statusLine(s)}`);
     console.log(
-      `  provider: ${providerState.selectedProvider} (query backend: ${providerId}, graph: ${workspaceGraphPath})`
+      `  provider: ${core.provider} (query backend: ${providerId}, graph: ${workspaceGraphPath})`
     );
+    console.log(`  refresh readiness: ${core.refreshReadiness.ready ? 'ready' : 'degraded'}`);
+    if (core.degradationReason) {
+      console.log(`  degradation: ${core.degradationReason}`);
+    }
     console.log(`  graph commit: ${short(s.graphCommit)}   HEAD: ${short(s.head)}`);
     if (!s.fresh && s.commitsBehind) {
       console.log('  → refresh incrementally with /understand and commit the updated graph.');
@@ -600,7 +613,7 @@ function main() {
   const flags = parseFlags(rest);
   if (!cmd || cmd === '--help' || cmd === '-h') {
     die(
-      'Usage: graph.mjs <status|provider-status|genui-status|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
+      'Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
     );
   }
   if (cmd === 'brief-check') {
@@ -666,6 +679,35 @@ function main() {
     );
     for (const note of payload.notes ?? []) {
       console.log(`  note: ${note}`);
+    }
+    return;
+  }
+  if (cmd === 'events') {
+    const limit = Number.isFinite(flags.limit) && flags.limit > 0 ? Math.floor(flags.limit) : 20;
+    let payload;
+    try {
+      payload = {
+        ...buildGraphStatusCore({
+          repoRoot,
+          configPath,
+          overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+          probe: true,
+        }),
+        ...readGraphEvents({ repoRoot, configPath, limit }),
+      };
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error), 1);
+    }
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`Graph events (provider=${payload.provider}, count=${payload.count ?? 0})`);
+    console.log(`  log path: ${payload.path}`);
+    for (const event of payload.events || []) {
+      console.log(
+        `  ${event.timestamp || '(no-ts)'} ${event.eventType || '(unknown)'}${event.degradationReason ? ` — ${event.degradationReason}` : ''}`
+      );
     }
     return;
   }
