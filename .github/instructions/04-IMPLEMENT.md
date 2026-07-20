@@ -166,6 +166,18 @@ next stage needs rather than replaying the whole implementation history.
 - do not hide uncertainty behind silent fallbacks
 - do not add speculative abstractions, flags, or future-proofing without a current need
 
+### 6. Prefer rollback-friendly change shapes
+
+Adapted from [addyosmani/agent-skills `incremental-implementation`](https://github.com/addyosmani/agent-skills):
+
+Order change types from safest to riskiest:
+1. **Additive** — new files, new functions (easiest to revert, nothing breaks)
+2. **Modify** — changes to existing code (test the slice before committing)
+3. **Delete** — removing code or files (separate commit; confirm no hidden consumers)
+
+Separate deletes from additions: don't remove something in one commit and replace it in the
+same commit — reviewers (and `git revert`) need to see each step clearly.
+
 ---
 
 ## Mandatory self-review
@@ -194,6 +206,7 @@ Before handing off, work through these checks.
 
 - [ ] Directly dependent docs, tests, or workflow notes were updated where required
 - [ ] The next reviewer can tell what changed, why, and how it was proved
+- [ ] A structured change summary is included (see output contract)
 
 ---
 
@@ -234,6 +247,21 @@ Use this shape:
 
 ### Proof summary
 - Validation run and what it covered
+
+### Change summary
+Adapted from [addyosmani/agent-skills `git-workflow-and-versioning`](https://github.com/addyosmani/agent-skills).
+Include for non-trivial changes:
+```
+CHANGES MADE:
+- <file>: <what changed and why>
+
+THINGS I DIDN'T TOUCH (intentionally):
+- <file>: <what was noticed but left out of scope>
+→ <follow-up task if needed>
+
+POTENTIAL CONCERNS:
+- <anything that deserves reviewer attention beyond the normal checks>
+```
 
 ### Assumptions or deviations
 - `[UNVERIFIED]` items, if any

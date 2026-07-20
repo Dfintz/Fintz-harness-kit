@@ -207,6 +207,33 @@ Also note:
 - open questions that can wait until implementation
 - questions that must be answered before implementation begins
 
+### Step 6 - Sequence by risk and simplicity
+
+Before finalizing the Brief, apply two ordering checks.
+
+**Risk-first slicing** — adapted from [addyosmani/agent-skills `incremental-implementation`](https://github.com/addyosmani/agent-skills):
+When the plan has multiple delivery slices, order them so the riskiest or most
+uncertain piece comes first:
+
+> *If Slice 1 proves the hard assumption wrong, you discover it before investing in Slices 2–N.*
+
+Rank slices by risk (probability × cost-of-being-wrong), not by perceived importance or
+implementation convenience. A working Slice 1 that proves the architecture sound is more
+valuable than a beautiful Slice 5.
+
+**Simplicity gate** — adapted from [addyosmani/agent-skills `incremental-implementation`](https://github.com/addyosmani/agent-skills) and [mattpocock/skills `codebase-design`](https://github.com/mattpocock/skills):
+Before finalizing any design decision, ask:
+
+> *"What is the simplest thing that could work?"*
+
+Check the proposed design against these:
+- Can this be done in fewer artifacts?
+- Are the abstractions earning their complexity, or are they speculative?
+- Would a reader say "why didn't you just..."?
+- Am I building for a hypothetical future requirement, or the current task?
+
+If the simpler path works, take it. Three similar concrete implementations are better than a premature abstraction. Optimize only after the naive, obviously-correct version is proven.
+
 ---
 
 ## Output contract

@@ -71,6 +71,12 @@ Run all lanes that apply to the change. Report failures only.
 - Does the delivered change appear to satisfy the stated task?
 - Are dependent artifacts updated where the contract changed?
 - If a Brief exists, does the implementation stay within its declared scope?
+- **Change sizing** — adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) / Google eng-practices:
+  - `~100 lines changed` → good, reviewable in one sitting
+  - `~300 lines changed` → acceptable for a single logical change
+  - `~1000 lines changed` → too large; flag to split
+  - Also check *file size*, not just diff size: a small diff that pushes an already-large file past ~1000 total lines should trigger a decomposition question
+  - Refactoring and feature work mixed in one change → flag to separate
 
 ### Lane 2 - Standards and policy compliance
 
@@ -86,6 +92,15 @@ Run all lanes that apply to the change. Report failures only.
 - Are edge cases, failure paths, and bounds handled?
 - Are there security, privacy, tenancy, permission, or destructive-action risks?
 - For docs and workflows: are instructions unambiguous, executable, and safe to follow?
+- **Security — threat model first** (adapted from [addyosmani/agent-skills `security-and-hardening`](https://github.com/addyosmani/agent-skills)):
+  - Where does untrusted data cross into the system? (HTTP, forms, file uploads, webhooks, third-party APIs, **LLM output**)
+  - Run a quick STRIDE pass on each new trust boundary: Spoofing / Tampering / Repudiation / Information disclosure / Denial of service / Elevation of privilege
+  - Is all external input validated at the system boundary?
+  - Are database queries parameterized (no string concatenation)?
+  - Are secrets out of code and logs?
+  - Are authorization checks present on every protected path?
+  - **LLM output is untrusted input.** Never pass model output straight into `eval`, SQL, a shell, `innerHTML`, or a file path. Treat it exactly as you would raw user input. (OWASP LLM05)
+  - Check the three-tier boundary: what in this change is Always Do / requires Ask First / is Never Do?
 
 ### Lane 4 - Resource, lifecycle, and operational soundness
 
