@@ -32,6 +32,7 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 - `npm run harness:feature -- --task "<feature task>"` or `npm run harness:handoff:feature -- --task "<feature task>"` prints the full operator handoff plan.
 - `npm run harness:handoff:review -- --task "<review task>"` prints the review-only handoff plan.
 - `npm run harness:review` runs the plan-review workflow (backward-compatible behavior).
+- `npm run harness:docs:check` validates registry stage contracts, loop references, skill metadata, and cited script or npm command paths across the harness docs surfaces.
 - `npm run harness:catalog:sync` publishes machine-readable capability artifacts (`llms.txt` + `.github/harness/catalog/harness-profile.json`).
 
 ### Model Roles In The Shipped Environment Policy
@@ -82,7 +83,40 @@ the other as reference — do not load both copies of the same skill.
 
 Workflow-stage skills (`architect`, `implement`, `review-breadth`, `review-depth`, `feedback`) exist
 only under `.claude/skills/` as invocable commands; non-Claude agents get identical content from the
-corresponding `.github/instructions/0*.md` file.
+corresponding `.github/instructions/0*.md` file. Those instruction files define reusable stage
+contracts; repository standards and domain skills provide the stack-specific rules.
+
+---
+
+## Customization and specialization policy
+
+Choose the lightest surface that can carry the contract:
+
+| Need | Preferred surface |
+| --- | --- |
+| Always-on repository norms | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` |
+| Reusable task or workflow procedure | skill directories under `.github/skills/`, `.claude/skills/`, or `skills/` |
+| A stage-specific contract in the harness flow | `.github/instructions/0*.md` |
+| A branch that needs materially different tools, policy, or output ownership | handoff / custom agent / subagent |
+| External evidence or real-time system state | MCP wrappers / MCP server |
+
+Use a new specialist only when the next branch truly needs different instructions, tools, approval
+policy, or output contract. Otherwise, extend the existing stage or skill.
+
+## Stage design principles
+
+The harness stage files follow a few public, cross-vendor agent-design rules:
+
+1. **Compact state transfer.** Pass the smallest artifact that preserves the contract: Brief, proof
+   summary, findings ledger, gate ledger, verdict record.
+2. **Evidence before summary.** Prefer graph, MCP, loop, report, grade, and otel surfaces over
+   narrative certainty when the repo already exposes them.
+3. **Progressive disclosure.** Keep the main stage contract concise and push detailed reference
+   material into the actual files, loops, scripts, and skills it names.
+4. **Human approval on sensitive capability changes.** Widening tool permissions, weakening
+   guardrails, or changing destructive defaults is never auto-approved.
+5. **Specialize only when the contract changes.** Extra agents or skills are justified by different
+   tools, policy, or outputs, not by preference alone.
 
 ---
 
@@ -125,12 +159,12 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 | #   | Stage          | Instruction file                                 | Claude Code skill                        | Mandatory output                                                         |
 | --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
-| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (files, decisions, constraints, Do-NOTs, assumptions) |
-| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Code + completed self-review checklist                                   |
-| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + self-review checklist (use for bug fixes / narrow high-blast-radius changes) |
-| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings list (severity-tagged)                                          |
-| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate verdicts + structural findings                                      |
-| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict table + updated Brief (if changed)                               |
+| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Delivered change + proof summary + self-review summary                   |
+| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + proof summary + surgical boundary note             |
+| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings ledger (severity, evidence, impact, confidence, fix)            |
+| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate ledger + structural findings + Brief divergences                    |
+| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict record + Brief updates + response notes                          |
 
 ### Stage Contract (applies to every stage)
 
@@ -141,15 +175,19 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 2. **Context Sufficiency Check first.** Every stage instruction begins with one. Inventory what you
    have, identify what you need, and request missing context before producing output. Never guess at
    an Architecture Brief, reviewer intent, or file contents you were not given.
-3. **Carry artifacts forward — and persist them.** The Architecture Brief from stage 1 is input to
-   stages 2, 4, and 5; save it to `memory/briefs/` per that directory's protocol so a later session
-   inherits the gate decisions. Breadth findings from stage 3 are pasted into stage 4 to avoid
-   duplication.
+3. **Carry artifacts forward — and persist them.** Stage 1 produces the Architecture Brief; stage 2
+   adds a proof summary; stage 3 produces a findings ledger; stage 4 produces a gate ledger and
+   structural findings; stage 5 resolves them into a verdict record. Pass these compact artifacts
+   forward instead of full transcript dumps. Save the Brief to `memory/briefs/` per that directory's
+   protocol so a later session inherits the gate decisions.
 4. **Honor the gates.** Stages 1 and 4 run the five architectural gates (Domain Alignment,
    Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation).
    Implementations that bypass a gate decision must be flagged, not silently merged.
-5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
-   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`.
+5. **Use direct evidence tools when available.** For harness work, prefer the graph CLI, MCP wrappers,
+   loop JSON, registry metadata, and report / grade / otel outputs over memory or prose-only claims.
+6. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
+   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`, plus the stage artifacts needed by the next
+   pass.
 
 ---
 
@@ -158,23 +196,26 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 Load a skill **before** writing code in its area. Triggers below are matched against the task
 description and the files being touched.
 
-### Domain Skills
+### Shipped Skills
 
-| Skill                 | Load when the task involves…                                            |
-| --------------------- | ----------------------------------------------------------------------- |
-| `backend-service`     | Services, controllers, routes, Joi schemas, entities, migrations        |
-| `frontend-component`  | React components, pages, hooks, frontend services, React Query          |
-| `full-stack-feature`  | End-to-end features spanning backend API + frontend UI + shared types   |
-| `testing`             | Unit, integration, component, or E2E tests                              |
-| `discord-bot`         | Slash commands, sharding, IPC, guild management, role sync              |
-| `infrastructure`      | Bicep IaC, Azure Container Apps, Docker, GitHub Actions, deploy scripts |
-| `security-encryption` | Auth, encryption, GDPR, consent, audit logging, TOTP/WebAuthn, SSO      |
-| `star-citizen-domain` | Ships, fleets, activities, mining, trading, bounties, RSI sync, crew    |
-| `teach-agent`         | Machine-first guidance curation, promotion gates, and agent teachability |
-| `understand-process`  | Any non-trivial change (always pairs with stage 0)                      |
+| Skill                               | Load when the task involves…                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `understand-process`                | Any non-trivial change; stage-0 impact analysis and graph freshness           |
+| `context-engineering`               | Task switching, stale context, compact handoffs, and session memory hygiene   |
+| `deterministic-validation`          | Exit criteria, proof selection, and objective completion checks               |
+| `doubt-driven-development`          | Security, correctness skepticism, and evidence-led bug diagnosis              |
+| `observability-and-instrumentation` | Telemetry, instrumentation, RED signals, and operational proof                |
+| `eval-first-tuning`                 | Retrieval, prompt, or agent quality tuning with explicit evals                |
+| `ai-techniques-radar`               | External technique intake, triage, and adoption decisions                     |
+| `budget-aware-execution`            | Cost-aware tool/model selection and bounded execution                         |
+| `teach-agent`                       | Machine-first guidance curation, promotion gates, and agent teachability      |
+| `setup-harness-bootstrap`           | Adopting the harness in a new repository or workflow surface                  |
+| `remember`                          | Persisting reusable lessons and Architecture Briefs to harness memory         |
+| `run-loop`                          | Native execution of workflow loops using checked-in loop JSON and guardrails  |
+| `pr`                                | PR creation, verification, and review-before-ship workflow                    |
 
-Multiple skills can apply: a fleet API feature loads `star-citizen-domain` + `backend-service`; an
-end-to-end feature with tests loads `full-stack-feature` + `testing`.
+Repositories may add domain specialists under `.github/skills/` or `.claude/skills/`, but they
+should only be listed in `registry.json` once the skill files are actually checked in.
 
 ### Workflow Skills (stage executors)
 

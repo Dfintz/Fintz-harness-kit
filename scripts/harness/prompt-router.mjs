@@ -9,12 +9,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  getStageContractMetadata,
+  getStagePromptPackMetadata,
+} from "./registry.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const configPath = join(repoRoot, "harness.config.json");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const promptPacksDir = join(runsDir, "prompt-packs");
 
-const STAGE_PROMPT_METADATA = {
+const DEFAULT_STAGE_PROMPT_METADATA = {
   understand: {
     title: "Understand",
     outputFile: "understand-notes.md",
@@ -85,6 +90,36 @@ const STAGE_PROMPT_METADATA = {
     ],
   },
 };
+
+function resolveStagePromptMetadata(stage) {
+  const registryMeta = getStagePromptPackMetadata(stage) ?? {};
+  const fallback = DEFAULT_STAGE_PROMPT_METADATA[stage] ?? {
+    title: stage,
+    outputFile: `${stage}.md`,
+    deliverable: "Document output for this stage.",
+    instructions: ["Follow the harness stage instructions for this step."],
+  };
+  return {
+    title: registryMeta.title ?? fallback.title,
+    outputFile: registryMeta.outputFile ?? fallback.outputFile,
+    deliverable: registryMeta.deliverable ?? fallback.deliverable,
+    instructions:
+      Array.isArray(registryMeta.instructions) && registryMeta.instructions.length > 0
+        ? registryMeta.instructions
+        : fallback.instructions,
+  };
+}
+
+function resolveStageContract(stage) {
+  const registryMeta = getStageContractMetadata(stage) ?? {};
+  return {
+    requiredArtifacts: Array.isArray(registryMeta.requiredArtifacts)
+      ? registryMeta.requiredArtifacts
+      : null,
+    outputArtifact: registryMeta.outputArtifact ?? null,
+    approval: registryMeta.approval ?? null,
+  };
+}
 
 const SIDECAR_PROMPT_METADATA = {
   scout: {
@@ -395,12 +430,8 @@ function buildPromptPack(route, outDir) {
   const slug = slugifyTask(route.task || route.profile || "task");
   const packDir = resolvePromptPackDir(slug, outDir);
   const stageFiles = route.stages.map((stage, index) => {
-    const meta = STAGE_PROMPT_METADATA[stage] ?? {
-      title: stage,
-      outputFile: `${stage}.md`,
-      deliverable: "Document output for this stage.",
-      instructions: ["Follow the harness stage instructions for this step."],
-    };
+    const meta = resolveStagePromptMetadata(stage);
+    const contract = resolveStageContract(stage);
     return {
       stage,
       index: index + 1,
@@ -410,6 +441,9 @@ function buildPromptPack(route, outDir) {
       title: meta.title,
       deliverable: meta.deliverable,
       instructions: meta.instructions,
+      requiredArtifacts: contract.requiredArtifacts,
+      outputArtifact: contract.outputArtifact,
+      approval: contract.approval,
     };
   });
 
@@ -467,19 +501,9 @@ function renderOrchestratorPrompt(pack) {
 }
 
 function renderStagePrompt(pack, stageFile) {
-  const requiredInputs = [];
-  if (stageFile.index > 1) {
-    requiredInputs.push(pack.stageFiles[stageFile.index - 2].outputFile);
-  }
-  if (stageFile.stage === "review-depth") {
-    requiredInputs.push("review-breadth-findings.md");
-  }
-  if (stageFile.stage === "feedback") {
-    requiredInputs.push(
-      "review-breadth-findings.md",
-      "review-depth-findings.md",
-    );
-  }
+  const requiredInputs = Array.isArray(stageFile.requiredArtifacts)
+    ? stageFile.requiredArtifacts
+    : [];
 
   const requiredInputsBlock = requiredInputs.length
     ? requiredInputs.map((name) => `- ${name}`).join("\n")
@@ -487,8 +511,14 @@ function renderStagePrompt(pack, stageFile) {
   const instructionBlock = stageFile.instructions
     .map((line) => `- ${line}`)
     .join("\n");
+  const approvalRequirements = Array.isArray(stageFile.approval?.requiredFor)
+    ? stageFile.approval.requiredFor
+    : [];
+  const approvalBlock = approvalRequirements.length
+    ? `\nApproval triggers:\n${approvalRequirements.map((item) => `- ${item}`).join("\n")}\n`
+    : "";
 
-  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
+  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
 }
 
 function renderNextStepsTemplate(pack) {
@@ -544,6 +574,9 @@ function writePromptPack(route, outDir) {
         promptFile: stage.promptFile,
         outputFile: stage.outputFile,
         model: stage.model,
+        requiredArtifacts: stage.requiredArtifacts ?? [],
+        outputArtifact: stage.outputArtifact,
+        approval: stage.approval ?? { humanRequired: false, requiredFor: [] },
       })),
     },
   };

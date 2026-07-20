@@ -26,7 +26,7 @@ Optimization is **optional and non-blocking**: skills with 100% baseline evaluat
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ optimize-skills.ps1 (PowerShell Orchestrator)          │
+│ optimize-all-skills.mjs (Node.js Orchestrator)         │
 │  • Discovers skills (.github/skills/, .claude/skills/)  │
 │  • Detects available model (Ollama, Claude, GPT, etc.)  │
 │  • Invokes dspy-bridge.mjs per skill                    │
@@ -65,7 +65,7 @@ Optimization is **optional and non-blocking**: skills with 100% baseline evaluat
 ### 1. Skill Discovery
 
 ```powershell
-# Scripts/optimize-skills.ps1 discovers:
+# Scripts/optimize-all-skills.mjs discovers:
 # - .github/skills/*/SKILL.md      (Copilot/generic skills)
 # - .claude/skills/*/SKILL.md      (Claude Code skills)
 # Total: 38 skill files
@@ -297,13 +297,13 @@ Pass = Match % >= 40%
 
 ```powershell
 # Discover model automatically
-./scripts/harness/optimize-skills.ps1
+node scripts/harness/optimize-all-skills.mjs
 
 # Or specify model
-OLLAMA_MODEL=qwen2.5 ./scripts/harness/optimize-skills.ps1
+OLLAMA_MODEL=qwen2.5 node scripts/harness/optimize-all-skills.mjs
 
 # Dry-run (no output files written)
-./scripts/harness/optimize-skills.ps1 -DryRun
+node scripts/harness/optimize-all-skills.mjs --dry-run
 ```
 
 ### Single Skill (Debugging)
@@ -378,17 +378,17 @@ cd scripts/harness && pip install -r requirements.txt
 ollama serve
 
 # Or switch to cloud model
-ANTHROPIC_API_KEY="sk-..." ./scripts/harness/optimize-skills.ps1
+ANTHROPIC_API_KEY="sk-..." node scripts/harness/optimize-all-skills.mjs --model claude
 ```
 
 ### Issue: Eval set parsing error
 
 **Cause:** Task JSON structure malformed
 
-**Fix:** Validate against schema:
+**Fix:** Compare the eval set against nearby checked-in examples, then re-run the bridge command:
 
 ```bash
-node scripts/harness/VALIDATION.sh --check-eval-sets
+node scripts/harness/dspy-bridge.mjs --evalSet ".github/harness/eval-sets/<skill>.json" --self-test
 ```
 
 ### Issue: Model timeout (10s+ with no output)
@@ -400,7 +400,7 @@ node scripts/harness/VALIDATION.sh --check-eval-sets
 ```bash
 # Increase timeout in dspy-optimize-ollama.py
 # or use smaller model:
-OLLAMA_MODEL=phi ./scripts/harness/optimize-skills.ps1
+OLLAMA_MODEL=phi node scripts/harness/optimize-all-skills.mjs
 ```
 
 ---

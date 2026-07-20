@@ -1,373 +1,260 @@
-<!-- harness-kit template: concrete examples below reference the kit's origin project (a TypeScript/Node monorepo). Adapt them to your stack; the workflow and gates are stack-agnostic. -->
+<!-- harness-kit template: keep this stage contract project-agnostic. Project-specific architecture rules belong in repository standards and domain skills, not here. -->
 
 ---
 applyTo: '**'
 ---
 
-# Architecture Planning
+# Architect Stage
 
 > **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
 > requires deep architectural judgment across ownership, abstraction layers, and domain alignment.
-> **Purpose:** Design where new code should live before any implementation begins. Output is a
-> precise brief that the implementing agent will follow.
+> **Purpose:** Decide where the change should live and what shape it should take before work begins.
+> Produce an Architecture Brief that downstream stages can follow, review, and challenge.
 
-Your full coding standards are in `.github/copilot-instructions.md` and `CLAUDE.md` — those
-documents are the authority on all style, naming, architecture, and pattern decisions.
+Your repository standards remain the authority for stack-specific rules, naming, APIs, and coding
+patterns. This stage is the reusable planning contract.
 
-**Your role:** Reason deeply about ownership, abstraction layers, domain alignment, and service
-boundaries before any code exists. The goal is to prevent architectural mistakes from being baked in
-during implementation rather than caught in review.
+## What this stage is for
 
-Do not produce a vague plan. Every decision must have a stated reason grounded in the standards or
-the existing codebase. The implementing agent will follow exactly what you specify.
+Use Architect for any non-trivial change: code, docs, workflows, automations, infra, or mixed work
+that crosses files, owners, boundaries, or validation surfaces.
 
----
+Do not produce a vague plan. The output of this stage is not "ideas"; it is a decision record that
+constrains implementation.
 
-## MANDATORY FIRST STEP: Context Sufficiency Check
+## Required inputs
 
-Complete this entirely before any planning. Do not skip any step.
+Treat the following as the **task packet**:
 
-### Step 1 — Inventory what you have
+- task / ticket / prompt
+- relevant repository standards and skill docs
+- Understand-stage output (impact map, graph status, prior memory)
+- any existing brief for the area
+- all files, artifacts, or workflow definitions already in scope
 
-List every file provided, one per line:
+If the task packet is incomplete, stop and say so before planning.
 
-- File path
-- What it contains (one sentence)
-- Its domain/layer (`backend/service`, `backend/controller`, `backend/middleware`,
-  `frontend/component`, `frontend/hook`, `frontend/service`, `shared-types`, `infrastructure`)
+## Prefer shipped evidence sources over pure recollection
 
-### Step 2 — Determine scope context
+When the repository already exposes a way to gather evidence, use it before inventing certainty.
 
-Examine the files and task to determine scope:
-
-**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
-services in `backend/src/services/`, controllers in `backend/src/controllers/`
-
-**🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
-frontend services in `frontend/src/services/`
-
-**🔗 Full-stack indicators:** Shared types in `packages/shared-types`, API contract changes,
-real-time (Socket.io) features
-
-**🏗️ Infrastructure indicators:** Docker, Bicep/Azure, CI/CD workflows, database migrations
-
-State the detected scope clearly:
-
-> **Scope: 🔧 Backend** / **🎨 Frontend** / **🔗 Full-stack** / **🏗️ Infrastructure**
-
-### Step 3 — Identify what you need
-
-For each file you have, list the files it references that you do NOT have but would need to reason
-correctly about:
-
-| Missing file      | Needed to answer                                              |
-| ----------------- | ------------------------------------------------------------- |
-| `path/to/file.ts` | e.g. "Does this service already handle multi-tenant scoping?" |
-
-Categories to check for each new method or class in scope:
-
-- **Backend:** Service inheritance chain (TenantService, BaseService), entity relationships,
-  middleware pipeline, Joi schema patterns
-- **Frontend:** Component hierarchy, React Query key factories, Zustand store contracts, BaseService
-  extension patterns
-- **Shared:** Type definitions in `packages/shared-types`, API contract interfaces
-
-### Step 4 — Decide how to proceed
-
-**If critical files are missing:**
-
-State explicitly:
-
-> MISSING: `path/to/file.ts` — cannot complete [specific gate] without this file.  
-> ASSUMPTION: [what you are assuming about the missing file]  
-> RISK: [what this assumption could get wrong and what finding it could hide]
-
-Mark every place you use an unverified assumption with `[UNVERIFIED — missing context]`.
-
-**If files are missing but non-critical:**
-
-> The following files are absent but their absence only affects confidence, not correctness of
-> findings. Proceeding.
-
-### Step 5 — Request missing context
-
-If any missing file is critical to ownership, domain alignment, or service boundary decisions —
-**stop here and list the files needed before proceeding.** Do not produce an architectural plan with
-hidden assumptions. Produce an explicit information request instead.
+- Start with the memory and graph discipline from `context-engineering` and `understand-process`.
+- For harness or orchestration tasks, inspect the real capability surfaces: `registry.json`, loop
+  definitions, `package.json`, skill directories, and `.github/harness/MCP-INTEGRATION.md`.
+- If the task touches routing, registry, loops, skills, or MCP adapters, prefer
+  `npm run harness:mcp:find` and `npm run harness:mcp:impact` for targeted evidence instead of
+  broad file dumping.
+- If the design itself is disputed, use the architect-challenge surface (`npm run harness:plan-review`
+  or `scripts/harness/plan-review.mjs --lens plan`) before implementation.
 
 ---
 
-## STEP 1: Map the Existing Structure
+## Mandatory first step: Context sufficiency check
 
-Before designing anything new, map what already exists:
+Complete this before any design decision.
 
-1. List all services, controllers, models, and components relevant to this feature area
-2. For each: what is its stated responsibility? What domain does it belong to (see
-   `docs/DOMAINS.md`)?
-3. Identify the service structure: what lives in which domain directory under
-   `backend/src/services/`?
-4. Identify the full inheritance chain for any service this feature will touch (TenantService,
-   BaseService, standalone)
-5. Identify existing patterns for similar features — how was the last similar thing done?
-6. Identify if existing React Query hooks, Zustand stores, or frontend services already cover part
-   of this feature
+### 1. Inventory what you have
 
----
+List every artifact provided and classify it:
 
-## STEP 2: Architectural Placement Analysis
+- path or identifier
+- what it contains
+- owning surface or layer
+- domain / workflow area
 
-For the feature described in the ticket, answer each gate explicitly. Do not skip any gate. A single
-failure is a finding.
+Valid surface examples include:
 
-### Gate 1 — Domain / Module Alignment
+- code module or service
+- UI / API surface
+- data model / schema
+- document or template
+- automation / workflow / CI job
+- infrastructure / environment config
 
-- What domain does this feature's service need to live in? (See `docs/DOMAINS.md` for the 46+
-  domains)
-- What domain do the entities, DTOs, or types it processes originate from?
-- Rule: services must live within their own domain or a shared domain
-- A `fleet` entity handled by a `trade` domain service is a misalignment
-- A `communication` service processing `activity` domain data is a misalignment
+### 2. State the scope
 
-**Finding format if failed:**
+Describe the change in one line:
 
-> MISALIGNMENT: `[service/method]` in `[domain path]` handles `[entity/type]` from
-> `[origin domain]`. These are in different domains without a justified cross-cutting concern.
-> Correct service location: `[proposed location]`.
+> **Scope:** [software / documentation / workflow / infrastructure / mixed]
+> **Primary boundary:** [the main domain, team boundary, system boundary, or workflow boundary]
 
-### Gate 2 — Generality Test
+### 3. Identify missing context
 
-Strip the domain-specific words from each new method name. Does the remaining logic apply to other
-domains?
+List the missing artifacts that would materially affect ownership or boundary decisions.
 
-- Example: `getFleetAnalytics()` → strip "Fleet" → `getAnalytics()` → if logic is just counting
-  entities and aggregating, it belongs in a shared analytics utility, not the fleet service
-- Ask explicitly: "Would another domain need this exact same pattern?"
-- If yes → it belongs in a shared utility or base service, not the domain-specific class
+| Missing artifact | Needed to answer |
+| --- | --- |
+| `path/or/name` | What decision cannot be made safely without it |
 
-**Finding format if failed:**
+### 4. Decide whether to proceed
 
-> MISPLACED: `[method]` contains no domain-specific logic. Stripped name `[stripped name]` is valid
-> for all domains. This belongs in `[correct location]`.
+If critical context is missing, stop and state:
 
-### Gate 3 — Data Ownership Verification
+> MISSING: `artifact`
+> BLOCKED DECISION: [what cannot be designed safely]
+> ASSUMPTION: [what you would otherwise guess]
+> RISK: [what that guess could invalidate]
 
-- List every piece of state this feature needs to read or mutate
-- For each piece of state: which entity/model owns it?
-- If the feature primarily manipulates ANOTHER service's entities → the method belongs on that
-  service (Tell, Don't Ask)
-- If the method only uses base service/TenantService members → it belongs on the base class
-
-**Finding format if failed:**
-
-> WRONG OWNER: `[method]` on `[service]` only mutates state owned by `[other entity/service]`. Move
-> to `[other service]` or its base class.
-
-### Gate 4 — Service Layer / Controller Layer Audit
-
-- Explicitly inspect the controller and service relationship for every class this feature touches
-- Does any controller contain business logic that should be in the service?
-- Does any service handle HTTP concerns (req/res) that should be in the controller?
-- Are Joi validation schemas defined for all new endpoints?
-- Is the middleware chain correct? (Helmet → CORS → Rate Limiting → Auth → Tenant Context →
-  Permissions → Validation → Controller)
-
-**Finding format if failed:**
-
-> LAYER VIOLATION: `[method]` on `[controller/service]` contains `[business logic/HTTP concern]`
-> that belongs in `[correct layer]`.
-
-### Gate 4b — Multi-Tenant Isolation Check
-
-For any service with data access:
-
-1. Does the service extend TenantService or manually scope queries by organizationId?
-2. Does every query include tenant scoping (where organizationId = ...)?
-3. Is there any path where data from one tenant could leak to another?
-
-**Finding format if failed:**
-
-> **GATE 4b FAILURE — Tenant Isolation Gap**  
-> Service: `[service]` accesses `[entity]`  
-> Problem: Query at [location] does not scope by organizationId  
-> Risk: Cross-tenant data exposure  
-> Proposed fix: Add organizationId scoping to all queries
-
-### Gate 5 — Reuse Potential
-
-- Is this the first occurrence of this pattern in the codebase, or the Nth?
-- Would a future feature (different domain, different data type) need this same structure?
-- If N > 1 or future reuse is architecturally predictable → extract to shared layer now
-
-**Finding format if failed:**
-
-> DUPLICATE PATTERN: `[description of pattern]` already exists at `[location]`. Extract to
-> `[shared location]`.
+Mark any later assumption that depends on missing context as `[UNVERIFIED]`.
 
 ---
 
-## STEP 3: Design Decisions
+## Core procedure
 
-State explicitly for each item:
+### Step 1 - Map the current shape
 
-### Files to Create
+Before proposing anything new, identify:
 
-For each new file:
+1. the current owner of the behavior, information, decision, or workflow
+2. adjacent artifacts that already touch this area
+3. existing reusable patterns, templates, utilities, or procedures
+4. upstream and downstream consumers
+5. validations, approvals, tests, dry-runs, previews, or release steps already in place
 
-- Full path (following existing directory conventions)
-- Single-sentence responsibility
-- Justification: why does this need to be a new file? (YAGNI check — does it have a consumer on day
-  one?)
+### Step 2 - Run the architectural gates
 
-**Backend file checklist:**
+Every non-trivial plan must step through the gates explicitly.
 
-- [ ] Entity/model in `backend/src/models/` if new table needed
-- [ ] Migration in `backend/src/migrations/` if schema changes
-- [ ] Service in `backend/src/services/<domain>/`
-- [ ] Controller in `backend/src/controllers/<version>/`
-- [ ] Joi schema in `backend/src/schemas/`
-- [ ] Route definition in `backend/src/routes/`
-- [ ] Tests in `backend/src/__tests__/`
+#### Gate 1 - Domain / module alignment
 
-**Frontend file checklist:**
+- Does the change belong to the domain or workflow area where it is being placed?
+- Is a cross-domain placement justified, or is it leakage?
 
-- [ ] Component in `frontend/src/components/`
-- [ ] Page in `frontend/src/pages/`
-- [ ] React Query hook in `frontend/src/hooks/queries/use<Domain>Queries.ts`
-- [ ] Query keys in `frontend/src/hooks/queries/queryKeys.ts`
-- [ ] Service in `frontend/src/services/`
-- [ ] Types co-located in service file or in `@sc-fleet-manager/shared-types`
+#### Gate 2 - Generality
 
-### Files to Modify
+- Remove the domain-specific nouns from the proposed behavior.
+- Would the same logic or structure apply elsewhere right now?
+- If yes, it probably belongs in a shared layer, template, helper, or workflow primitive.
 
-For each existing file:
+#### Gate 3 - Ownership
 
-- Full path
-- What changes and why
+- Which artifact truly owns the state, rule, decision, or lifecycle being changed?
+- If this change mostly manipulates another owner's data or responsibilities, it is misplaced.
 
-### Files NOT Being Created
+#### Gate 4 - Boundary integrity
 
-List any patterns you considered but rejected:
+- Are responsibilities staying in the right execution surface?
+- Keep delivery surfaces thin: request handlers, pages, templates, wrappers, and orchestration steps
+  should not absorb rules that belong deeper in the system.
+- For non-code workflows, keep approval logic, policy, and reusable procedure out of one-off task
+  notes when they belong in the workflow definition.
 
-- Pattern considered
-- Reason rejected (YAGNI, already exists, wrong abstraction level)
+#### Gate 4b - Isolation / safety boundary
 
-### Interface/Abstraction Decision
+Run this when the task touches security, tenancy, privacy, permissions, secrets, environment
+separation, destructive actions, or approval boundaries.
 
-Answer explicitly:
+- Could this change cross a boundary it should preserve?
+- What scoping, approval, or rollback protection must remain explicit?
 
-- [ ] Do 2+ concrete implementations exist NOW?
-- [ ] Is mocking required for tests?
-- [ ] Is this required by the service architecture?
+#### Gate 5 - Reuse
 
-If all answers are NO → state: "No abstraction created — reason: [reason]"
+- Is this the first occurrence of the pattern?
+- Is reuse already present, or clearly imminent from nearby structure?
+- If the pattern is duplicated or predictably repeated, extract now instead of after drift sets in.
 
-### Error Handling
+### Step 3 - Design the change set
 
-- What error types will be used (NotFoundError, ValidationError, ForbiddenError, UnauthorizedError)?
-- Where are the failure paths and how will they be communicated?
-- Does the controller use `executeAndReturn` from BaseController?
+State the intended shape of the solution.
 
-### Security Considerations
+#### Artifacts to create
 
-- [ ] Does this feature need new permissions? What RBAC roles can access it?
-- [ ] Is input validation covered by Joi schemas?
-- [ ] Are all database queries parameterised (TypeORM, no string concatenation)?
-- [ ] Is audit logging needed for sensitive operations?
-- [ ] Is CSRF protection maintained (state-changing endpoints)?
-- [ ] Does this touch PII? If so, GDPR compliance needed (encryption, deletion support)?
+For each new artifact:
 
-### Real-Time Considerations (if applicable)
+- full path or identifier
+- single responsibility
+- why it needs to exist now
 
-- [ ] Does this feature need WebSocket events?
-- [ ] Are events scoped to the correct room (org, fleet, activity)?
-- [ ] Is the event name following the `domain:action` convention?
+#### Artifacts to modify
+
+For each existing artifact:
+
+- full path or identifier
+- what changes
+- why that artifact is the right owner
+
+#### Artifacts explicitly not being created
+
+List plausible alternatives you considered and rejected.
+
+- pattern or artifact not chosen
+- why it was rejected (wrong owner, too general, duplicate, YAGNI, wrong boundary)
+
+When considering a new skill, agent, or workflow branch, split only when the new path needs
+materially different instructions, tools, approval policy, or output contract. Do not create a
+"specialist" whose behavior could stay inside an existing stage or skill.
+
+### Step 4 - Define execution constraints
+
+Capture the implementation contract:
+
+- invariants that must remain true
+- required patterns, interfaces, or workflow rules
+- validation or proof required before completion
+- sequencing / rollout constraints
+- anything implementation must explicitly avoid
+
+### Step 5 - Record risks and assumptions
+
+Use an explicit register.
+
+| Assumption | Affects | Risk if wrong |
+| --- | --- | --- |
+| `[UNVERIFIED] ...` | decision or artifact | what must change if false |
+
+Also note:
+
+- open questions that can wait until implementation
+- questions that must be answered before implementation begins
 
 ---
 
-## STEP 4: Risk and Assumption Register
+## Output contract
 
-| Assumption                                     | Affects decision                        | Risk if wrong                                  |
-| ---------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
-| [Assumption about missing file] `[UNVERIFIED]` | [Which design decision depends on this] | [What would change if assumption is incorrect] |
+Produce an **Architecture Brief** with exactly these sections:
 
-Also list:
+```md
+## Architecture Brief
 
-- Files that should be reviewed before implementation begins
-- Any decision that could be invalidated by information not yet seen
+### Objective
+- What outcome is being delivered
 
----
+### Scope and boundaries
+- In scope
+- Out of scope
 
-## STEP 5: Implementation Handoff
+### Artifacts to create
+- `path/or/name` - responsibility
 
-Produce a concise brief for the implementing agent. This must be specific enough that the agent
-cannot make an architectural choice that contradicts your analysis.
+### Artifacts to modify
+- `path/or/name` - change and reason
 
-```
-## Implementation Brief
+### Key decisions
+- Decision: evidence / reasoning
 
-### Files to create:
-- `path/to/file.ts` — [one-sentence responsibility]
+### Constraints
+- Rules implementation must follow
 
-### Files to modify:
-- `path/to/file.ts` — [what changes and why]
+### Validation plan
+- Checks, tests, previews, dry-runs, or approvals required
 
-### Key decisions:
-- [Decision]: [Reasoning grounded in standards or codebase evidence]
+### Do NOT
+- Explicit anti-patterns or forbidden shortcuts
 
-### Constraints:
-- [Specific pattern, type, or convention the implementation must follow]
-- [e.g. "Service must extend TenantService for automatic tenant scoping"]
-- [e.g. "Controller must use BaseController.executeAndReturn()"]
-- [e.g. "Frontend hook must follow queryKeys factory pattern"]
-- [e.g. "All API calls through apiClient, never raw axios"]
-
-### Do NOT:
-- [Anything the implementation must explicitly avoid based on architectural analysis]
-- [e.g. "Do not put business logic in the controller"]
-- [e.g. "Do not use console.log — use Winston logger"]
-- [e.g. "Do not hardcode hex colours — use MUI theme palette"]
-
-### Unverified assumptions (flag if implementation contradicts these):
-- [Assumption] — if wrong, this affects [specific decision]
+### Assumptions and risks
+- `[UNVERIFIED]` assumptions and what they affect
 ```
 
-### Persist the Brief (mandatory)
+The Brief must be specific enough that Implement can execute without re-deciding architecture.
 
-A Brief that lives only in this transcript dies with the session. Before handing off, save it to
-`.github/harness/memory/briefs/<feature-kebab-case>.md` with a first line of
-`# Brief: <feature> — active`, following `.github/harness/memory/briefs/README.md`. Downstream
-stages rely on it: Implement follows it, Review-Depth compares against it, Feedback updates it.
+## Persist the Brief
 
-Run `npm run harness:graph -- brief-check` to confirm a non-trivial branch added or updated a
-committed Brief. The brief filename should map to the branch slug (for example,
-`feature/fleet-readiness-dashboard` -> `fleet-readiness-dashboard.md`; Claude run suffixes like
-`-6nrbto` are tolerated). Flip the status to `implemented` when the feature ships; never delete a
-Brief — it is the record of _why_ the code is shaped the way it is.
+Save the Brief to `.github/harness/memory/briefs/<topic>.md` using the memory protocol. Review Depth
+compares implementation against it, and Feedback updates it if challenged decisions change.
 
-## Task
+## Handoff rules
 
-<task>
-<!-- Paste the ticket/issue description here -->
-</task>
-
-## Colleague's Context (if any)
-
-<context>
-<!-- Paste any colleague comments, research, or existing code context here -->
-</context>
-
-## Standards Reference
-
-<standards>
-- `.github/copilot-instructions.md` — comprehensive project standards
-- `docs/CODING_STANDARDS.md` — code patterns and conventions
-- `docs/TESTING.md` — testing standards
-- `docs/ARCHITECTURE.md` — system architecture
-- `docs/DOMAINS.md` — service domain boundaries
-</standards>
-
-## Files Provided
-
-<files>
-<!-- List all files provided for analysis -->
-</files>
+- Implement follows the Brief unless new evidence contradicts it.
+- Review Breadth checks execution quality without re-litigating architecture prematurely.
+- Review Depth challenges the structure against the gates and the Brief.
+- Feedback is the only stage that formally overturns a settled Brief decision.
