@@ -27,6 +27,22 @@ Use these as the **implementation packet**:
 
 If the Brief is missing for a non-trivial task, say so before proceeding.
 
+## Prefer shipped proof surfaces
+
+Use the repository's real proof sources before relying on narrative reassurance.
+
+- Pair this stage with `deterministic-validation`; add `budget-aware-execution` when the task is
+  long-running or loop-heavy.
+- For harness docs, skills, loops, registry, or MCP guidance changes, verify against the concrete
+  source files those docs claim to describe (`registry.json`, `.github/harness/loops/`,
+  `package.json`, skill directories, `.github/harness/MCP-INTEGRATION.md`).
+- For harness-output changes, use the existing repo proof paths when relevant:
+  `npm run harness:report`, `npm run harness:grade`, and `npm run harness:otel`.
+- For doc-only edits, `git diff --check` plus reference validation against the cited files is the
+  default proof unless the repository exposes a stronger deterministic check.
+- If the change would widen `allowed-tools`, remove an approval step, weaken a guardrail, or alter a
+  destructive workflow default, stop and get explicit human approval before proceeding.
+
 ---
 
 ## Mandatory first step: Context sufficiency check
@@ -124,6 +140,9 @@ When the task changes a contract, update the directly dependent surfaces that mu
 For code, use the narrowest existing lint / type-check / build / test command that proves the change.
 For docs or workflows, use the narrowest existing preview, dry-run, rendering check, or scripted
 verification that proves the artifact is usable.
+
+Prefer compact evidence artifacts over transcript sprawl: save or cite the smallest proof that the
+next stage needs rather than replaying the whole implementation history.
 
 ### 5. Do not weaken safeguards to finish faster
 

@@ -87,6 +87,38 @@ contracts; repository standards and domain skills provide the stack-specific rul
 
 ---
 
+## Customization and specialization policy
+
+Choose the lightest surface that can carry the contract:
+
+| Need | Preferred surface |
+| --- | --- |
+| Always-on repository norms | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` |
+| Reusable task or workflow procedure | skill directories under `.github/skills/`, `.claude/skills/`, or `skills/` |
+| A stage-specific contract in the harness flow | `.github/instructions/0*.md` |
+| A branch that needs materially different tools, policy, or output ownership | handoff / custom agent / subagent |
+| External evidence or real-time system state | MCP wrappers / MCP server |
+
+Use a new specialist only when the next branch truly needs different instructions, tools, approval
+policy, or output contract. Otherwise, extend the existing stage or skill.
+
+## Stage design principles
+
+The harness stage files follow a few public, cross-vendor agent-design rules:
+
+1. **Compact state transfer.** Pass the smallest artifact that preserves the contract: Brief, proof
+   summary, findings ledger, gate ledger, verdict record.
+2. **Evidence before summary.** Prefer graph, MCP, loop, report, grade, and otel surfaces over
+   narrative certainty when the repo already exposes them.
+3. **Progressive disclosure.** Keep the main stage contract concise and push detailed reference
+   material into the actual files, loops, scripts, and skills it names.
+4. **Human approval on sensitive capability changes.** Widening tool permissions, weakening
+   guardrails, or changing destructive defaults is never auto-approved.
+5. **Specialize only when the contract changes.** Extra agents or skills are justified by different
+   tools, policy, or outputs, not by preference alone.
+
+---
+
 ## Workflow Stage Machine
 
 Every non-trivial task moves through these stages. A task is **non-trivial** when it modifies more
@@ -144,12 +176,15 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
    an Architecture Brief, reviewer intent, or file contents you were not given.
 3. **Carry artifacts forward — and persist them.** Stage 1 produces the Architecture Brief; stage 2
    adds a proof summary; stage 3 produces a findings ledger; stage 4 produces a gate ledger and
-   structural findings; stage 5 resolves them into a verdict record. Save the Brief to
-   `memory/briefs/` per that directory's protocol so a later session inherits the gate decisions.
+   structural findings; stage 5 resolves them into a verdict record. Pass these compact artifacts
+   forward instead of full transcript dumps. Save the Brief to `memory/briefs/` per that directory's
+   protocol so a later session inherits the gate decisions.
 4. **Honor the gates.** Stages 1 and 4 run the five architectural gates (Domain Alignment,
    Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation).
    Implementations that bypass a gate decision must be flagged, not silently merged.
-5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
+5. **Use direct evidence tools when available.** For harness work, prefer the graph CLI, MCP wrappers,
+   loop JSON, registry metadata, and report / grade / otel outputs over memory or prose-only claims.
+6. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
    used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`, plus the stage artifacts needed by the next
    pass.
 

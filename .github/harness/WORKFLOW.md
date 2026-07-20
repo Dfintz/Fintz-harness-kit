@@ -23,6 +23,13 @@ Required outputs:
 - stage route decision
 - clearer naming note captured when documentation-only alias language is used
 
+Surface selection rule:
+
+- Always-on norms -> repo instructions
+- Reusable multi-step procedure -> skill
+- Different tools / policy / output ownership -> agent or handoff
+- External evidence -> MCP wrapper or MCP server
+
 If graph is stale and source code will be changed:
 
 ```bash
@@ -111,6 +118,15 @@ npm test --workspace=backend -- <changed>.test.ts
 npm test --workspace=frontend -- <changed>.test.tsx
 ```
 
+Harness-surface proof sources when code is not the main change:
+
+- `git --no-pager diff --check` for clean doc/metadata edits
+- `npm run harness:report` when report outputs or run artifacts are described
+- `npm run harness:grade` when evaluation or trajectory-scoring surfaces are described
+- `npm run harness:otel` when trace-export or telemetry contracts are described
+- direct inspection of `registry.json`, loop JSON, skill frontmatter, and MCP docs when the change is
+  about those contracts
+
 Observability minimum for production-facing slices:
 
 - structured entry log
@@ -169,6 +185,8 @@ Before closing:
 - persist/update Brief if architecture changed
 - add one lesson if a non-obvious issue was discovered
 - record run outcome
+- require explicit human acceptance before widening tool permissions, weakening guardrails, or
+  changing destructive defaults
 
 ## 6) Continuous Harness Improvement (Weekly or Post-Incident)
 

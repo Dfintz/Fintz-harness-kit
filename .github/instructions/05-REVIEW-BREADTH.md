@@ -77,6 +77,8 @@ Run all lanes that apply to the change. Report failures only.
 - Does the change follow the repository's current conventions?
 - Are naming, structure, validation, and documentation expectations met for this surface?
 - If the task is workflow or automation related, are approvals, owners, and operator steps explicit?
+- If the task changes harness docs or skills, do the prose claims match the shipped capability
+  surfaces (`registry.json`, loop JSON, skill frontmatter, `package.json`, MCP wrappers)?
 
 ### Lane 3 - Functional correctness and safety
 
@@ -95,6 +97,8 @@ Run all lanes that apply to the change. Report failures only.
 - Did the implementation run the narrowest meaningful proof?
 - Do tests, previews, dry-runs, or validation artifacts actually cover the changed behavior?
 - Is any claim of completion unsupported by evidence?
+- For harness-surface work, were report / grade / otel / graph / MCP references checked against the
+  actual repo capabilities they describe?
 
 ### Lane 6 - Semantic clarity
 
@@ -107,6 +111,7 @@ Run all lanes that apply to the change. Report failures only.
 
 - Distinguish direct evidence from inference.
 - Cite the specific artifact and location that supports each finding.
+- Prefer checking the concrete tool or contract surface over inferring behavior from prose alone.
 - Do not list strengths.
 - Do not re-report items intentionally deferred with an explicit TODO marker.
 - If confidence is not high, say why.

@@ -34,6 +34,19 @@ Treat the following as the **task packet**:
 
 If the task packet is incomplete, stop and say so before planning.
 
+## Prefer shipped evidence sources over pure recollection
+
+When the repository already exposes a way to gather evidence, use it before inventing certainty.
+
+- Start with the memory and graph discipline from `context-engineering` and `understand-process`.
+- For harness or orchestration tasks, inspect the real capability surfaces: `registry.json`, loop
+  definitions, `package.json`, skill directories, and `.github/harness/MCP-INTEGRATION.md`.
+- If the task touches routing, registry, loops, skills, or MCP adapters, prefer
+  `npm run harness:mcp:find` and `npm run harness:mcp:impact` for targeted evidence instead of
+  broad file dumping.
+- If the design itself is disputed, use the architect-challenge surface (`npm run harness:plan-review`
+  or `scripts/harness/plan-review.mjs --lens plan`) before implementation.
+
 ---
 
 ## Mandatory first step: Context sufficiency check
@@ -166,6 +179,10 @@ List plausible alternatives you considered and rejected.
 
 - pattern or artifact not chosen
 - why it was rejected (wrong owner, too general, duplicate, YAGNI, wrong boundary)
+
+When considering a new skill, agent, or workflow branch, split only when the new path needs
+materially different instructions, tools, approval policy, or output contract. Do not create a
+"specialist" whose behavior could stay inside an existing stage or skill.
 
 ### Step 4 - Define execution constraints
 

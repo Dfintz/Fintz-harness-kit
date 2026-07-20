@@ -81,6 +81,8 @@ Use the relevant inputs from:
 - depth gate results
 - repository standards
 - the changed artifacts themselves
+- any concrete capability surface the dispute references (`registry.json`, loop definitions, skill
+  frontmatter, MCP contracts, command wrappers, report paths)
 
 ### 3. Run the relevant checks
 
@@ -134,6 +136,10 @@ Include:
 
 - what evidence is missing
 - what follow-up is required
+
+If resolving the point would widen `allowed-tools`, weaken a guardrail, reduce human approval, or
+change a destructive default, treat "human accepted this tradeoff" as required evidence. Without
+that evidence, the point is deferred rather than silently approved.
 
 ---
 

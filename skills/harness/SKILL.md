@@ -56,6 +56,17 @@ Boundaries, Reuse (plus 4b Multi-Tenant Isolation where applicable). Read
 `.github/harness/HARNESS.md` for the full contract and `.github/harness/LOOPS.md` for the loop
 protocol.
 
+## Skill and stage design policy
+
+- Keep always-on norms in repository instructions; keep repeatable, on-demand workflows in skills.
+- Create a new skill or specialist only when the instructions, tools, approval policy, or output
+  contract materially differ from an existing one.
+- Prefer the repo's real evidence surfaces — graph, MCP, loops, registry, report, grade, otel — over
+  prose-only claims when those surfaces exist.
+- Pass compact artifacts between stages instead of full transcript history whenever possible.
+- Treat capability-expanding changes (for example, widened tool permissions or relaxed guardrails) as
+  human-review events, not automatic refinements.
+
 ## The three loop kinds
 
 ```

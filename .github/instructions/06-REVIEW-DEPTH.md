@@ -132,6 +132,26 @@ For each significant path:
 5. cleanup / completion behavior
 6. isolation or approval boundaries crossed
 
+For harness changes, trace the contract path when relevant:
+
+1. stage instruction or skill text
+2. registry / routing metadata
+3. loop or MCP contract
+4. script or command surface
+5. report / memory / review artifact affected downstream
+
+### Check specialization and capability boundaries
+
+Ask:
+
+- Was a separate skill, agent, or branch introduced only because the instructions, tools, policy, or
+  output contract genuinely differ?
+- Are always-on standards still living in repo instructions, while repeatable task workflows live in
+  skills?
+- Does every tool, command, MCP wrapper, or loop named in the docs correspond to a shipped capability
+  surface in the repo?
+- Has any approval or guardrail boundary been blurred in the name of convenience?
+
 ### Compare against the Brief
 
 If an Architecture Brief exists, verify:
@@ -150,6 +170,7 @@ Flag:
 - hidden sequencing requirements
 - shared patterns duplicated locally
 - thin wrapper surfaces accumulating business or policy logic
+- documentation contracts claiming capabilities that the repo does not actually expose
 
 ---
 
