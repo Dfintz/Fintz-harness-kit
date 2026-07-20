@@ -30,14 +30,18 @@
  *   GET /report.html -> latest report HTML (alias)
  *   GET /metrics.json -> aggregated metrics as JSON (live)
  *   GET /healthz     -> "ok" (liveness)
+ *   GET /graph.html  -> provider-configured graph html if present/safe
+ *   GET /genui/graph.json -> graph render payload for GenUI consumers
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildGraphGenUiPayload } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const configPath = join(repoRoot, 'harness.config.json');
 const reportScript = resolve(repoRoot, 'scripts', 'harness', 'harness-report.mjs');
 const reportHtmlPath = join(repoRoot, '.github', 'harness', 'runs', 'report.html');
 
@@ -80,7 +84,14 @@ function showHelp() {
       {
         usage:
           'node scripts/harness/report-server.mjs [--port <n>] [--host <addr>] [--interval-seconds <n>]',
-        endpoints: ['GET /', 'GET /report.html', 'GET /metrics.json', 'GET /healthz'],
+        endpoints: [
+          'GET /',
+          'GET /report.html',
+          'GET /metrics.json',
+          'GET /graph.html',
+          'GET /genui/graph.json',
+          'GET /healthz',
+        ],
         envFallbacks: [
           'HARNESS_DASHBOARD_PORT',
           'HARNESS_DASHBOARD_HOST',
@@ -168,6 +179,67 @@ function serveMetrics(res) {
   }
 }
 
+function getGraphGenUiPayload() {
+  return buildGraphGenUiPayload({
+    repoRoot,
+    configPath,
+    overrideProvider: process.env.HARNESS_GRAPH_PROVIDER,
+  });
+}
+
+function serveGraphGenUi(res) {
+  try {
+    const payload = getGraphGenUiPayload();
+    res.writeHead(200, {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    });
+    res.end(JSON.stringify(payload));
+  } catch (error) {
+    res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(
+      JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })
+    );
+  }
+}
+
+function serveGraphHtml(res) {
+  try {
+    const payload = getGraphGenUiPayload();
+    if (!payload.graphHtml.withinRepo) {
+      res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error:
+            'Configured graphHtmlPath is outside repository root and cannot be served by report-server.',
+        })
+      );
+      return;
+    }
+    if (!payload.graphHtml.exists) {
+      res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: 'graph.html is not present at configured graphHtmlPath.',
+          graphHtmlPath: payload.graphHtml.configuredPath,
+        })
+      );
+      return;
+    }
+
+    const html = readFileSync(payload.graphHtml.absolutePath);
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    res.end(html);
+  } catch (error) {
+    res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(
+      JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })
+    );
+  }
+}
+
 function createDashboardServer() {
   return createServer((req, res) => {
     const path = (req.url || '/').split('?')[0];
@@ -178,6 +250,14 @@ function createDashboardServer() {
     }
     if (path === '/metrics.json') {
       serveMetrics(res);
+      return;
+    }
+    if (path === '/genui/graph.json' || path === '/genui/graph') {
+      serveGraphGenUi(res);
+      return;
+    }
+    if (path === '/graph.html') {
+      serveGraphHtml(res);
       return;
     }
     if (path === '/' || path === '/index.html' || path === '/report.html') {

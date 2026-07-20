@@ -16,7 +16,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { resolveGraphProviderState, resolveRefreshBackend } from './graph-provider.mjs';
+import { resolveGraphProviderState, resolveRefreshBackends } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports']);
@@ -260,6 +260,69 @@ function runGit(args, cwd, allowFailure = false) {
     throw new Error(`git ${args.join(' ')} failed: ${stderr || result.status}`);
   }
 
+  function ensureGraphRelativePath(projectRoot, absoluteGraphPath) {
+    const graphRelativePath = toPosix(relative(projectRoot, absoluteGraphPath));
+    if (graphRelativePath.startsWith('..')) {
+      throw new Error(
+        `Configured graph path ${absoluteGraphPath} is outside the project root (${projectRoot}).`
+      );
+    }
+    return graphRelativePath;
+  }
+
+  function validateGraphShape(graphPath) {
+    if (!existsSync(graphPath)) {
+      throw new Error(`Graph file not found after refresh: ${graphPath}`);
+    }
+    let graph;
+    try {
+      graph = JSON.parse(readFileSync(graphPath, 'utf8'));
+    } catch (error) {
+      throw new Error(
+        `Graph file is not valid JSON at ${graphPath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+      throw new Error(`Graph file at ${graphPath} is missing required nodes/edges arrays.`);
+    }
+    return graph;
+  }
+
+  function runGraphifyRefreshBackend(projectRoot, backend) {
+    const graphRelativePath = ensureGraphRelativePath(projectRoot, backend.graphPath);
+    const command = String(backend.refreshCommand || '').trim();
+    if (!command) {
+      throw new Error('Graphify refresh backend is missing refreshCommand.');
+    }
+
+    const result = spawnSync(command, {
+      cwd: backend.refreshCwd || projectRoot,
+      shell: true,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+
+    if (result.status !== 0) {
+      const stderr = (result.stderr || '').trim();
+      const stdout = (result.stdout || '').trim();
+      const details = stderr || stdout || `exit ${result.status ?? 'unknown'}`;
+      throw new Error(
+        `Graphify refresh command failed (${command}): ${details}. ` +
+          'Action: verify graph.graphify.refreshCommand and Graphify runtime setup.'
+      );
+    }
+
+    const graph = validateGraphShape(backend.graphPath);
+    return {
+      provider: 'graphify',
+      graphPath: graphRelativePath,
+      nodeCount: graph.nodes.length,
+      edgeCount: graph.edges.length,
+      refreshCommand: command,
+    };
+  }
+
   return {
     status: result.status,
     stdout: (result.stdout || '').trim(),
@@ -282,10 +345,11 @@ function parseBoolean(value, fallback = false) {
 function showHelp() {
   const payload = {
     usage: {
-      command: 'node scripts/harness/refresh-graph.mjs --plugin-root <path> [options]',
+      command: 'node scripts/harness/refresh-graph.mjs [--plugin-root <path>] [options]',
       options: {
         '--project-root <path>': 'Project root to analyze (default: repository root).',
-        '--plugin-root <path>': 'Understand plugin root (or set UNDERSTAND_PLUGIN_ROOT).',
+        '--plugin-root <path>':
+          'Understand plugin root (required only when refreshing understand-anything backend).',
         '--provider <name>': 'Graph provider override (understand-anything|graphify|both).',
         '--commit': 'Commit only the configured graph file when it changed.',
         '--commit-message <text>': 'Override commit message.',
@@ -309,9 +373,63 @@ async function main() {
     configPath: join(projectRoot, 'harness.config.json'),
     overrideProvider: flags.provider || process.env.HARNESS_GRAPH_PROVIDER,
   });
-  const refreshBackend = resolveRefreshBackend(providerState);
+  const refreshBackends = resolveRefreshBackends(providerState);
+  const uaBackend = refreshBackends.find(backend => backend.providerId === 'understand-anything');
+  const graphifyBackend = refreshBackends.find(backend => backend.providerId === 'graphify');
+
+  if (!uaBackend) {
+    const graphifySummary = runGraphifyRefreshBackend(projectRoot, graphifyBackend);
+    let committed = false;
+    let commitHash = null;
+    const shouldCommit =
+      Boolean(flags.commit) || parseBoolean(process.env.GRAPH_REFRESH_AUTO_COMMIT, false);
+    if (shouldCommit) {
+      const commitMessage = String(
+        flags['commit-message'] ||
+          process.env.GRAPH_REFRESH_COMMIT_MESSAGE ||
+          'chore(harness): refresh knowledge graph'
+      );
+      const worktreeChanged = runGit(
+        ['diff', '--quiet', '--', graphifySummary.graphPath],
+        projectRoot,
+        true
+      ).status;
+      const stagedChanged = runGit(
+        ['diff', '--cached', '--quiet', '--', graphifySummary.graphPath],
+        projectRoot,
+        true
+      ).status;
+      const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
+      if (hasGraphChanges) {
+        runGit(['commit', '--only', '-m', commitMessage, '--', graphifySummary.graphPath], projectRoot);
+        committed = true;
+        commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
+      }
+    }
+
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          summary: {
+            generatedAt: new Date().toISOString(),
+            projectRoot,
+            provider: providerState.selectedProvider,
+            refreshBackends: [graphifySummary],
+            graphPath: graphifySummary.graphPath,
+          },
+          committed,
+          commitHash,
+        },
+        null,
+        2
+      )}\n`
+    );
+    return;
+  }
+
   const pluginRootRaw = String(
-    flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || refreshBackend.pluginRoot || ''
+    flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || uaBackend.pluginRoot || ''
   ).trim();
   if (!pluginRootRaw) {
     throw new Error(
@@ -334,12 +452,7 @@ async function main() {
   const uaDir = join(projectRoot, '.understand-anything');
   const intermediateDir = join(uaDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
-  const graphRelativePath = toPosix(relative(projectRoot, refreshBackend.graphPath));
-  if (graphRelativePath.startsWith('..')) {
-    throw new Error(
-      `Configured graph path ${refreshBackend.graphPath} is outside the project root (${projectRoot}).`
-    );
-  }
+  const graphRelativePath = ensureGraphRelativePath(projectRoot, uaBackend.graphPath);
 
   const scanPath = join(intermediateDir, 'scan-script.json');
   const importInputPath = join(intermediateDir, 'import-input.json');
@@ -527,12 +640,29 @@ async function main() {
     saveFingerprints(projectRoot, store);
   }
 
+  const refreshBackendSummaries = [
+    {
+      provider: 'understand-anything',
+      graphPath: graphRelativePath,
+      analyzedFiles,
+      nodeCount: finalGraph.nodes.length,
+      edgeCount: finalGraph.edges.length,
+      layerCount: finalGraph.layers.length,
+      tourSteps: finalGraph.tour.length,
+      validationIssues: Array.isArray(validation.issues) ? validation.issues : [],
+    },
+  ];
+
+  if (graphifyBackend) {
+    refreshBackendSummaries.push(runGraphifyRefreshBackend(projectRoot, graphifyBackend));
+  }
+
   const summary = {
     generatedAt: new Date().toISOString(),
     projectRoot,
     pluginRoot,
     provider: providerState.selectedProvider,
-    refreshBackend: refreshBackend.providerId,
+    refreshBackends: refreshBackendSummaries,
     graphPath: graphRelativePath,
     analyzedFiles,
     totalScanFiles: scanFiles.length,
@@ -556,20 +686,17 @@ async function main() {
         'chore(harness): refresh knowledge graph'
     );
 
-    const worktreeChanged = runGit(
-      ['diff', '--quiet', '--', graphRelativePath],
-      projectRoot,
-      true
-    ).status;
+    const graphPaths = [...new Set(refreshBackendSummaries.map(item => item.graphPath).filter(Boolean))];
+    const worktreeChanged = runGit(['diff', '--quiet', '--', ...graphPaths], projectRoot, true).status;
     const stagedChanged = runGit(
-      ['diff', '--cached', '--quiet', '--', graphRelativePath],
+      ['diff', '--cached', '--quiet', '--', ...graphPaths],
       projectRoot,
       true
     ).status;
 
     const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
     if (hasGraphChanges) {
-      runGit(['commit', '--only', '-m', commitMessage, '--', graphRelativePath], projectRoot);
+      runGit(['commit', '--only', '-m', commitMessage, '--', ...graphPaths], projectRoot);
       committed = true;
       commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
     }

@@ -53,7 +53,7 @@ entrypoint directly from that file.
 | **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
 | **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`)                      |
 | **Memory**                                | [`.github/harness/memory/`](.github/harness/memory/)                                                                       | Committed lessons + Architecture Briefs (structure only — no lessons shipped)                      |
-| **Knowledge graph providers**             | [`graph-provider.mjs`](scripts/harness/graph-provider.mjs), [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs) | Provider abstraction (`understand-anything` default, optional `graphify`) with deterministic refresh on Understand-Anything |
+| **Knowledge graph providers**             | [`graph-provider.mjs`](scripts/harness/graph-provider.mjs), [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs) | Provider abstraction (`understand-anything` default, optional `graphify`) with deterministic refresh backends (`understand-anything` and configurable `graphify`) |
 | **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes graph/memory/vector + routing/catalog/discovery tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
 | **Capability catalog**                    | [`harness-catalog.mjs`](scripts/harness/harness-catalog.mjs), [`llms.txt`](llms.txt), [`.github/harness/catalog/`](.github/harness/catalog/) | Machine-readable taxonomy + intent profiles for external agent/tool recommendation |
@@ -73,6 +73,7 @@ experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experim
 #    Edit harness.config.json: set project.name, project.description, and commands.*
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  # sanity-check
 npm run harness:graph:provider                     # inspect graph provider + paths
+npm run harness:graph:genui                        # inspect GenUI graph.html readiness
 
 # Optional: preview the repo's harness routing and operator handoff plans.
 # PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
@@ -190,6 +191,7 @@ same `command`/`args` in their MCP config.
 node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
 npm run harness:mcp:server                         # run the stdio server directly
 npm run harness:mcp -- graph-provider-status       # inspect active graph provider availability
+npm run harness:mcp -- graph-genui-status          # inspect graph.html serving readiness
 npm run harness:mcp -- harness-catalog             # read taxonomy + profiles
 npm run harness:mcp -- harness-pick-profile --task "add memory retrieval path"
 npm run harness:mcp -- harness-tool-discover --intent drop-in-memory --limit 6
@@ -234,9 +236,11 @@ prerequisites are missing.
 Graph provider selection lives in `harness.config.json`:
 
 - `graph.provider: "understand-anything"` (default) keeps the current deterministic flow.
-- `graph.provider: "graphify"` opts into the Graphify provider surface (status + path abstraction now; refresh/query integration can be layered in as Graphify snapshots are wired).
-- `graph.provider: "both"` keeps Understand-Anything as the primary deterministic query backend while surfacing Graphify availability and future hooks.
-- `graph.graphHtmlPath` / `graph.graphify.graphHtmlPath` is a safe config hook for future GenUI/web surfaces that want to render `graph.html` without hardcoding paths.
+- `graph.provider: "graphify"` executes Graphify deterministic refresh via `graph.graphify.refreshCommand` and reads the resulting `graph.graphify.path`.
+- `graph.provider: "both"` refreshes Understand-Anything and Graphify backends in one run (Graphify refresh runs when `graph.graphify.refreshCommand` is configured).
+- `graph.graphHtmlPath` / `graph.graphify.graphHtmlPath` is now wired to HTTP and GenUI status surfaces:
+  - `GET /graph.html` on `report-server.mjs` serves configured graph HTML when present and repo-safe.
+  - `GET /genui/graph.json` exposes provider-agnostic graph render metadata for GenUI consumers.
 
 ## License
 

@@ -7,6 +7,7 @@
  * Usage:
  *   node scripts/harness/graph.mjs status [--json]
  *   node scripts/harness/graph.mjs provider-status [--json]
+ *   node scripts/harness/graph.mjs genui-status [--json]
  *   node scripts/harness/graph.mjs banner
  *   node scripts/harness/graph.mjs neighbors <nodeId> [--depth N] [--type T] [--json]
  *   node scripts/harness/graph.mjs dependents <filePath> [--json]
@@ -29,6 +30,7 @@ import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from '
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  buildGraphGenUiPayload,
   buildProviderStatusPayload,
   loadGraphForQuery,
 } from './graph-provider.mjs';
@@ -598,7 +600,7 @@ function main() {
   const flags = parseFlags(rest);
   if (!cmd || cmd === '--help' || cmd === '-h') {
     die(
-      'Usage: graph.mjs <status|provider-status|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
+      'Usage: graph.mjs <status|provider-status|genui-status|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
     );
   }
   if (cmd === 'brief-check') {
@@ -629,9 +631,41 @@ function main() {
       } else {
         console.log(`    graphHtml: ${details.graphHtmlPath} (${details.graphHtmlExists ? 'present' : 'missing'})`);
         console.log(
+          `    refreshCommand: ${details.refreshCommandConfigured ? 'configured' : 'not configured'} (cwd=${details.refreshCwd})`
+        );
+        console.log(
           `    graphify-signal: cli=${details.cliAvailable === null ? 'n/a' : details.cliAvailable ? 'yes' : 'no'}, env=${details.signalPresent ? 'yes' : 'no'}`
         );
       }
+    }
+    return;
+  }
+  if (cmd === 'genui-status') {
+    let payload;
+    try {
+      payload = buildGraphGenUiPayload({
+        repoRoot,
+        configPath,
+        overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+      });
+    } catch (error) {
+      die(error instanceof Error ? error.message : String(error), 1);
+    }
+    if (flags.json) {
+      console.log(JSON.stringify(payload, null, 2));
+      return;
+    }
+    console.log(`Graph GenUI status (provider=${payload.selectedProvider})`);
+    console.log(`  query backend: ${payload.queryProvider ?? '(none)'}`);
+    console.log(`  query graph: ${payload.queryGraphPath ?? '(none)'}`);
+    console.log(
+      `  graph.html: ${payload.graphHtml.configuredPath} (${payload.graphHtml.exists ? 'present' : 'missing'})`
+    );
+    console.log(
+      `  served via HTTP: ${payload.graphHtml.httpPath ?? 'disabled (path outside repo root or missing)'}`
+    );
+    for (const note of payload.notes ?? []) {
+      console.log(`  note: ${note}`);
     }
     return;
   }

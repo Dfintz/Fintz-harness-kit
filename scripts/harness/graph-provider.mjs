@@ -2,6 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
+import { assertSafeCliCommand } from './command-validation.mjs';
 
 export const GRAPH_PROVIDER_VALUES = ['understand-anything', 'graphify', 'both'];
 export const DEFAULT_GRAPH_PROVIDER = 'understand-anything';
@@ -53,6 +54,16 @@ function probeGraphifyCli() {
   return result.status === 0;
 }
 
+function isPathWithinRoot(root, targetPath) {
+  const rel = relative(root, targetPath);
+  return rel !== '' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+function toAbsoluteMaybe(repoRoot, value) {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined;
+  return isAbsolute(value) ? value : resolve(repoRoot, value.trim());
+}
+
 export function normalizeGraphProvider(value) {
   const normalized = String(value || DEFAULT_GRAPH_PROVIDER)
     .trim()
@@ -100,6 +111,8 @@ export function resolveGraphProviderState({
     graphConfig.graphHtmlPath ?? graphifyConfig.graphHtmlPath,
     DEFAULT_GRAPHIFY_HTML_PATH
   );
+  const graphifyRefreshCommand = stringOrUndefined(graphifyConfig.refreshCommand);
+  const graphifyRefreshCwd = toAbsoluteMaybe(repoRoot, graphifyConfig.refreshCwd) ?? repoRoot;
   const uaPluginRoot = stringOrUndefined(graphConfig.pluginRoot);
 
   const graphifyCliAvailable = probe ? probeGraphifyCli() : null;
@@ -129,9 +142,11 @@ export function resolveGraphProviderState({
           graphifySignal ||
           (graphifyCliAvailable === true),
         querySupported: existsSync(graphifyGraphPath),
-        refreshSupported: false,
+        refreshSupported: Boolean(graphifyRefreshCommand),
         graphPath: graphifyGraphPath,
         graphHtmlPath: graphifyHtmlPath,
+        refreshCommand: graphifyRefreshCommand,
+        refreshCwd: graphifyRefreshCwd,
         cliAvailable: graphifyCliAvailable,
         signalPresent: graphifySignal,
       },
@@ -195,17 +210,58 @@ export function loadGraphForQuery({ repoRoot, configPath, overrideProvider } = {
 }
 
 export function resolveRefreshBackend(state) {
-  if (state.selectedProvider === 'graphify') {
+  return resolveRefreshBackends(state)[0];
+}
+
+export function resolveRefreshBackends(state) {
+  if (!state || typeof state !== 'object') {
+    throw new Error('Graph provider state is required.');
+  }
+
+  const backends = [];
+  const wantUA =
+    state.selectedProvider === 'understand-anything' || state.selectedProvider === 'both';
+  const wantGraphify =
+    state.selectedProvider === 'graphify' || state.selectedProvider === 'both';
+
+  if (wantUA) {
+    backends.push({
+      providerId: 'understand-anything',
+      graphPath: state.providers['understand-anything'].graphPath,
+      pluginRoot: state.providers['understand-anything'].pluginRoot,
+    });
+  }
+
+  if (wantGraphify) {
+    const graphify = state.providers.graphify;
+    if (!graphify.refreshCommand) {
+      if (state.selectedProvider === 'graphify') {
+        throw new Error(
+          'graph.provider is "graphify", but graph.graphify.refreshCommand is not configured. ' +
+            'Action: set graph.graphify.refreshCommand in harness.config.json to a deterministic command that writes graph.graphify.path.'
+        );
+      }
+    } else {
+      assertSafeCliCommand(graphify.refreshCommand, {
+        label: 'graphify refresh command',
+      });
+      backends.push({
+        providerId: 'graphify',
+        graphPath: graphify.graphPath,
+        graphHtmlPath: graphify.graphHtmlPath,
+        refreshCommand: graphify.refreshCommand,
+        refreshCwd: graphify.refreshCwd,
+      });
+    }
+  }
+
+  if (backends.length === 0) {
     throw new Error(
-      'graph.provider is "graphify", but scripts/harness/refresh-graph.mjs currently supports deterministic refresh only via Understand-Anything. ' +
-        'Action: set graph.provider to "understand-anything" (or "both") for this refresh path.'
+      `No refresh backend resolved for provider "${state.selectedProvider}".`
     );
   }
-  return {
-    providerId: 'understand-anything',
-    graphPath: state.providers['understand-anything'].graphPath,
-    pluginRoot: state.providers['understand-anything'].pluginRoot,
-  };
+
+  return backends;
 }
 
 export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvider } = {}) {
@@ -231,6 +287,8 @@ export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvi
         : {
             graphHtmlPath: toWorkspacePath(repoRoot, provider.graphHtmlPath),
             graphHtmlExists: existsSync(provider.graphHtmlPath),
+            refreshCommandConfigured: Boolean(provider.refreshCommand),
+            refreshCwd: toWorkspacePath(repoRoot, provider.refreshCwd),
             cliAvailable: provider.cliAvailable,
             signalPresent: provider.signalPresent,
           }),
@@ -241,5 +299,50 @@ export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvi
     selectedProvider: state.selectedProvider,
     activeProviders: state.activeProviders,
     active,
+  };
+}
+
+export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider } = {}) {
+  const state = resolveGraphProviderState({
+    repoRoot,
+    configPath,
+    overrideProvider,
+    probe: true,
+  });
+
+  const graphify = state.providers.graphify;
+  const htmlAbsolutePath = graphify.graphHtmlPath;
+  const htmlWithinRepo = isPathWithinRoot(repoRoot, htmlAbsolutePath);
+  const htmlExists = existsSync(htmlAbsolutePath);
+  const httpPath = htmlWithinRepo ? '/graph.html' : null;
+  const queryTarget = (() => {
+    try {
+      return resolveGraphQueryTarget(state);
+    } catch {
+      return null;
+    }
+  })();
+
+  return {
+    ok: true,
+    selectedProvider: state.selectedProvider,
+    activeProviders: state.activeProviders,
+    queryProvider: queryTarget?.providerId ?? null,
+    queryGraphPath: queryTarget?.graphPath ? toWorkspacePath(repoRoot, queryTarget.graphPath) : null,
+    graphHtml: {
+      configuredPath: toWorkspacePath(repoRoot, htmlAbsolutePath),
+      absolutePath: htmlAbsolutePath,
+      withinRepo: htmlWithinRepo,
+      exists: htmlExists,
+      httpPath,
+    },
+    notes:
+      htmlWithinRepo && htmlExists
+        ? []
+        : [
+            !htmlWithinRepo
+              ? 'Configured graphHtmlPath is outside repo root; report server will refuse to serve it.'
+              : 'Configured graphHtmlPath does not exist yet; run graph refresh/export first.',
+          ],
   };
 }

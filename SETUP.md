@@ -61,7 +61,9 @@ This is the only required step. Point the tokens at your project's real commands
     "path": ".understand-anything/knowledge-graph.json",
     "graphify": {
       "path": ".graphify/knowledge-graph.json",
-      "graphHtmlPath": ".graphify/graph.html"
+      "graphHtmlPath": ".graphify/graph.html",
+      "refreshCommand": "graphify export --out .graphify/knowledge-graph.json", // required for graphify refresh
+      "refreshCwd": "."
     }
   },
   "experiments": {
@@ -127,6 +129,7 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
 
 # Inspect provider abstraction + availability:
 npm run harness:graph:provider
+npm run harness:graph:genui
 ```
 
 ## 6. (Optional) MCP integration

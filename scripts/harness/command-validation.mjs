@@ -14,6 +14,7 @@ const DEFAULT_ALLOWED_EXECUTABLES = [
   'python',
   'python3',
   'uvx',
+  'graphify',
 ];
 
 const BLOCKED_SHELL_PATTERNS = [

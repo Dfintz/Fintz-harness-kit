@@ -161,6 +161,8 @@ Use the MCP wrapper/server tool `graph-provider-status` to inspect configured pr
 (`understand-anything`, `graphify`, `both`), active graph paths, and availability before relying on
 graph evidence in an Understand pass.
 
+Use `graph-genui-status` to fetch provider-agnostic `graph.html` serving readiness metadata for HTTP/GenUI consumers.
+
 ---
 
 ## Integration with Harness Workflow

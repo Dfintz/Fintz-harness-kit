@@ -41,8 +41,8 @@ of the adapted files.
   [`scripts/harness/graph.mjs`](scripts/harness/graph.mjs),
   [`scripts/harness/mcp-tools.mjs`](scripts/harness/mcp-tools.mjs),
   [`scripts/harness/mcp-server.mjs`](scripts/harness/mcp-server.mjs).
-- **Note:** this release ships provider scaffolding + status integration; deterministic refresh remains
-  Understand-Anything-backed.
+- **Note:** this release ships provider abstraction, provider-aware querying, deterministic
+  refresh via configurable Graphify command execution, and HTTP/GenUI graph rendering hooks.
 
 ### Model Context Protocol (MCP)
 

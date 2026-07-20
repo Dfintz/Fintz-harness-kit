@@ -104,6 +104,13 @@ const toolSpecs = [
     toCliArgs: () => [],
   },
   {
+    name: 'graph-genui-status',
+    description:
+      'Returns graph GenUI/HTTP render readiness including graph.html path and serveability.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
     name: 'graph-neighbors',
     description: 'Returns neighboring nodes for a graph node id.',
     inputSchema: objectSchema(

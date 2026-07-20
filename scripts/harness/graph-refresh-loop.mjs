@@ -2,8 +2,9 @@
 /**
  * Continuous refresh loop for deterministic graph updates.
  * Intended for optional Docker sidecar usage.
- * Uses the graph provider abstraction and executes the Understand-Anything
- * backend when refresh is enabled.
+ * Uses the graph provider abstraction and executes configured refresh backends:
+ * - understand-anything (plugin-backed deterministic rebuild)
+ * - graphify (configurable deterministic refresh command)
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -16,7 +17,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveGraphProviderState, resolveRefreshBackend } from "./graph-provider.mjs";
+import { resolveGraphProviderState, resolveRefreshBackends } from "./graph-provider.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const refreshScript = resolve(
@@ -91,7 +92,8 @@ function sleep(ms) {
 }
 
 function runRefresh(options) {
-  const args = [refreshScript, "--plugin-root", options.pluginRoot];
+  const args = [refreshScript];
+  if (options.pluginRoot) args.push("--plugin-root", options.pluginRoot);
   if (options.provider) args.push("--provider", options.provider);
   if (options.commit) args.push("--commit");
   if (options.withLocalState) args.push("--with-local-state");
@@ -203,6 +205,11 @@ function probePluginDependencyResolution(pluginRoot) {
 }
 
 function runPreflight(options) {
+  if (!options.requiresPlugin) {
+    process.stdout.write("[graph-refresh-loop] preflight ok (no plugin backend required)\n");
+    return { sourceDepsResolvable: true };
+  }
+
   const requiredPluginPaths = [
     resolve(options.pluginRoot, "skills", "understand", "scan-project.mjs"),
     resolve(
@@ -375,12 +382,14 @@ function showHelp() {
       {
         usage: {
           command:
-            "node scripts/harness/graph-refresh-loop.mjs --plugin-root <path> [options]",
+            "node scripts/harness/graph-refresh-loop.mjs [--plugin-root <path>] [options]",
           options: {
             "--interval-seconds <n>":
               "Interval between refresh cycles (default 600).",
             "--provider <name>":
               "Graph provider override (understand-anything|graphify|both).",
+            "--plugin-root <path>":
+              "Understand plugin root (required only when understand-anything backend is active).",
             "--run-once": "Run a single refresh and exit.",
             "--commit": "Enable auto-commit for graph file changes.",
             "--with-local-state":
@@ -394,6 +403,8 @@ function showHelp() {
               "Plugin root when --plugin-root is not set.",
             HARNESS_GRAPH_PROVIDER:
               "Graph provider override when --provider is not set.",
+            "graph.graphify.refreshCommand":
+              "When graphify backend is active, deterministic command used by refresh-graph.mjs to write graph.graphify.path.",
             GRAPH_REFRESH_INTERVAL_SECONDS: "Default refresh interval.",
             GRAPH_REFRESH_RUN_ONCE: "true/false toggle for one-shot mode.",
             GRAPH_REFRESH_AUTO_COMMIT:
@@ -428,23 +439,28 @@ async function main() {
     configPath: resolve(repoRoot, "harness.config.json"),
     overrideProvider: flags.provider || process.env.HARNESS_GRAPH_PROVIDER,
   });
-  const refreshBackend = resolveRefreshBackend(providerState);
-
-  const pluginRootInput = String(
-    flags["plugin-root"] ||
-      process.env.UNDERSTAND_PLUGIN_ROOT ||
-      refreshBackend.pluginRoot ||
-      "",
-  ).trim();
-  if (!pluginRootInput) {
-    throw new Error(
-      `Missing plugin root for provider ${providerState.selectedProvider}. ` +
-        "Provide --plugin-root, UNDERSTAND_PLUGIN_ROOT, or graph.pluginRoot.",
-    );
-  }
-  const pluginRoot = resolve(pluginRootInput);
-  if (!existsSync(pluginRoot)) {
-    throw new Error(`Plugin root does not exist: ${pluginRoot}`);
+  const refreshBackends = resolveRefreshBackends(providerState);
+  const uaBackend = refreshBackends.find(
+    (backend) => backend.providerId === "understand-anything",
+  );
+  let pluginRoot = null;
+  if (uaBackend) {
+    const pluginRootInput = String(
+      flags["plugin-root"] ||
+        process.env.UNDERSTAND_PLUGIN_ROOT ||
+        uaBackend.pluginRoot ||
+        "",
+    ).trim();
+    if (!pluginRootInput) {
+      throw new Error(
+        `Missing plugin root for provider ${providerState.selectedProvider}. ` +
+          "Provide --plugin-root, UNDERSTAND_PLUGIN_ROOT, or graph.pluginRoot.",
+      );
+    }
+    pluginRoot = resolve(pluginRootInput);
+    if (!existsSync(pluginRoot)) {
+      throw new Error(`Plugin root does not exist: ${pluginRoot}`);
+    }
   }
 
   const intervalFromFlags = Number(flags["interval-seconds"]);
@@ -460,6 +476,7 @@ async function main() {
 
   const options = {
     pluginRoot,
+    requiresPlugin: Boolean(uaBackend),
     provider: providerState.selectedProvider,
     commit:
       Boolean(flags.commit) ||
@@ -478,7 +495,11 @@ async function main() {
     return;
   }
 
-  options.pluginRoot = preparePluginRuntime(options);
+  if (options.requiresPlugin) {
+    options.pluginRoot = preparePluginRuntime(options);
+  } else {
+    options.pluginRoot = null;
+  }
 
   const runOnce =
     Boolean(flags["run-once"]) ||
