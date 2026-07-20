@@ -32,6 +32,7 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 - `npm run harness:feature -- --task "<feature task>"` or `npm run harness:handoff:feature -- --task "<feature task>"` prints the full operator handoff plan.
 - `npm run harness:handoff:review -- --task "<review task>"` prints the review-only handoff plan.
 - `npm run harness:review` runs the plan-review workflow (backward-compatible behavior).
+- `npm run harness:docs:check` validates registry stage contracts, loop references, skill metadata, and cited script or npm command paths across the harness docs surfaces.
 - `npm run harness:catalog:sync` publishes machine-readable capability artifacts (`llms.txt` + `.github/harness/catalog/harness-profile.json`).
 
 ### Model Roles In The Shipped Environment Policy

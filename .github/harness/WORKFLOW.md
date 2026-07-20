@@ -121,6 +121,7 @@ npm test --workspace=frontend -- <changed>.test.tsx
 Harness-surface proof sources when code is not the main change:
 
 - `git --no-pager diff --check` for clean doc/metadata edits
+- `npm run harness:docs:check` for registry/stage-skill/loop/script reference integrity
 - `npm run harness:report` when report outputs or run artifacts are described
 - `npm run harness:grade` when evaluation or trajectory-scoring surfaces are described
 - `npm run harness:otel` when trace-export or telemetry contracts are described

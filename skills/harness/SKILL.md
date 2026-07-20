@@ -56,6 +56,10 @@ Boundaries, Reuse (plus 4b Multi-Tenant Isolation where applicable). Read
 `.github/harness/HARNESS.md` for the full contract and `.github/harness/LOOPS.md` for the loop
 protocol.
 
+Stage metadata now also lives in `.github/harness/registry.json`, so prompt routing and future tools
+can consume required handoff artifacts, output artifact kinds, and approval triggers without
+re-parsing prose instructions.
+
 ## Skill and stage design policy
 
 - Keep always-on norms in repository instructions; keep repeatable, on-demand workflows in skills.
@@ -88,6 +92,7 @@ node scripts/harness/run-loop.mjs build-fix --agent "<agent CLI>"   # convergenc
 node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only   # baseline a metric
 node scripts/harness/harness-report.mjs                  # write the metrics dashboard
 node scripts/harness/report-server.mjs                   # serve it at http://localhost:8099
+npm run harness:docs:check                               # validate harness doc and stage contracts
 ```
 
 ### Local-LLM loop agents (optional)

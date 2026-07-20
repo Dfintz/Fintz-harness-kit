@@ -19,6 +19,7 @@ Prompt routing shortcuts:
 - `npm run harness:route -- --task "<prompt>"` — classify a prompt against the harness policy.
 - `npm run harness:feature -- --task "<feature task>"` — print the full stage/model handoff.
 - `npm run harness:handoff:review -- --task "<review task>"` — print the review-only handoff.
+- `npm run harness:docs:check` — validate registry stage metadata, stage-skill paths, loop references, and cited harness script commands.
 - `npm run harness:review` — run the plan-review workflow (backward-compatible behavior).
 
 This file is intentionally short: it points at the harness rather than duplicating it. Replace this
