@@ -82,7 +82,8 @@ the other as reference — do not load both copies of the same skill.
 
 Workflow-stage skills (`architect`, `implement`, `review-breadth`, `review-depth`, `feedback`) exist
 only under `.claude/skills/` as invocable commands; non-Claude agents get identical content from the
-corresponding `.github/instructions/0*.md` file.
+corresponding `.github/instructions/0*.md` file. Those instruction files define reusable stage
+contracts; repository standards and domain skills provide the stack-specific rules.
 
 ---
 
@@ -125,12 +126,12 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 | #   | Stage          | Instruction file                                 | Claude Code skill                        | Mandatory output                                                         |
 | --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
-| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (files, decisions, constraints, Do-NOTs, assumptions) |
-| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Code + completed self-review checklist                                   |
-| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + self-review checklist (use for bug fixes / narrow high-blast-radius changes) |
-| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings list (severity-tagged)                                          |
-| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate verdicts + structural findings                                      |
-| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict table + updated Brief (if changed)                               |
+| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Delivered change + proof summary + self-review summary                   |
+| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + proof summary + surgical boundary note             |
+| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings ledger (severity, evidence, impact, confidence, fix)            |
+| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate ledger + structural findings + Brief divergences                    |
+| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict record + Brief updates + response notes                          |
 
 ### Stage Contract (applies to every stage)
 
@@ -141,15 +142,16 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 2. **Context Sufficiency Check first.** Every stage instruction begins with one. Inventory what you
    have, identify what you need, and request missing context before producing output. Never guess at
    an Architecture Brief, reviewer intent, or file contents you were not given.
-3. **Carry artifacts forward — and persist them.** The Architecture Brief from stage 1 is input to
-   stages 2, 4, and 5; save it to `memory/briefs/` per that directory's protocol so a later session
-   inherits the gate decisions. Breadth findings from stage 3 are pasted into stage 4 to avoid
-   duplication.
+3. **Carry artifacts forward — and persist them.** Stage 1 produces the Architecture Brief; stage 2
+   adds a proof summary; stage 3 produces a findings ledger; stage 4 produces a gate ledger and
+   structural findings; stage 5 resolves them into a verdict record. Save the Brief to
+   `memory/briefs/` per that directory's protocol so a later session inherits the gate decisions.
 4. **Honor the gates.** Stages 1 and 4 run the five architectural gates (Domain Alignment,
    Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation).
    Implementations that bypass a gate decision must be flagged, not silently merged.
 5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
-   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`.
+   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`, plus the stage artifacts needed by the next
+   pass.
 
 ---
 

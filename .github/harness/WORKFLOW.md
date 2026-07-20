@@ -52,7 +52,8 @@ Research-style adapter (background evidence gathering):
 
 Skills: `deterministic-validation`, `doubt-driven-development`
 
-Goal: produce a Brief that passes gates and survives adversarial review before code changes.
+Goal: produce an Architecture Brief that passes the gates and can guide code, docs, or workflow
+changes without re-deciding ownership later.
 
 Required method:
 
@@ -62,6 +63,7 @@ Required method:
 Exit proof:
 
 - Brief saved in `.github/harness/memory/briefs/`
+- validation plan, constraints, and assumptions captured explicitly
 - no unresolved Blocker/Major architectural risks
 
 To-tickets planning adapter (for architecture outputs):
@@ -91,9 +93,13 @@ Add-on skills by change type:
 
 Execution pattern:
 
-1. implement smallest vertical slice
-2. run narrow deterministic proof immediately
+1. implement the smallest coherent slice of the Brief
+2. run the narrowest deterministic proof immediately
 3. if proof fails, repair before expanding scope
+4. keep directly dependent artifacts in sync (tests, docs, templates, workflow notes)
+
+Use the surgical implement variant when the task is a bug fix, hotfix, backport, or other
+minimal-diff change where blast radius matters more than cleanup.
 
 Common proof commands:
 
@@ -127,8 +133,8 @@ Skills: `doubt-driven-development`, `deterministic-validation`, `run-loop` (agen
 
 Load the `run-loop` skill and execute the `review-fix` loop natively. The loop will:
 
-1. Run the breadth review pass (05) over the current diff
-2. Run the depth review pass (06) with breadth findings pasted in
+1. Run the breadth review pass (05) and produce a findings ledger for the current diff
+2. Run the depth review pass (06) with the breadth findings ledger pasted in
 3. If Blocker/Major findings remain, fix them via Implement and re-run
 4. Converge when zero Blocker and zero Major findings remain
 
@@ -159,6 +165,7 @@ Skills: `context-engineering`
 
 Before closing:
 
+- resolve challenged findings or reviewer disagreement into a verdict record
 - persist/update Brief if architecture changed
 - add one lesson if a non-obvious issue was discovered
 - record run outcome

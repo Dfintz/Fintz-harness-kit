@@ -1,320 +1,196 @@
-<!-- harness-kit template: concrete examples below reference the kit's origin project (a TypeScript/Node monorepo). Adapt them to your stack; the workflow and gates are stack-agnostic. -->
+<!-- harness-kit template: this stage defines how to execute a brief. Project-specific coding rules, frameworks, and stack checks stay in repository standards and domain skills. -->
 
 ---
 applyTo: '**'
 ---
 
-# Implementation
+# Implement Stage
 
 > **Model:** balanced-coding (e.g., `gpt-5.3-codex` or `claude-sonnet-4.x`; Copilot Auto is a safe
 > default) — the Architecture Brief already constrains the problem; what matters here is speed and
 > code-generation accuracy.
-> **Purpose:** Implement the feature described in the ticket, following the Architecture Brief
-> produced by 03-ARCHITECT if one exists.
+> **Purpose:** Turn the task packet and Architecture Brief into working deliverables without
+> silently changing the architecture contract.
 
-Your full coding standards are in `.github/copilot-instructions.md` and `CLAUDE.md` — those
-documents are the authority on all style, naming, architecture, and pattern decisions. If tests are
-in scope, `docs/TESTING.md` is the authority on test structure.
+This stage applies to code changes, docs, workflows, automations, and mixed delivery work. Repository
+standards remain authoritative for stack-specific implementation details.
 
-If an Architecture Brief from 03-ARCHITECT is present, follow it. Any decision it marks as
-`[UNVERIFIED]` must be flagged to the user before implementing the affected code.
+## Required inputs
 
----
+Use these as the **implementation packet**:
 
-## MANDATORY FIRST STEP: Context Sufficiency Check
+- task packet from Architect / Understand
+- current Architecture Brief, if one exists
+- all artifacts being changed
+- relevant domain skills and standards
+- the narrowest validation route for the work
 
-Complete this entirely before writing any code. Do not skip any step.
-
-### Step 1 — Inventory what you have
-
-List every file provided, one per line:
-
-- File path
-- What it contains (one sentence)
-- Its layer (`backend/service`, `backend/controller`, `backend/middleware`, `backend/model`,
-  `backend/schema`, `frontend/component`, `frontend/hook`, `frontend/service`, `frontend/store`,
-  `shared-types`, `infrastructure`, `test`)
-
-### Step 2 — Determine scope context
-
-Examine the files to determine scope:
-
-**🔧 Backend indicators:** Express routes, TypeORM entities/repositories, Joi schemas, middleware,
-services in `backend/src/services/`, controllers in `backend/src/controllers/`
-
-**🎨 Frontend indicators:** React components, MUI imports, Zustand stores, React Query hooks,
-frontend services in `frontend/src/services/`
-
-**🔗 Full-stack indicators:** Shared types in `packages/shared-types`, API contract changes,
-real-time (Socket.io) features
-
-State the detected scope clearly:
-
-> **Scope: 🔧 Backend** / **🎨 Frontend** / **🔗 Full-stack**
-
-### Step 3 — Identify what you need
-
-For each file you have, list the files it references that you do NOT have but would need to
-implement correctly:
-
-| Missing file      | Needed to implement                                                         |
-| ----------------- | --------------------------------------------------------------------------- |
-| `path/to/file.ts` | e.g. "Need to know the interface of `TenantService` to extend it correctly" |
-
-### Step 4 — Decide how to proceed
-
-**If critical files are missing:**
-
-State explicitly:
-
-> MISSING: `path/to/file.ts` — cannot implement [specific method/class] without this.  
-> ASSUMPTION: [what you are assuming]  
-> RISK: [what could be wrong if the assumption is incorrect]
-
-Mark every place you use an unverified assumption inline with `[UNVERIFIED — missing context]`.
-
-**If files are missing but non-critical:**
-
-> The following files are absent but their absence only affects confidence, not correctness.
-> Proceeding.
-
-### Step 5 — Confirm or flag the Architecture Brief
-
-If a Brief is present:
-
-- Confirm you will follow it
-- List any `[UNVERIFIED]` assumptions in the Brief that affect what you are about to implement
-- If any assumption appears to be contradicted by the files you have been given, STOP and flag it
-  before writing code
+If the Brief is missing for a non-trivial task, say so before proceeding.
 
 ---
 
-## MANDATORY SECOND STEP: Pre-Implementation Discovery
+## Mandatory first step: Context sufficiency check
 
-Before writing ANY code, complete every item below. If you cannot complete an item, stop and ask.
+Complete this before changing anything.
 
-### 1. Type Consistency Discovery
+### 1. Inventory what you have
 
-- [ ] If creating a type that mirrors another: locate the source type, compare field-by-field, match
-      types EXACTLY
-- [ ] Check `packages/shared-types` for existing shared types before creating new ones
-- [ ] Any deviations from source types have an inline comment explaining WHY
+List the artifacts provided, with:
 
-### 2. Error Handling Discovery
+- path or identifier
+- what each one does
+- its surface or layer
 
-- [ ] Searched for existing custom error classes in `backend/src/utils/apiErrors` or
-      `backend/src/utils/errors`
-- [ ] Searched for `getErrorMessage`, `logError`, `isApiClientError` patterns
-- [ ] Using project error types (NotFoundError, ValidationError, ForbiddenError, UnauthorizedError)
-      — NOT generic `Error` throws for expected conditions
+### 2. State the scope
 
-### 3. Service Pattern Discovery
+> **Scope:** [software / documentation / workflow / infrastructure / mixed]
+> **Primary deliverable:** [the artifact or behavior being changed]
 
-- [ ] Searched for similar services in the codebase under `backend/src/services/`
-- [ ] Matching existing pattern (extends TenantService vs standalone, constructor DI vs direct
-      import)
-- [ ] Confirmed service file exports a singleton instance if that's the domain convention
+### 3. Identify missing context
 
-### 4. Pattern Usage Validation
+List anything you still need in order to implement correctly.
 
-- [ ] Before copying a pattern from an adjacent file: searched for usages of that pattern
-- [ ] Zero usages found → not copying it (YAGNI)
-- [ ] Confirmed the pattern is the current approach (not a deprecated/legacy pattern)
+| Missing artifact | Needed to implement |
+| --- | --- |
+| `path/or/name` | What cannot be changed safely without it |
 
-### 5. Frontend Discovery (if applicable)
+### 4. Confirm or challenge the Brief
 
-- [ ] Checked `frontend/src/hooks/queries/queryKeys.ts` for existing key factories
-- [ ] Checked for existing React Query hooks in `frontend/src/hooks/queries/`
-- [ ] Checked for existing frontend services in `frontend/src/services/`
-- [ ] Confirmed MUI components used (not Adobe Spectrum — which is migrated away)
-- [ ] Confirmed `@/` path alias used for all cross-directory imports
+If a Brief exists:
 
-### 6. Database/Migration Discovery (if applicable)
+- confirm that you will follow it
+- list any `[UNVERIFIED]` assumptions it contains that affect this change
+- if current evidence contradicts the Brief, stop and route the contradiction back to Architect or
+  Feedback before implementing the affected part
 
-- [ ] Checked `backend/src/models/` for existing related entities
-- [ ] Checked for existing indexes and constraints that may conflict
-- [ ] Migration timestamp follows convention: `YYYYMMDDHHMMSS`
-- [ ] No `synchronize: true` anywhere — migrations only
-
-### 7. Validation Schema Discovery
-
-- [ ] Searched for existing Joi schemas in `backend/src/schemas/`
-- [ ] Matching existing schema patterns (field naming, validation rules)
-- [ ] Schema covers all required fields and applies appropriate constraints
+If no Brief exists for a non-trivial task, note that you are proceeding with reduced contract safety.
 
 ---
 
-## Implementation
+## Pre-implementation discovery
 
-Implement the task. Adhere to all standards in `.github/copilot-instructions.md`. Pay particular
-attention to:
+Before writing the change, verify the current patterns you intend to reuse.
 
-**Backend patterns:**
+### 1. Reuse and pattern discovery
 
-- Service layer handles business logic; controllers handle HTTP concerns only
-- All services that access tenant-scoped data extend TenantService or scope queries by
-  organizationId
-- All endpoints validate inputs with Joi schemas
-- Use Winston logger — never `console.log` in production code
-- Error handling uses `catch (error: unknown)` — never `catch (error: any)`
-- TypeORM parameterised queries only — no string concatenation in SQL
-- Middleware order: Helmet → CORS → Correlation ID → Rate Limiting → Body Parsing → Auth → Tenant
-  Context → Permissions → Validation → Controller
+- find the closest existing example in this repository
+- confirm it is the current pattern, not legacy drift
+- reuse before creating a new helper, structure, or workflow step
 
-**Frontend patterns:**
+### 2. Contract discovery
 
-- React Query for all server state (hooks in `hooks/queries/use<Domain>Queries.ts`, keys in
-  `queryKeys.ts`)
-- Zustand for client-only state (auth, UI preferences, theme)
-- MUI v7 components exclusively (Fringe Core design system)
-- `apiClient` or `BaseService` for all API calls — never raw `axios` imports
-- `@/` path alias for all cross-directory imports — never `../../` relative paths
-- `logger` from `@/utils/logger` — never `console.log`
-- No hardcoded hex colours — use MUI theme palette or shared colour utilities
-- `isApiClientError()` for error handling — never `as any` for error access
-- `<CircularProgress />` for loading states
-- Props interfaces use `Readonly<>` wrapper
+- identify the interfaces, templates, schemas, expectations, or downstream consumers you must
+  preserve
+- if mirroring an existing shape, compare it directly instead of approximating it
 
-**Type safety:**
+### 3. Validation discovery
 
-- TypeScript strict mode — no `any` types
-- Use `unknown` with type guards for truly unknown types
-- Explicit return types on all public functions
-- Use union types and discriminated unions over loose string types
+- identify the smallest proof that shows the change works
+- prefer existing tests, checks, previews, dry-runs, or sample runs
+- do not invent new validation infrastructure unless the task requires it
 
-**Async patterns:**
+### 4. Risk discovery
 
-- Prefer async/await over raw promises or callbacks
-- All promises must be awaited or explicitly voided
-- No unhandled promise rejections
-
-**Method size:**
-
-- Methods exceeding 50–75 lines should be refactored into smaller units
-- Complex conditionals extracted into well-named helpers
+- identify destructive paths, approval boundaries, rollout sequencing, or recovery steps
+- surface anything that makes the implementation higher-risk than the Brief implied
 
 ---
 
-## Mandatory Self-Review (Before Marking Complete)
+## Execution rules
 
-Work through every item. Do not submit until all pass.
+### 1. Implement in small verifiable slices
 
-### Context and Brief Compliance
+- make the smallest coherent change that moves the task forward
+- verify that slice before expanding scope
+- if a slice fails validation, repair before layering on more change
 
-- [ ] Every `[UNVERIFIED]` assumption from the Architecture Brief was either confirmed or flagged to
-      the user?
-- [ ] Implementation matches the Brief — no files created that were listed under "Do NOT"?
+### 2. Stay inside the contract
 
-### Reference Consistency
+- follow the Brief's ownership, boundary, and reuse decisions
+- do not make new architectural choices casually during implementation
+- if new evidence forces a structural change, stop and record the contradiction explicitly
 
-- [ ] Found and compared against source types being mirrored?
-- [ ] Field types match EXACTLY (or deviations have an inline comment)?
-- [ ] Types from `packages/shared-types` used where appropriate?
+### 3. Keep related surfaces aligned
 
-### Pattern Consistency
+When the task changes a contract, update the directly dependent surfaces that must stay in sync:
 
-- [ ] Searched for existing error handling patterns and used them?
-- [ ] Searched for existing service/controller patterns and matched them?
-- [ ] Codebase patterns take precedence over personal preference?
+- code plus tests
+- workflow plus operator docs
+- template plus usage guidance
+- automation plus rollback / approval notes
 
-### YAGNI Compliance
+### 4. Prefer explicit proof over self-report
 
-- [ ] Every file created has at least one consumer right now?
-- [ ] No abstractions without current consumers?
-- [ ] No forward-looking code without current requirements?
+For code, use the narrowest existing lint / type-check / build / test command that proves the change.
+For docs or workflows, use the narrowest existing preview, dry-run, rendering check, or scripted
+verification that proves the artifact is usable.
 
-### Backend Checks (if applicable)
+### 5. Do not weaken safeguards to finish faster
 
-- [ ] Service extends TenantService (if multi-tenant data access)?
-- [ ] Controller uses BaseController.executeAndReturn() for response handling?
-- [ ] Joi schema defined for all new API endpoints?
-- [ ] Route registered in the appropriate routes file?
-- [ ] All database queries scoped by organizationId (tenant isolation)?
-- [ ] Audit logging added for sensitive operations?
-- [ ] Winston logger used — no console.log/warn/error?
-- [ ] Error types are domain-specific (NotFoundError, ValidationError, etc.)?
-
-### Frontend Checks (if applicable)
-
-- [ ] MUI v7 components used — no Adobe Spectrum imports?
-- [ ] React Query hooks follow `use<Domain>Queries.ts` pattern?
-- [ ] Query keys registered in `queryKeys.ts` factory?
-- [ ] Loading states show `<CircularProgress />`?
-- [ ] Error states show `<Alert severity="error">`?
-- [ ] `@/` imports used throughout — no relative cross-directory paths?
-- [ ] No `any` types — proper typing or `unknown` with guards?
-- [ ] No hardcoded colours — MUI theme or utility functions?
-- [ ] `apiClient` or `BaseService` for API calls — no raw axios?
-
-### Security Checks
-
-- [ ] No hardcoded secrets or API keys?
-- [ ] Input validation via Joi schemas?
-- [ ] SQL queries use TypeORM parameterised binding?
-- [ ] Authentication middleware on protected routes?
-- [ ] Permission checks in place for RBAC?
-- [ ] No PII in log messages (or encrypted if compliance-required)?
-- [ ] CSRF protection maintained on state-changing endpoints?
-
-### Testing
-
-- [ ] Unit tests written for new service methods?
-- [ ] Test naming follows: `describe('ClassName')` and `it('should do something')`?
-- [ ] External dependencies mocked (APIs, databases)?
-- [ ] Both success and failure paths covered?
-- [ ] Test file co-located or in `__tests__/` directory?
-
-### Architecture
-
-- [ ] Can I describe every class I created or modified in one sentence without "and"?
-- [ ] For every new method: does it belong on the class that OWNS the data it manipulates?
-- [ ] Business logic in services, HTTP concerns in controllers?
-- [ ] No circular dependencies introduced?
+- do not skip, delete, or water down checks just to get green
+- do not hide uncertainty behind silent fallbacks
+- do not add speculative abstractions, flags, or future-proofing without a current need
 
 ---
 
-## Task
+## Mandatory self-review
 
-<task>
-<!-- Paste the ticket/issue description here -->
-</task>
+Before handing off, work through these checks.
 
-## Architecture Brief (if available)
+### Brief compliance
 
-<brief>
-<!-- Paste the Implementation Brief from 03-ARCHITECT here -->
-</brief>
+- [ ] The implementation still matches the Brief's ownership and boundary decisions
+- [ ] Any contradicted assumption was surfaced explicitly
+- [ ] No forbidden pattern from the Brief's "Do NOT" section was introduced
 
-## Colleague's Context (if any)
+### Reuse and clarity
 
-<context>
-<!-- Paste any colleague comments, research, or existing code context here -->
-</context>
+- [ ] Existing patterns were reused where appropriate
+- [ ] New artifacts have an immediate consumer
+- [ ] Names, responsibilities, and placement are consistent with nearby code or workflow structure
 
-## Standards Reference
+### Safety and validation
 
-<standards>
-- `.github/copilot-instructions.md` — comprehensive project standards
-- `CLAUDE.md` — code patterns, conventions, and quick reference
-- `docs/TESTING.md` — testing standards
-</standards>
+- [ ] The narrowest meaningful proof was run for the changed behavior
+- [ ] Error paths, rollback paths, or operator-facing failure modes were considered where relevant
+- [ ] No safeguards were weakened to force completion
 
-## Files Provided
+### Handoff readiness
 
-<files_created>
+- [ ] Directly dependent docs, tests, or workflow notes were updated where required
+- [ ] The next reviewer can tell what changed, why, and how it was proved
 
-<!-- List files created -->
+---
 
-</files_created>
+## Output contract
 
-<files_modified>
+Produce these implementation artifacts:
 
-<!-- List files modified -->
+1. the change itself
+2. a **proof summary** listing the validations run and what they covered
+3. a **self-review summary** noting any assumptions, deviations, or follow-up risks
 
-</files_modified>
+Use this shape:
 
-<files_reference>
+```md
+## Implementation Summary
 
-<!-- List files needed for understanding the existing code -->
+### Delivered
+- What changed
 
-</files_reference>
+### Contract adherence
+- Brief followed / contradiction surfaced
+
+### Proof summary
+- Validation run and what it covered
+
+### Assumptions or deviations
+- `[UNVERIFIED]` items, if any
+```
+
+## Handoff rules
+
+- Review Breadth evaluates correctness, completeness, standards, and proof quality.
+- Review Depth evaluates whether the implementation still honors the architectural gates and Brief.
+- If implementation uncovered a structural contradiction, Feedback or Architect must resolve it before
+  the work is considered settled.
