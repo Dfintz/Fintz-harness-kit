@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Attribution & adaptations: see CREDITS.md (autoresearch, Understand-Anything, MCP, Ollama, LM Studio).
 /**
- * First-class MCP stdio server for harness graph + memory + vector tools.
+ * First-class MCP stdio server for harness provider-agnostic graph + memory + vector tools.
  *
  * This server exposes the existing wrappers in scripts/harness/mcp-tools.mjs
  * over the MCP protocol using stdio transport.
@@ -93,6 +93,13 @@ const toolSpecs = [
   {
     name: 'graph-status',
     description: 'Returns graph freshness and drift against HEAD.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
+    name: 'graph-provider-status',
+    description:
+      'Returns provider configuration/availability for understand-anything, graphify, or both.',
     inputSchema: objectSchema(),
     toCliArgs: () => [],
   },

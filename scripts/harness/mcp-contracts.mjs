@@ -71,6 +71,13 @@ export const mcpToolSpecs = [
     toCliArgs: () => [],
   },
   {
+    name: 'graph-provider-status',
+    description:
+      'Returns provider configuration/availability for understand-anything, graphify, or both.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
     name: 'graph-neighbors',
     description: 'Returns neighboring nodes for a graph node id.',
     inputSchema: objectSchema(

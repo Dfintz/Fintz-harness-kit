@@ -8,16 +8,17 @@
  *
  * Usage:
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path>
+ *   node scripts/harness/refresh-graph.mjs --provider understand-anything --plugin-root <path>
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path> --commit
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path> --with-local-state
  */
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { resolveGraphProviderState, resolveRefreshBackend } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GRAPH_RELATIVE_PATH = '.understand-anything/knowledge-graph.json';
 const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports']);
 
 function parseArgs(argv) {
@@ -285,7 +286,8 @@ function showHelp() {
       options: {
         '--project-root <path>': 'Project root to analyze (default: repository root).',
         '--plugin-root <path>': 'Understand plugin root (or set UNDERSTAND_PLUGIN_ROOT).',
-        '--commit': 'Commit only .understand-anything/knowledge-graph.json when it changed.',
+        '--provider <name>': 'Graph provider override (understand-anything|graphify|both).',
+        '--commit': 'Commit only the configured graph file when it changed.',
         '--commit-message <text>': 'Override commit message.',
         '--with-local-state': 'Also write .understand-anything/meta.json and fingerprints.json.',
       },
@@ -302,11 +304,20 @@ async function main() {
   }
 
   const projectRoot = resolve(String(flags['project-root'] || repoRoot));
+  const providerState = resolveGraphProviderState({
+    repoRoot: projectRoot,
+    configPath: join(projectRoot, 'harness.config.json'),
+    overrideProvider: flags.provider || process.env.HARNESS_GRAPH_PROVIDER,
+  });
+  const refreshBackend = resolveRefreshBackend(providerState);
   const pluginRootRaw = String(
-    flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || ''
+    flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || refreshBackend.pluginRoot || ''
   ).trim();
   if (!pluginRootRaw) {
-    throw new Error('Missing plugin root. Provide --plugin-root or UNDERSTAND_PLUGIN_ROOT.');
+    throw new Error(
+      `Missing plugin root for provider ${providerState.selectedProvider}. ` +
+        'Provide --plugin-root, UNDERSTAND_PLUGIN_ROOT, or graph.pluginRoot.'
+    );
   }
   const pluginRoot = resolve(pluginRootRaw);
 
@@ -323,6 +334,12 @@ async function main() {
   const uaDir = join(projectRoot, '.understand-anything');
   const intermediateDir = join(uaDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
+  const graphRelativePath = toPosix(relative(projectRoot, refreshBackend.graphPath));
+  if (graphRelativePath.startsWith('..')) {
+    throw new Error(
+      `Configured graph path ${refreshBackend.graphPath} is outside the project root (${projectRoot}).`
+    );
+  }
 
   const scanPath = join(intermediateDir, 'scan-script.json');
   const importInputPath = join(intermediateDir, 'import-input.json');
@@ -514,6 +531,9 @@ async function main() {
     generatedAt: new Date().toISOString(),
     projectRoot,
     pluginRoot,
+    provider: providerState.selectedProvider,
+    refreshBackend: refreshBackend.providerId,
+    graphPath: graphRelativePath,
     analyzedFiles,
     totalScanFiles: scanFiles.length,
     nodeCount: finalGraph.nodes.length,
@@ -537,19 +557,19 @@ async function main() {
     );
 
     const worktreeChanged = runGit(
-      ['diff', '--quiet', '--', GRAPH_RELATIVE_PATH],
+      ['diff', '--quiet', '--', graphRelativePath],
       projectRoot,
       true
     ).status;
     const stagedChanged = runGit(
-      ['diff', '--cached', '--quiet', '--', GRAPH_RELATIVE_PATH],
+      ['diff', '--cached', '--quiet', '--', graphRelativePath],
       projectRoot,
       true
     ).status;
 
     const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
     if (hasGraphChanges) {
-      runGit(['commit', '--only', '-m', commitMessage, '--', GRAPH_RELATIVE_PATH], projectRoot);
+      runGit(['commit', '--only', '-m', commitMessage, '--', graphRelativePath], projectRoot);
       committed = true;
       commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
     }

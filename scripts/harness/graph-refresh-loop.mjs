@@ -2,6 +2,8 @@
 /**
  * Continuous refresh loop for deterministic graph updates.
  * Intended for optional Docker sidecar usage.
+ * Uses the graph provider abstraction and executes the Understand-Anything
+ * backend when refresh is enabled.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -14,6 +16,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { resolveGraphProviderState, resolveRefreshBackend } from "./graph-provider.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const refreshScript = resolve(
@@ -89,6 +92,7 @@ function sleep(ms) {
 
 function runRefresh(options) {
   const args = [refreshScript, "--plugin-root", options.pluginRoot];
+  if (options.provider) args.push("--provider", options.provider);
   if (options.commit) args.push("--commit");
   if (options.withLocalState) args.push("--with-local-state");
   if (options.commitMessage)
@@ -375,6 +379,8 @@ function showHelp() {
           options: {
             "--interval-seconds <n>":
               "Interval between refresh cycles (default 600).",
+            "--provider <name>":
+              "Graph provider override (understand-anything|graphify|both).",
             "--run-once": "Run a single refresh and exit.",
             "--commit": "Enable auto-commit for graph file changes.",
             "--with-local-state":
@@ -386,6 +392,8 @@ function showHelp() {
           envFallbacks: {
             UNDERSTAND_PLUGIN_ROOT:
               "Plugin root when --plugin-root is not set.",
+            HARNESS_GRAPH_PROVIDER:
+              "Graph provider override when --provider is not set.",
             GRAPH_REFRESH_INTERVAL_SECONDS: "Default refresh interval.",
             GRAPH_REFRESH_RUN_ONCE: "true/false toggle for one-shot mode.",
             GRAPH_REFRESH_AUTO_COMMIT:
@@ -415,12 +423,23 @@ async function main() {
     return;
   }
 
+  const providerState = resolveGraphProviderState({
+    repoRoot,
+    configPath: resolve(repoRoot, "harness.config.json"),
+    overrideProvider: flags.provider || process.env.HARNESS_GRAPH_PROVIDER,
+  });
+  const refreshBackend = resolveRefreshBackend(providerState);
+
   const pluginRootInput = String(
-    flags["plugin-root"] || process.env.UNDERSTAND_PLUGIN_ROOT || "",
+    flags["plugin-root"] ||
+      process.env.UNDERSTAND_PLUGIN_ROOT ||
+      refreshBackend.pluginRoot ||
+      "",
   ).trim();
   if (!pluginRootInput) {
     throw new Error(
-      "Missing plugin root. Provide --plugin-root or UNDERSTAND_PLUGIN_ROOT.",
+      `Missing plugin root for provider ${providerState.selectedProvider}. ` +
+        "Provide --plugin-root, UNDERSTAND_PLUGIN_ROOT, or graph.pluginRoot.",
     );
   }
   const pluginRoot = resolve(pluginRootInput);
@@ -441,6 +460,7 @@ async function main() {
 
   const options = {
     pluginRoot,
+    provider: providerState.selectedProvider,
     commit:
       Boolean(flags.commit) ||
       parseBoolean(process.env.GRAPH_REFRESH_AUTO_COMMIT, false),
@@ -469,7 +489,7 @@ async function main() {
   }
 
   process.stdout.write(
-    `[graph-refresh-loop] started (interval=${intervalSeconds}s, commit=${options.commit ? "on" : "off"}, pluginRoot=${options.pluginRoot})\n`,
+    `[graph-refresh-loop] started (provider=${options.provider}, interval=${intervalSeconds}s, commit=${options.commit ? "on" : "off"}, pluginRoot=${options.pluginRoot})\n`,
   );
 
   while (!parseBoolean(process.env.GRAPH_REFRESH_STOP, false)) {

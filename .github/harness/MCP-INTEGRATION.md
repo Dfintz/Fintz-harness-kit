@@ -155,6 +155,14 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 
 ---
 
+### Provider-status helper: `graph-provider-status`
+
+Use the MCP wrapper/server tool `graph-provider-status` to inspect configured provider mode
+(`understand-anything`, `graphify`, `both`), active graph paths, and availability before relying on
+graph evidence in an Understand pass.
+
+---
+
 ## Integration with Harness Workflow
 
 ### Understand Stage
@@ -167,7 +175,7 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 └──────────────────────────────────────────┘
    │
    ├─ 1. Check graph freshness
-   │     (→ `.understand-anything/knowledge-graph.json`)
+   │     (→ provider-selected graph snapshot; inspect with `graph-provider-status`)
    │
    ├─ 2. Run /understand-chat on task
    │     (→ graph-based component discovery)
