@@ -15,6 +15,8 @@ The harness answers three questions for any agent, on any task:
 2. **What sequence do I follow?** → [Workflow Stage Machine](#workflow-stage-machine)
 3. **How do I iterate until done?** → [Loops](#loops) (full protocol in [`LOOPS.md`](./LOOPS.md))
 
+For MCP (Model Context Protocol) tool integration, see [`MCP-INTEGRATION.md`](../MCP-INTEGRATION.md).
+
 A machine-readable index of everything below lives in [`registry.json`](./registry.json).
 
 ---
@@ -90,17 +92,17 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 └──────┬───────┘     │ findings route back to Implement)  │
        ▼             └────────────────▲───────────────────┘
 ┌──────────────┐                      │
-│ 3 REVIEW     │  breadth pass ───────┤
-│   (BREADTH)  │                      │
+│ 3 BREADTH    │  breadth pass ───────┤
+│   REVIEW     │                      │
 └──────┬───────┘                      │
        ▼                              │
 ┌──────────────┐                      │
-│ 4 REVIEW     │  depth pass ─────────┘
-│   (DEPTH)    │
+│ 4 DEPTH      │  depth pass ─────────┘
+│   REVIEW     │
 └──────┬───────┘
        ▼
 ┌──────────────┐
-│ 5 FEEDBACK   │  evaluate reviewer challenges → verdicts
+│ 5 FEEDBACK   │  evaluate final verdicts → Brief update
 └──────────────┘
 ```
 
@@ -198,15 +200,20 @@ and an **escalation** path — unbounded retry is forbidden. Every run ends in a
 anything, and reports only progress it can ground in check output or rubric verdicts.
 
 Built-in loops (definitions in [`loops/`](./loops/), protocol and authoring guide in
-[`LOOPS.md`](./LOOPS.md)):
+[`LOOPS.md`](./LOOPS.md)). **10 operational loops** (see directory for all including `_template.json`):
 
-| Loop            | Converges on                                 | Kind        |
-| --------------- | -------------------------------------------- | ----------- |
-| `build-fix`     | Lint + type-check + build green              | convergence |
-| `test-fix`      | Workspace test suites green                  | convergence |
-| `review-fix`    | No Blocker/Major findings from breadth+depth | workflow    |
-| `feature-cycle` | Full stage machine (0→5) complete and clean  | workflow    |
-| `ci-green`      | PR checks green on the remote                | workflow    |
+| Loop                   | Converges on                                 | Kind         |
+| ---------------------- | -------------------------------------------- | ------------ |
+| `build-fix`            | Lint + type-check + build green              | convergence  |
+| `test-fix`             | Workspace test suites green                  | convergence  |
+| `ci-green`             | PR checks green on the remote                | workflow     |
+| `review-fix`           | No Blocker/Major findings from breadth+depth | workflow     |
+| `feature-cycle`        | Full stage machine (0→5) complete and clean  | workflow     |
+| `harness-evolve`       | Harness guidance improvements (gated)        | experiment   |
+| `tdd-cycle`            | TDD iteration: red → green → refactor        | workflow     |
+| `diagnose`             | Async diagnostic and observability           | workflow     |
+| `plan-review`          | Multi-agent plan challenge & verdict         | workflow     |
+| `lint-debt-experiment` | Lint-rule optimization via metric reduction  | experiment   |
 
 Run a convergence loop from any shell or agent CLI:
 

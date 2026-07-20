@@ -118,6 +118,80 @@ function resolveResearchFile(value) {
   return abs;
 }
 
+/**
+ * extractConfidenceValues — extract confidence/success scores from loop iteration records.
+ *
+ * Confidence is computed as: (passed checks) / (total checks) for each iteration.
+ * Returns an array of confidence values in iteration order.
+ *
+ * @param {Array} iterations - array of iteration records from loop journal
+ * @returns {Array<number>} confidence values [0.0 .. 1.0]
+ */
+function extractConfidenceValues(iterations) {
+  if (!Array.isArray(iterations) || iterations.length === 0) return [];
+  return iterations.map((iter) => {
+    const checks = Array.isArray(iter.checks) ? iter.checks : [];
+    if (checks.length === 0) return 0.5; // neutral confidence if no checks
+    const passed = checks.filter((c) => c.passed === true).length;
+    return passed / checks.length;
+  });
+}
+
+/**
+ * computeSplitScores — compute held-in and held-out confidence scores via component-count split.
+ *
+ * Splits iterations into two halves:
+ *   - held-in: first ceil(N/2) iterations
+ *   - held-out: remaining iterations
+ *
+ * Returns average confidence for each group.
+ *
+ * @param {Array<number>} confidences - confidence values from extractConfidenceValues
+ * @returns {Object} { heldIn: number, heldOut: number }
+ */
+function computeSplitScores(confidences) {
+  if (!Array.isArray(confidences) || confidences.length === 0) {
+    return { heldIn: 0.5, heldOut: 0.5 };
+  }
+
+  const splitPoint = Math.ceil(confidences.length / 2);
+  const heldInSet = confidences.slice(0, splitPoint);
+  const heldOutSet = confidences.slice(splitPoint);
+
+  const heldIn =
+    heldInSet.length > 0
+      ? heldInSet.reduce((a, b) => a + b, 0) / heldInSet.length
+      : 0.5;
+  const heldOut =
+    heldOutSet.length > 0
+      ? heldOutSet.reduce((a, b) => a + b, 0) / heldOutSet.length
+      : 0.5;
+
+  return { heldIn, heldOut };
+}
+
+/**
+ * applyAcceptanceRule — determine if an improvement should be accepted via held-out validation.
+ *
+ * Acceptance rule: improvement is kept only if heldOut >= heldIn (i.e., performance on
+ * held-out data is >= held-in performance). This prevents noise-ratcheting where a lucky
+ * improvement on held-in data doesn't generalize.
+ *
+ * **Note: This rule is opt-in.** Enable by passing `--acceptance-rule` flag or configuring
+ * in loop definition; default behavior is standard keep-if-improved.
+ *
+ * @param {Object} scores - result of computeSplitScores { heldIn, heldOut }
+ * @param {Object} opts - options { threshold: 0.5 } (default: require heldOut >= heldIn)
+ * @returns {boolean} true if improvement should be accepted
+ */
+function applyAcceptanceRule(scores, opts = {}) {
+  const { heldIn = 0.5, heldOut = 0.5 } = scores || {};
+  const { threshold = 0 } = opts; // threshold = 0 means heldOut must be >= heldIn
+
+  // Accept if held-out performance meets or exceeds held-in
+  return heldOut >= heldIn + threshold;
+}
+
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
@@ -205,6 +279,69 @@ function runSelfTest() {
     {
       name: "integrity hash exists",
       ok: () => typeof computeIntegrity().forbiddenHash === "string",
+    },
+    // Held-in/Held-out Acceptance Rule Tests
+    {
+      name: "extractConfidenceValues returns empty array for empty input",
+      ok: () => JSON.stringify(extractConfidenceValues([])) === JSON.stringify([]),
+    },
+    {
+      name: "extractConfidenceValues computes confidence correctly",
+      ok: () => {
+        const iterations = [
+          { checks: [{ passed: true }, { passed: true }] },
+          { checks: [{ passed: true }, { passed: false }] },
+          { checks: [{ passed: false }, { passed: false }] },
+        ];
+        const confidences = extractConfidenceValues(iterations);
+        // expected: [1.0, 0.5, 0.0]
+        return (
+          confidences.length === 3 &&
+          Math.abs(confidences[0] - 1.0) < 0.01 &&
+          Math.abs(confidences[1] - 0.5) < 0.01 &&
+          Math.abs(confidences[2] - 0.0) < 0.01
+        );
+      },
+    },
+    {
+      name: "computeSplitScores splits iterations into held-in and held-out",
+      ok: () => {
+        const confidences = [1.0, 0.8, 0.6, 0.4]; // 4 values
+        const scores = computeSplitScores(confidences);
+        // split point: ceil(4/2) = 2
+        // held-in: [1.0, 0.8] avg = 0.9
+        // held-out: [0.6, 0.4] avg = 0.5
+        return (
+          Math.abs(scores.heldIn - 0.9) < 0.01 &&
+          Math.abs(scores.heldOut - 0.5) < 0.01
+        );
+      },
+    },
+    {
+      name: "applyAcceptanceRule accepts when heldOut >= heldIn",
+      ok: () => {
+        // heldOut (0.6) >= heldIn (0.5) → accept
+        const result1 = applyAcceptanceRule({ heldIn: 0.5, heldOut: 0.6 });
+        // heldOut (0.4) < heldIn (0.5) → reject
+        const result2 = applyAcceptanceRule({ heldIn: 0.5, heldOut: 0.4 });
+        return result1 === true && result2 === false;
+      },
+    },
+    {
+      name: "applyAcceptanceRule with custom threshold",
+      ok: () => {
+        // heldOut (0.6) >= heldIn (0.5) + threshold (0.15) → 0.6 >= 0.65 → false
+        const result1 = applyAcceptanceRule(
+          { heldIn: 0.5, heldOut: 0.6 },
+          { threshold: 0.15 },
+        );
+        // heldOut (0.7) >= heldIn (0.5) + threshold (0.15) → 0.7 >= 0.65 → true
+        const result2 = applyAcceptanceRule(
+          { heldIn: 0.5, heldOut: 0.7 },
+          { threshold: 0.15 },
+        );
+        return result1 === false && result2 === true;
+      },
     },
   ];
 

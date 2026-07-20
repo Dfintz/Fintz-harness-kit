@@ -50,7 +50,7 @@ Every loop is a JSON file in `.github/harness/loops/` with this shape:
   agent only — the script runner will refuse them.
 - **`experiment`** — there is no done-ness; the loop **optimizes a numeric `metric`** instead of
   converging on pass/fail. Each iteration the agent edits a focused `target`, the runner re-measures
-  the metric and **keeps the edit only if it improved** (else reverts the target). Inspired by
+  the metric and **keeps the edit only if it improved** (else reverts to the prior state). Inspired by
   [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Run with
   `scripts/harness/run-experiment.mjs` (use `--measure-only` to record just the baseline). Ends
   `converged` (net improvement), `exhausted` (budget spent, no gain), or `stuck` (no improvement for
@@ -100,7 +100,11 @@ A workflow loop may define optional `waveBoundary` to inject synthetic checkpoin
 }
 ```
 
-**Wave boundary rule:** A wave boundary fires at iteration $k \times \text{iterationsPerWave} + 1$ for $k \geq 1$. When a boundary fires:
+**Wave boundary rule:** A wave boundary fires at iteration $k \times \text{iterationsPerWave} + 1$ for $k \geq 1$. 
+
+**Example:** If `iterationsPerWave: 2`, boundaries fire at iterations **3, 5, 7, …** (2×1+1, 2×2+1, 2×3+1, …).
+
+When a boundary fires:
 
 1. Before invoking the agent for that iteration's fix, log an informational notice: `[WAVE BOUNDARY] Iteration N is at a wave transition.`
 2. Inject `summaryPrompt` into the fix prompt as a "## Wave Summary" section.
