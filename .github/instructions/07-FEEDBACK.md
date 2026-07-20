@@ -6,7 +6,9 @@ applyTo: '**'
 
 # PR Feedback Evaluation
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — feedback
+> evaluation requires fresh-eyes judgment on architectural challenges without anchoring on prior
+> decisions.
 > **Purpose:** Evaluate architectural challenges raised during PR review. Determine whether the
 > original placement decisions hold or whether the reviewer's position is correct. Produce
 > structured reasoning that can be brought back to the reviewer, and an updated Brief if any

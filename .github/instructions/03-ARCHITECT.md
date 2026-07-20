@@ -6,7 +6,8 @@ applyTo: '**'
 
 # Architecture Planning
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
+> requires deep architectural judgment across ownership, abstraction layers, and domain alignment.
 > **Purpose:** Design where new code should live before any implementation begins. Output is a
 > precise brief that the implementing agent will follow.
 

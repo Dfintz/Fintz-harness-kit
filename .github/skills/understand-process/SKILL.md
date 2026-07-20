@@ -3,8 +3,9 @@
 > **Use when:** Planning, implementing, reviewing, or risk-assessing any non-trivial change in this
 > repository.
 
-> **Codex support:** Optimized for GPT-5.3-Codex. Use Understand graph context to improve accuracy,
-> reduce regressions, and make architectural impact explicit.
+> **Model tier:** high-reasoning — this skill is used at the Understand stage, which requires
+> sustained multi-hop reasoning across the component graph. Any capable frontier model works; the
+> harness default is Copilot Auto or `claude-opus-4.8` for the reviewer role.
 
 ---
 

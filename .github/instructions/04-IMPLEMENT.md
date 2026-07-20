@@ -6,7 +6,9 @@ applyTo: '**'
 
 # Implementation
 
-> **Model:** GPT-5.3-Codex  
+> **Model:** balanced-coding (e.g., `gpt-5.3-codex` or `claude-sonnet-4.x`; Copilot Auto is a safe
+> default) — the Architecture Brief already constrains the problem; what matters here is speed and
+> code-generation accuracy.
 > **Purpose:** Implement the feature described in the ticket, following the Architecture Brief
 > produced by 03-ARCHITECT if one exists.
 

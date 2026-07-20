@@ -36,9 +36,23 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 
 ### Model Roles In The Shipped Environment Policy
 
-- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, Review Depth, and Feedback**.
-- **GPT-5.3 Codex** owns **Implement** and targeted fix loops.
-- **Cross-model review** runs Codex first, then Opus as the independent challenger.
+The harness applies a **three-tier capability model**. Copilot Auto is the recommended default for
+all tiers when using GitHub Copilot — it selects an appropriate model dynamically. The tier labels
+govern _what kind_ of capability a stage requires. Pinned examples show which models map well to
+each tier today, but treat them as examples, not requirements: any model in the same capability
+class works.
+
+| Tier | Stages | Copilot default | Pinned example | Rationale |
+|---|---|---|---|---|
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4.8` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection |
+| **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
+| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b` via Ollama/LM Studio | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
+
+**Cross-model review:** implementer and reviewer must differ. The router enforces
+`models.implementer ≠ models.reviewer`. If both are on Copilot Auto, explicitly select distinct
+models for the `review-fix` pass to break single-model echo chambers. The cross-model pass runs
+the balanced-coding model first (implement), then the high-reasoning model as the independent
+challenger.
 
 ---
 
