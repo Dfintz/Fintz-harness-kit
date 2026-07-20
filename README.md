@@ -70,7 +70,7 @@ experiment    hill-climb a numeric metric, keep-if-improved   (lint-debt-experim
 
 ```bash
 # 1. Point the harness at your project's commands.
-cp harness.config.json harness.config.json   # then edit: project name + commands
+#    Edit harness.config.json: set project.name, project.description, and commands.*
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  # sanity-check
 
 # Optional: preview the repo's harness routing and operator handoff plans.
