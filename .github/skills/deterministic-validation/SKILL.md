@@ -81,6 +81,44 @@ This creates an audit trail for why the phase was considered complete.
 
 ---
 
+## Test Seam Discipline
+
+Adapted from [mattpocock/skills `tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd).
+
+### What a good test is
+
+Tests verify behavior through **public interfaces**, not implementation details. Code can change
+entirely; tests shouldn't. A good test reads like a specification and survives refactors because
+it doesn't care about internal structure.
+
+### Seams — where tests go
+
+A **seam** is the public boundary you test at: the interface where you observe behavior without
+reaching inside. Tests live at seams, never against internals.
+
+**Before writing any test, write down the seams under test and confirm them.** No test is written
+at an unconfirmed seam. Ask: "What's the public interface, and which seams should we test?"
+
+### Anti-patterns to avoid
+
+- **Implementation-coupled** — mocks internal collaborators or tests private methods. Tell: the
+  test breaks on refactors even when behavior hasn't changed.
+- **Tautological** — the assertion recomputes the expected value the same way the code does
+  (`expect(add(a, b)).toBe(a + b)`). Expected values must come from an **independent source of
+  truth** — a known-good literal, a worked example, the spec — never derived the same way the
+  code derives them.
+- **Horizontal slicing** — writing all tests first, then all implementation. Work in **vertical
+  slices** (one test → one implementation → repeat) so each cycle is a tracer bullet that
+  responds to what the last cycle taught you.
+
+### Rules of the TDD loop
+
+- **Red before green.** Write the failing test first, then only enough code to pass it.
+- **One slice at a time.** One seam, one test, one minimal implementation per cycle.
+- **Refactoring is separate.** It belongs to the review stage, not the red → green loop.
+
+---
+
 ## This Repo's Preferred Proof Sources
 
 | Scope              | Preferred proof source                                                                 |
