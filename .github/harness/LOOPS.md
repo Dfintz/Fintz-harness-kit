@@ -151,6 +151,7 @@ node scripts/harness/run-loop.mjs <loop-name> [options]
   --max-iterations N    override the loop's maxIterations (lower only)
   --agent "<cmd>"       agent command to receive the fix prompt on stdin
                         (default: $HARNESS_AGENT_CMD, else "claude -p")
+  --resume <token>      resume an unfinished journal ("latest" or journal path)
   --list                list available loops
 ```
 
@@ -158,7 +159,15 @@ The runner implements the native procedure above: it records the git baseline, p
 fix prompt (fixPrompt + guardrails + skill paths + the attempt journal + truncated failure output)
 to the agent command's stdin, re-runs the checks, and stops early when two consecutive iterations
 fail identically. Each run writes a JSON journal (baseline, per-iteration check results and
-durations, terminal state) to `.github/harness/runs/` (gitignored) for audit.
+durations, terminal state) to `.github/harness/runs/` (gitignored) for audit, with checkpoints after
+each iteration so interrupted runs can resume.
+
+Resume examples:
+
+```bash
+node scripts/harness/run-loop.mjs build-fix --resume latest
+node scripts/harness/run-loop.mjs test-fix --resume .github/harness/runs/test-fix-2026-07-19T15-00-00-000Z.json
+```
 
 Local model example (optional) — works with **Ollama** (default) or **LM Studio**:
 
@@ -326,7 +335,8 @@ Experiments hill-climb a number rather than converge on green. Run one with
 `node scripts/harness/run-experiment.mjs <name>` (or `npm run harness:experiment <name>`); add
 `--measure-only` to record just the baseline metric for the dashboard without invoking an agent. The
 runner snapshots **only** the declared `target` and reverts it on regression — it never runs
-`git checkout`, so it cannot clobber unrelated uncommitted work.
+`git checkout`, so it cannot clobber unrelated uncommitted work. Journals are checkpointed each
+iteration; resume an interrupted run with `--resume latest` (or a specific journal path).
 
 #### Driving experiments with a local LLM (autoresearch-style)
 

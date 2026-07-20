@@ -86,6 +86,9 @@ Loops invoke an agent command via stdin. Any CLI works:
 # Hosted agent (example):
 node scripts/harness/run-loop.mjs build-fix --agent "claude -p"
 
+# Resume an interrupted convergence run from the latest unfinished journal:
+node scripts/harness/run-loop.mjs build-fix --resume latest
+
 # Local model (convergence — describe-only is fine here). Ollama by default:
 node scripts/harness/run-loop.mjs build-fix \
   --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"
@@ -135,7 +138,14 @@ For Claude Code or Cursor, add the same stdio entry to their MCP config:
 ```
 
 Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The server is read-only
-(graph/memory/vector + `harness-loops`/`harness-report`); run loops from the CLI.
+(graph/memory/vector + routing/catalog discovery tools like `harness-pick-profile`,
+`harness-tool-discover`, `harness-catalog`); run loops from the CLI.
+
+Publish machine-readable capability artifacts for external recommenders:
+
+```bash
+npm run harness:catalog:sync    # writes llms.txt + .github/harness/catalog/harness-profile.json
+```
 
 ## What to customize next
 

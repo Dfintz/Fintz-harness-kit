@@ -403,6 +403,71 @@ const toolSpecs = [
     inputSchema: objectSchema(),
     toCliArgs: () => [],
   },
+  {
+    name: 'harness-catalog',
+    description:
+      'Returns the machine-readable harness catalog with taxonomy tiers, intent profiles, and MCP capability metadata.',
+    inputSchema: objectSchema(),
+    toCliArgs: () => [],
+  },
+  {
+    name: 'harness-pick-profile',
+    description:
+      'Maps a task (and optional explicit intent) to the recommended harness routing profile and stages.',
+    inputSchema: objectSchema(
+      {
+        task: { type: 'string', description: 'Task text to classify.' },
+        intent: {
+          type: 'string',
+          description: 'Optional explicit intent key (for example turnkey-coding).',
+        },
+      },
+      ['task']
+    ),
+    toCliArgs: args => {
+      const task = readRequiredString(args, 'task');
+      const intent = readOptionalString(args, 'intent');
+      const cliArgs = ['--task', task];
+      if (intent) cliArgs.push('--intent', intent);
+      return cliArgs;
+    },
+  },
+  {
+    name: 'harness-tool-discover',
+    description:
+      'Finds relevant harness MCP tools by intent, tags, and query for on-demand tool routing.',
+    inputSchema: objectSchema({
+      intent: {
+        type: 'string',
+        description: 'Optional intent key used to rank tools.',
+      },
+      tags: {
+        type: 'string',
+        description: 'Optional comma-separated tags such as memory,analysis,tool-discovery.',
+      },
+      query: {
+        type: 'string',
+        description: 'Optional free-text query to match tool names and descriptions.',
+      },
+      limit: {
+        type: 'integer',
+        minimum: 1,
+        description: 'Maximum number of tools to return (default 10).',
+      },
+    }),
+    toCliArgs: args => {
+      const intent = readOptionalString(args, 'intent');
+      const tags = readOptionalString(args, 'tags');
+      const query = readOptionalString(args, 'query');
+      const limit = readOptionalPositiveInt(args, 'limit');
+      const cliArgs = [];
+      if (intent) cliArgs.push('--intent', intent);
+      if (tags) cliArgs.push('--tags', tags);
+      if (query) cliArgs.push('--query', query);
+      if (limit !== undefined) cliArgs.push('--limit', String(limit));
+      return cliArgs;
+    },
+  },
 ];
 
 const toolByName = new Map(toolSpecs.map(spec => [spec.name, spec]));

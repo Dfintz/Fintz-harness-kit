@@ -145,6 +145,8 @@ function parseArgs(argv) {
       flags.profile = argv[++i];
     } else if (arg === "--task") {
       flags.task = argv[++i];
+    } else if (arg === "--intent") {
+      flags.intent = argv[++i];
     } else {
       flags._.push(arg);
     }
@@ -186,6 +188,74 @@ function getProfile(config, profileName) {
     fail(`unknown profile: ${profileName}`);
   }
   return profile;
+}
+
+function getIntentProfiles(config) {
+  const intentProfiles = config.routing?.intentProfiles;
+  return intentProfiles && typeof intentProfiles === "object"
+    ? intentProfiles
+    : {};
+}
+
+function scoreIntent(text, intentName, intentConfig) {
+  let score = 0;
+  const keywords = Array.isArray(intentConfig?.keywords)
+    ? intentConfig.keywords
+    : [];
+  for (const keyword of keywords) {
+    if (typeof keyword === "string" && keyword.trim()) {
+      if (text.includes(normalize(keyword))) score += 3;
+    }
+  }
+
+  const nameTokens = String(intentName)
+    .split(/[-_\s]+/)
+    .map((token) => normalize(token))
+    .filter(Boolean);
+  for (const token of nameTokens) {
+    if (token.length > 2 && text.includes(token)) score += 1;
+  }
+  return score;
+}
+
+function recommendIntentProfile(taskText, config, explicitIntent = null) {
+  const intents = getIntentProfiles(config);
+  const entries = Object.entries(intents);
+  if (entries.length === 0) return null;
+
+  if (explicitIntent) {
+    const canonical = Object.keys(intents).find(
+      (key) => normalize(key) === normalize(explicitIntent),
+    );
+    const matched = canonical ? intents[canonical] : null;
+    if (!matched) {
+      fail(`unknown intent: ${explicitIntent}`);
+    }
+    return {
+      intent: canonical,
+      profile: matched.profile ?? null,
+      description: matched.description ?? null,
+      score: Number.POSITIVE_INFINITY,
+      source: "explicit-intent",
+    };
+  }
+
+  const text = normalize(taskText);
+  let best = null;
+  for (const [intentName, intentConfig] of entries) {
+    const score = scoreIntent(text, intentName, intentConfig);
+    if (score <= 0) continue;
+    if (!best || score > best.score) {
+      best = {
+        intent: intentName,
+        profile: intentConfig.profile ?? null,
+        description: intentConfig.description ?? null,
+        score,
+        source: "keyword-match",
+      };
+    }
+  }
+  return best;
 }
 
 function validateModelSeparation(config) {
@@ -232,7 +302,14 @@ export function planTask(taskText, config, options = {}) {
   const routing = config.routing ?? {};
   const trivialKeywords = routing.trivialKeywords ?? [];
   const nonTrivialKeywords = routing.nonTrivialKeywords ?? [];
-  const profileName = options.profile ?? null;
+  const intentRecommendation = recommendIntentProfile(
+    taskText,
+    config,
+    options.intent ?? null,
+  );
+  const profileExplicit = Boolean(options.profile);
+  const profileName =
+    options.profile ?? intentRecommendation?.profile ?? null;
   const profile = getProfile(config, profileName);
 
   const trivialHit = trivialKeywords.find((keyword) => text.includes(keyword));
@@ -259,7 +336,13 @@ export function planTask(taskText, config, options = {}) {
 
   let why;
   if (profile) {
-    why = profile.description ?? `profile-selected handoff: ${profileName}`;
+    if (!profileExplicit && intentRecommendation?.intent) {
+      why =
+        profile.description ??
+        `intent-selected handoff: ${intentRecommendation.intent} -> ${profileName}`;
+    } else {
+      why = profile.description ?? `profile-selected handoff: ${profileName}`;
+    }
   } else if (trivial) {
     why = `matched trivial keyword: ${trivialHit}`;
   } else if (nonTrivialHit) {
@@ -272,6 +355,8 @@ export function planTask(taskText, config, options = {}) {
   return {
     task: String(taskText ?? "").trim(),
     profile: profileName,
+    intent: intentRecommendation?.intent ?? null,
+    intentSource: intentRecommendation?.source ?? null,
     mode: profile?.mode ?? (trivial ? "trivial" : "non-trivial"),
     why,
     stages,
@@ -568,6 +653,7 @@ function printReminder() {
     `[prompt-router] Operator shortcuts:\n` +
       `[prompt-router]   npm run harness:feature -- --task "<feature task>"\n` +
       `[prompt-router]   npm run harness:handoff:review -- --task "<review task>"\n` +
+      `[prompt-router]   npm run harness:profile -- --task "<task>" --json\n` +
       `[prompt-router]   npm run harness:route -- --task "<any prompt>" --json\n` +
       `[prompt-router]   npm run harness:prompt-pack -- --profile feature --task "<task>"\n`,
   );
@@ -580,6 +666,8 @@ function showHelp() {
         usage: [
           "node scripts/harness/prompt-router.mjs banner",
           'node scripts/harness/prompt-router.mjs route --task "fix auth middleware race"',
+          'node scripts/harness/prompt-router.mjs route --intent turnkey-coding --task "add billing API + UI"',
+          'node scripts/harness/prompt-router.mjs pick-profile --task "design multi-agent orchestration"',
           'node scripts/harness/prompt-router.mjs handoff --profile feature --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs handoff --profile review --task "review auth audit"',
           'node scripts/harness/prompt-router.mjs prompt-pack --profile feature --task "ship auth audit"',
@@ -616,7 +704,8 @@ async function main() {
   if (
     command !== "route" &&
     command !== "handoff" &&
-    command !== "prompt-pack"
+    command !== "prompt-pack" &&
+    command !== "pick-profile"
   ) {
     fail(`unknown command: ${command}`);
   }
@@ -626,7 +715,31 @@ async function main() {
     fail(`${command} requires --task "..." or --stdin`);
   }
 
-  const route = planTask(task, config, { profile: flags.profile });
+  const route = planTask(task, config, {
+    profile: flags.profile,
+    intent: flags.intent,
+  });
+  if (command === "pick-profile") {
+    const payload = {
+      task: route.task,
+      intent: route.intent,
+      profile: route.profile,
+      mode: route.mode,
+      why: route.why,
+      stages: route.stages,
+    };
+    if (flags.json) {
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      `[prompt-router] intent: ${payload.intent ?? "none"}\n` +
+        `[prompt-router] profile: ${payload.profile ?? "default"}\n` +
+        `[prompt-router] rationale: ${payload.why}\n` +
+        `[prompt-router] stages: ${payload.stages.join(" -> ")}\n`,
+    );
+    return;
+  }
   if (command === "prompt-pack") {
     const pack = writePromptPack(route, flags.out);
     if (flags.json) {

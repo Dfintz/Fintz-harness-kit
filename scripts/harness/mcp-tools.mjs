@@ -11,6 +11,8 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { buildMcpListPayload, mcpToolSpecs } from './mcp-contracts.mjs';
+import { buildCatalog } from './harness-catalog.mjs';
+import { loadConfig as loadRouterConfig, planTask } from './prompt-router.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const graphCliPath = join(repoRoot, 'scripts', 'harness', 'graph.mjs');
@@ -232,6 +234,8 @@ function showHelp() {
       'node scripts/harness/mcp-tools.mjs graph-neighbors --node-id "file:backend/src/app.ts" --depth 2',
       'node scripts/harness/mcp-tools.mjs memory-search --query "tenant" --scope all --limit 5',
       'node scripts/harness/mcp-tools.mjs vector-search --query "tenant isolation" --scope all --top 8',
+      'node scripts/harness/mcp-tools.mjs harness-pick-profile --task "design multi-agent handoff"',
+      'node scripts/harness/mcp-tools.mjs harness-tool-discover --intent drop-in-memory --limit 5',
     ],
   });
 }
@@ -485,6 +489,82 @@ function executeHarnessReport() {
   return runCli(reportCliPath, ['--json']);
 }
 
+function executeHarnessCatalog() {
+  return { ok: true, catalog: buildCatalog() };
+}
+
+function executeHarnessPickProfile(flags) {
+  const task = requireValue(
+    flags,
+    'task',
+    'harness-pick-profile requires --task'
+  );
+  const intent = typeof flags.intent === 'string' ? flags.intent : null;
+  const route = planTask(task, loadRouterConfig(), {
+    intent,
+  });
+  return {
+    ok: true,
+    task: route.task,
+    intent: route.intent,
+    profile: route.profile,
+    mode: route.mode,
+    why: route.why,
+    stages: route.stages,
+    models: route.models,
+  };
+}
+
+function executeHarnessToolDiscover(flags) {
+  const limit = toPositiveInt(flags.limit, 10);
+  const intent = typeof flags.intent === 'string' ? flags.intent.trim() : '';
+  const query = typeof flags.query === 'string' ? flags.query.trim().toLowerCase() : '';
+  const requestedTags = new Set(
+    String(flags.tags ?? '')
+      .split(',')
+      .map(tag => tag.trim().toLowerCase())
+      .filter(Boolean)
+  );
+  const catalog = buildCatalog();
+  const intentDefinition =
+    catalog.routing.intents.find(item => item.intent === intent) ?? null;
+  const intentTags = new Set(
+    (intentDefinition?.tags ?? []).map(tag => String(tag).toLowerCase())
+  );
+
+  const ranked = catalog.capabilities.mcp.tools
+    .map(tool => {
+      let score = 0;
+      const tags = new Set((tool.tags ?? []).map(tag => String(tag).toLowerCase()));
+      const haystack = `${tool.name} ${tool.description}`.toLowerCase();
+
+      if (query && haystack.includes(query)) score += 3;
+      for (const tag of requestedTags) {
+        if (tags.has(tag)) score += 4;
+      }
+      for (const tag of intentTags) {
+        if (tags.has(tag)) score += 2;
+      }
+
+      if (!query && requestedTags.size === 0 && intentTags.size === 0) {
+        score += 1;
+      }
+      return { ...tool, score };
+    })
+    .filter(tool => tool.score > 0)
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    .slice(0, limit);
+
+  return {
+    ok: true,
+    intent: intent || null,
+    query: query || null,
+    tags: [...requestedTags],
+    count: ranked.length,
+    tools: ranked.map(({ score, ...tool }) => ({ ...tool, score })),
+  };
+}
+
 function executeMemoryLinkTool(toolName, flags) {
   if (!existsSync(memoryLinkCliPath)) {
     return { ok: false, error: `memory-link CLI not found at ${memoryLinkCliPath}` };
@@ -516,6 +596,9 @@ function executeToolWithFlags(toolName, flags) {
   if (toolName.startsWith('vector-')) return executeVectorTool(toolName, flags);
   if (toolName === 'harness-loops') return executeHarnessLoops();
   if (toolName === 'harness-report') return executeHarnessReport();
+  if (toolName === 'harness-catalog') return executeHarnessCatalog();
+  if (toolName === 'harness-pick-profile') return executeHarnessPickProfile(flags);
+  if (toolName === 'harness-tool-discover') return executeHarnessToolDiscover(flags);
   throw new Error(`Unknown tool: ${toolName}`);
 }
 
