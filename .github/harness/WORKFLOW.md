@@ -85,13 +85,12 @@ To-tickets planning adapter (for architecture outputs):
 Recommended check:
 
 ```bash
-node scripts/harness/record-run.mjs --loop spec-review --state converged --pass "Brief gates complete"
+node scripts/harness/record-run.mjs --loop plan-review --state converged --pass "Brief gates complete"
 ```
 
 ## 3) Implement Stage
 
-Core skills: domain skills (`backend-service`, `frontend-component`, `full-stack-feature`,
-`testing`) + `deterministic-validation`
+Core skills: the relevant checked-in domain skills for the touched area + `deterministic-validation`
 
 Add-on skills by change type:
 
@@ -111,11 +110,9 @@ minimal-diff change where blast radius matters more than cleanup.
 Common proof commands:
 
 ```bash
-npm run lint --workspace=backend
-npm run lint --workspace=frontend
-npm run type-check
-npm test --workspace=backend -- <changed>.test.ts
-npm test --workspace=frontend -- <changed>.test.tsx
+<project lint command for touched scope>
+<project type-check command for touched scope>
+<project test command for touched scope>
 ```
 
 Harness-surface proof sources when code is not the main change:
@@ -138,7 +135,7 @@ Live-app verification (optional — load `.github/skills/pr/SKILL.md`):
 
 1. Bring up the real stack: `docker-compose -f docker-compose.dev.yml up -d`
 2. Spawn a fresh verifier sub-agent with the feature's acceptance criteria
-3. Capture screenshot evidence: `npm run screenshot -- --route <route>`
+3. Capture browser or screenshot evidence with the repo's normal UI verification workflow
 4. Include `FEATURE: works | broken` verdict + evidence path in the PR body
 5. Cap at 3 verification rounds; escalate if still broken
 
@@ -195,9 +192,8 @@ Skills: `ai-techniques-radar`, `eval-first-tuning`, `deterministic-validation`
 
 Technique intake:
 
-```bash
-npm run harness:loop technique-triage
-```
+Record the candidate technique in radar memory, then evaluate it with `ai-techniques-radar` and
+`eval-first-tuning` before adopting it into the harness.
 
 Harness optimization:
 
@@ -220,7 +216,7 @@ Wayfinder-like epic planning adapter:
   1. Route with `harness:feature` (or `harness:route` + explicit feature handoff).
   2. Persist/refresh a Brief in `.github/harness/memory/briefs/` each cycle.
   3. Build the plan as frontier-ordered slices using blocker edges.
-  4. Execute `spec-review` before implementation changes on each major scope update.
+  4. Execute `plan-review` before implementation changes on each major scope update.
   5. Run `feature-cycle` until blocker/major findings converge.
 
 ## Skill Stack Matrix
@@ -231,7 +227,7 @@ Wayfinder-like epic planning adapter:
 | Security/auth/tenant changes            | add `doubt-driven-development`                                            |
 | Production feature or performance work  | add `observability-and-instrumentation`                                   |
 | Prompt/routing/retrieval quality issues | add `eval-first-tuning`                                                   |
-| External AI technique adoption          | `ai-techniques-radar` + `technique-triage` before implementation          |
+| External AI technique adoption          | `ai-techniques-radar` + `eval-first-tuning` before implementation         |
 | Feature ready to ship (live proof)      | add `pr` (verify-before-ship, optional during trial)                      |
 
 ## Default Command Sequence (Route -> Plan -> Execute)
@@ -249,8 +245,9 @@ npm run harness:report
 ## First Commands (Agent Operators, Clear Naming)
 
 > **Note:** These commands are agent instructions via the harness skills (especially `run-loop`),
-> not shell commands to copy-paste manually. Humans can use `npm run harness:doctor` to validate
-> health, but workflow loop execution (review-fix, feature-cycle, spec-review) requires agent skill
+> not shell commands to copy-paste manually. Humans can use `npm run harness:docs:check` and
+> `npm run harness:loops` to inspect shipped contracts, but workflow loop execution (review-fix,
+> feature-cycle, plan-review) requires agent skill
 > invocation.
 
 **Convergence loops (script runner capable):**
@@ -267,11 +264,10 @@ the script runner.
 **Health and task discovery:**
 
 ```bash
-npm run harness:help
-npm run harness:start -- --task "<task>"
-npm run harness:doctor
-npm run harness:doctor:strict
-npm run harness:list
+npm run harness:loops
+npm run harness:route -- --task "<task>"
+npm run harness:feature -- --task "<task>"
+npm run harness:docs:check
 ```
 
 Canonical quick-reference: `docs/harness/COMMAND_INDEX.md`

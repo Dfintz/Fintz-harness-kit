@@ -196,23 +196,26 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 Load a skill **before** writing code in its area. Triggers below are matched against the task
 description and the files being touched.
 
-### Domain Skills
+### Shipped Skills
 
-| Skill                 | Load when the task involves…                                            |
-| --------------------- | ----------------------------------------------------------------------- |
-| `backend-service`     | Services, controllers, routes, Joi schemas, entities, migrations        |
-| `frontend-component`  | React components, pages, hooks, frontend services, React Query          |
-| `full-stack-feature`  | End-to-end features spanning backend API + frontend UI + shared types   |
-| `testing`             | Unit, integration, component, or E2E tests                              |
-| `discord-bot`         | Slash commands, sharding, IPC, guild management, role sync              |
-| `infrastructure`      | Bicep IaC, Azure Container Apps, Docker, GitHub Actions, deploy scripts |
-| `security-encryption` | Auth, encryption, GDPR, consent, audit logging, TOTP/WebAuthn, SSO      |
-| `star-citizen-domain` | Ships, fleets, activities, mining, trading, bounties, RSI sync, crew    |
-| `teach-agent`         | Machine-first guidance curation, promotion gates, and agent teachability |
-| `understand-process`  | Any non-trivial change (always pairs with stage 0)                      |
+| Skill                               | Load when the task involves…                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `understand-process`                | Any non-trivial change; stage-0 impact analysis and graph freshness           |
+| `context-engineering`               | Task switching, stale context, compact handoffs, and session memory hygiene   |
+| `deterministic-validation`          | Exit criteria, proof selection, and objective completion checks               |
+| `doubt-driven-development`          | Security, correctness skepticism, and evidence-led bug diagnosis              |
+| `observability-and-instrumentation` | Telemetry, instrumentation, RED signals, and operational proof                |
+| `eval-first-tuning`                 | Retrieval, prompt, or agent quality tuning with explicit evals                |
+| `ai-techniques-radar`               | External technique intake, triage, and adoption decisions                     |
+| `budget-aware-execution`            | Cost-aware tool/model selection and bounded execution                         |
+| `teach-agent`                       | Machine-first guidance curation, promotion gates, and agent teachability      |
+| `setup-harness-bootstrap`           | Adopting the harness in a new repository or workflow surface                  |
+| `remember`                          | Persisting reusable lessons and Architecture Briefs to harness memory         |
+| `run-loop`                          | Native execution of workflow loops using checked-in loop JSON and guardrails  |
+| `pr`                                | PR creation, verification, and review-before-ship workflow                    |
 
-Multiple skills can apply: a fleet API feature loads `star-citizen-domain` + `backend-service`; an
-end-to-end feature with tests loads `full-stack-feature` + `testing`.
+Repositories may add domain specialists under `.github/skills/` or `.claude/skills/`, but they
+should only be listed in `registry.json` once the skill files are actually checked in.
 
 ### Workflow Skills (stage executors)
 

@@ -157,6 +157,51 @@ function validateLoopReferences(registry, findings) {
   }
 }
 
+function validateRegistryPath(findings, code, subject, relativeRepoPath, level = "error") {
+  if (/[*?]/.test(relativeRepoPath)) {
+    const parentPath = relativeRepoPath.replace(/[\\/][^\\/]*[*?][^\\/]*$/, "");
+    if (!parentPath || existsSync(join(repoRoot, parentPath))) return;
+  }
+  const resolved = join(repoRoot, relativeRepoPath);
+  if (existsSync(resolved)) return;
+  if (level === "warning") {
+    addWarning(findings, code, subject, `${relativeRepoPath} does not exist.`);
+    return;
+  }
+  addError(findings, code, subject, `${relativeRepoPath} does not exist.`);
+}
+
+function validateRegistryTooling(registry, findings) {
+  const optimizer = registry.optimizer ?? {};
+  for (const [key, value] of Object.entries(optimizer)) {
+    if (typeof value !== "string") continue;
+    if (!/[./\\]/.test(value)) continue;
+    if (!/\.(?:mjs|js|ps1|py|md|json)$/i.test(value)) continue;
+    validateRegistryPath(findings, "missing-optimizer-path", `optimizer.${key}`, value);
+  }
+
+  const memory = registry.memory ?? {};
+  for (const key of ["protocol", "writeSkill", "migrateScript"]) {
+    if (typeof memory[key] === "string") {
+      validateRegistryPath(findings, "missing-memory-path", `memory.${key}`, memory[key]);
+    }
+  }
+
+  const tooling = registry.tooling ?? {};
+  for (const [key, value] of Object.entries(tooling)) {
+    if (typeof value !== "string") continue;
+    if (!/\.(?:mjs|js|ps1|py|json)$/i.test(value)) continue;
+    validateRegistryPath(findings, "missing-tooling-path", `tooling.${key}`, value);
+  }
+
+  const evals = registry.evals ?? {};
+  for (const [name, record] of Object.entries(evals)) {
+    if (typeof record?.path === "string") {
+      validateRegistryPath(findings, "missing-eval-path", `evals.${name}.path`, record.path);
+    }
+  }
+}
+
 function validateSkillEntries(registry, findings) {
   const skills = Array.isArray(registry.skills) ? registry.skills : [];
   for (const skill of skills) {
@@ -249,6 +294,7 @@ function main() {
   const findings = [];
   validateWorkflowStages(registry, findings);
   validateLoopReferences(registry, findings);
+  validateRegistryTooling(registry, findings);
   validateSkillEntries(registry, findings);
   validateCitedScripts(findings);
 

@@ -31,7 +31,7 @@ Every loop is a JSON file in `.github/harness/loops/` with this shape:
     },
   ],
   "rubric": [], // workflow loops: gradeable done-criteria (see below)
-  "skills": ["testing"], // skills the fixing agent must load
+  "skills": ["deterministic-validation"], // skills the fixing agent must load
   "instructions": [".github/instructions/04-IMPLEMENT.md"],
   "fixPrompt": "…", // instruction given to the agent on each failing iteration
   "guardrails": ["…"], // rules the loop may never violate while converging
