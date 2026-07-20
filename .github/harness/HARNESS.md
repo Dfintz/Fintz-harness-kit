@@ -113,6 +113,7 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
 | 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (files, decisions, constraints, Do-NOTs, assumptions) |
 | 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Code + completed self-review checklist                                   |
+| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + self-review checklist (use for bug fixes / narrow high-blast-radius changes) |
 | 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings list (severity-tagged)                                          |
 | 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate verdicts + structural findings                                      |
 | 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict table + updated Brief (if changed)                               |
@@ -172,21 +173,24 @@ stage (see Stage Reference table). They are not auto-loaded by topic; they are t
 
 Run the narrowest command that covers the change; loops use these as their convergence checks.
 
-| Scope touched       | Required before completion                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Backend code        | `npm run lint --workspace=backend` · `npm run type-check` · `npm test --workspace=backend -- <changed>.test.ts`    |
-| Frontend code       | `npm run lint --workspace=frontend` · `npm run type-check` · `npm test --workspace=frontend -- <changed>.test.tsx` |
-| Shared types        | `npm run build --workspace=@sc-fleet-manager/shared-types` then rebuild dependents                                 |
-| Migrations/entities | Migration generated + backend tests pass                                                                           |
-| API contract        | `npm run test:pact --workspace=backend` · `npm run test:openapi --workspace=backend`                               |
-| Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                                               |
+> **Harness-kit note:** The rows below show the pattern — adapt `commands.*` tokens to your project's
+> actual commands, which are resolved from `harness.config.json`. Replace scope names and commands
+> with whatever applies to your stack.
 
-Hard rules (from `CLAUDE.md`, restated because loops are tempted to violate them):
+| Scope touched       | Required before completion                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| Any code change     | `{{commands.lint}}` · `{{commands.typeCheck}}` · `{{commands.build}}`                        |
+| Tests               | `{{commands.test}}`                                                                           |
+| Backend-only        | `{{commands.testBackend}}`                                                                    |
+| Frontend-only       | `{{commands.testFrontend}}`                                                                   |
+| Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                         |
+
+Hard rules (loop guardrails — restated here because loops are tempted to violate them):
 
 - Never skip, delete, or weaken a failing test to make a loop converge — fix the cause.
-- Never reduce coverage below the 40% backend threshold.
-- Never add `any` to silence the type-checker.
-- Never touch `/api/v1/` routes or `docs-archive/`.
+- Never lower coverage thresholds to converge.
+- Never add type suppressions (`any`, `@ts-ignore`, lint-disable) to silence a checker — fix the root cause.
+- Never mutate the eval suite or its targets to make a convergence check pass.
 
 ---
 
@@ -314,7 +318,7 @@ Implemented scaffolding (optional, all adapters):
 2. **Dockerized deterministic graph refresh.** `scripts/harness/refresh-graph.mjs` runs
    scan/import/build/validate/save with plugin scripts and core APIs. Optional sidecar profile
    (`graph-refresh`) runs `scripts/harness/graph-refresh-loop.mjs` continuously:
-   `UNDERSTAND_PLUGIN_ROOT=<path> npm run dev:up:graph-refresh`.
+   `UNDERSTAND_PLUGIN_ROOT=<path> docker compose -f docker-compose.harness.yml --profile graph-refresh up -d --build graph-refresh`.
 3. **Local Ollama adapter for loop runner fan-out.** `scripts/harness/ollama-agent.mjs` consumes the
    loop runner prompt from stdin and calls `/api/generate` on Ollama. Use with:
    `npm run harness:loop -- build-fix --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"`.

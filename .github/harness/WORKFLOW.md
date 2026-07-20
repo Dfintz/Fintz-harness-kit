@@ -26,7 +26,7 @@ Required outputs:
 If graph is stale and source code will be changed:
 
 ```bash
-npm run harness:graph:refresh
+npm run harness:graph:refresh:loop
 ```
 
 ## 1) Understand Stage
