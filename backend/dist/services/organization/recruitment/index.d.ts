@@ -1,0 +1,3 @@
+export { RecruitmentService } from './RecruitmentService';
+export type { SkillMatchCriteria, CandidateProfile, SkillMatchResult, OnboardingStep, OnboardingWorkflow, RecruitmentAnalytics, RecruitmentFilterOptions, SourcePerformance, RecruitmentInsight, RecruitmentDashboard, PipelineCandidate, PipelineStage, StageTransition, CandidatePipeline, PipelineHistory } from './RecruitmentService';
+//# sourceMappingURL=index.d.ts.map

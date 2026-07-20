@@ -42,7 +42,7 @@ export const FORBIDDEN_GLOBS = [
   "scripts/harness/otel-export.mjs", // the telemetry/audit exporter
   "scripts/harness/git-guard.mjs", // the dangerous-git safety control
   ".github/harness/memory/**", // committed memory (lessons/briefs/quarantine)
-  ".github/harness/loops/harness-evolve.json", // the evolve loop's own definition
+  ".github/harness/loops/**", // all loop JSON files (contain metric.run shell strings)
   "harness.config.json", // project commands
 ];
 

@@ -1,0 +1,41 @@
+import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/auth';
+import { BaseController } from './BaseController';
+export declare class AuthController extends BaseController {
+    private readonly authService;
+    private readonly userService;
+    private readonly userAuthService;
+    private readonly userProfileService;
+    private readonly securityService;
+    private readonly accessLogService;
+    constructor();
+    login: (req: Request, res: Response) => Promise<void>;
+    private static readonly DEV_PERSONA_ORGS;
+    private ensureDevOrg;
+    private ensureDevMembership;
+    private seedDevPersonaOrgs;
+    devLogin: (req: Request, res: Response) => Promise<void>;
+    refresh: (req: Request, res: Response) => Promise<void>;
+    logout: (req: AuthRequest, res: Response) => Promise<void>;
+    logoutAll: (req: AuthRequest, res: Response) => Promise<void>;
+    getActiveSessions: (req: AuthRequest, res: Response) => Promise<void>;
+    discordInitiate: (req: Request, res: Response) => Promise<void>;
+    private handleOAuthError;
+    private validateDiscordOAuthPreconditions;
+    private extractAuthorizationCode;
+    private validateGetRequestState;
+    discordCallback: (req: Request, res: Response) => Promise<void>;
+    private validateRedirectUri;
+    azureADCallback: (req: Request, res: Response) => Promise<void>;
+    private validateOAuthCallbackPreconditions;
+    private resolveExistingSessionUser;
+    private resolveOrCreateOAuthUser;
+    private completeOAuthLogin;
+    googleInitiate: (req: Request, res: Response) => Promise<void>;
+    googleCallback: (req: Request, res: Response) => Promise<void>;
+    googleLink: (req: Request, res: Response) => Promise<void>;
+    twitchInitiate: (req: Request, res: Response) => Promise<void>;
+    twitchCallback: (req: Request, res: Response) => Promise<void>;
+    twitchLink: (req: Request, res: Response) => Promise<void>;
+}
+//# sourceMappingURL=authController.d.ts.map

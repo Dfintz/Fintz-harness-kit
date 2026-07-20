@@ -1,0 +1,42 @@
+import { Client } from 'discord.js';
+import { TunnelService } from '../services/discord/TunnelService';
+export declare class MessageRelay {
+    private readonly client;
+    private readonly tunnelService;
+    private readonly contentFilter;
+    private readonly rateLimiter;
+    private readonly webhookCache;
+    private static readonly WEBHOOK_TTL_MS;
+    private webhookEvictionInterval;
+    private initialized;
+    private readonly onMessageCreate;
+    private readonly onMessageUpdate;
+    private readonly onMessageReactionAdd;
+    private readonly onMessageReactionRemove;
+    constructor(client: Client, tunnelService: TunnelService);
+    private evictStaleWebhooks;
+    private getOrCreateWebhook;
+    private autoCreateChannelWebhook;
+    initialize(): void;
+    dispose(): void;
+    private handleMessage;
+    private handleMessageUpdate;
+    private editRelayedMessage;
+    private relayAndPersist;
+    private truncate;
+    private buildReplyPrefix;
+    private buildReplyPreview;
+    private collectFiles;
+    private relayMessage;
+    private sendViaWebhook;
+    private resolveRelayTargets;
+    private fetchReaction;
+    private getEmojiDisplay;
+    private addReactionToRelayed;
+    private removeReactionFromRelayed;
+    private handleReactionAdd;
+    private handleReactionRemove;
+    private sendFilterWarning;
+    private sendRateLimitWarning;
+}
+//# sourceMappingURL=messageRelay.d.ts.map

@@ -1,0 +1,45 @@
+import { Request, Response } from 'express';
+export declare class FleetControllerV2 {
+    private _fleetService?;
+    private get fleetService();
+    listOrgFleets(req: Request, res: Response): Promise<void>;
+    getFleetOverview(req: Request, res: Response): Promise<void>;
+    getFleetById(req: Request, res: Response): Promise<void>;
+    createFleet(req: Request, res: Response): Promise<void>;
+    updateFleet(req: Request, res: Response): Promise<void>;
+    deleteFleet(req: Request, res: Response): Promise<void>;
+    getFleetShips(req: Request, res: Response): Promise<void>;
+    getFleetStatistics(req: Request, res: Response): Promise<void>;
+    getFleetComposition(req: Request, res: Response): Promise<void>;
+    getFleetHealth(req: Request, res: Response): Promise<void>;
+    getFleetMembers(req: Request, res: Response): Promise<void>;
+    addFleetMember(req: Request, res: Response): Promise<void>;
+    removeFleetMember(req: Request, res: Response): Promise<void>;
+    getFleetRoles(req: Request, res: Response): Promise<void>;
+    getCompositionAnalytics(req: Request, res: Response): Promise<void>;
+    compareFleets(req: Request, res: Response): Promise<void>;
+    bulkAddMembers(req: Request, res: Response): Promise<void>;
+    bulkUpdateMembers(req: Request, res: Response): Promise<void>;
+    bulkDeleteMembers(req: Request, res: Response): Promise<void>;
+    getFleetAssignments(req: Request, res: Response): Promise<void>;
+    createFleetAssignment(req: Request, res: Response): Promise<void>;
+    deleteFleetAssignment(req: Request, res: Response): Promise<void>;
+    getFleetSharing(req: Request, res: Response): Promise<void>;
+    updateFleetSharing(req: Request, res: Response): Promise<void>;
+    getFleetSchedule(req: Request, res: Response): Promise<void>;
+    createFleetSchedule(req: Request, res: Response): Promise<void>;
+    updateFleetSchedule(req: Request, res: Response): Promise<void>;
+    deleteFleetSchedule(req: Request, res: Response): Promise<void>;
+    getFleetTree(req: Request, res: Response): Promise<void>;
+    moveFleet(req: Request, res: Response): Promise<void>;
+    reorderFleets(req: Request, res: Response): Promise<void>;
+    createFleetWithAssets(req: Request, res: Response): Promise<void>;
+    deployFleet(req: Request, res: Response): Promise<void>;
+    dissolveFleet(req: Request, res: Response): Promise<void>;
+    selectCrewPosition(req: Request, res: Response): Promise<void>;
+    unselectCrewPosition(req: Request, res: Response): Promise<void>;
+    getCrewPositions(req: Request, res: Response): Promise<void>;
+    getFleetCrewMembers(req: Request, res: Response): Promise<void>;
+    getFleetAuditLog(req: Request, res: Response): Promise<void>;
+}
+//# sourceMappingURL=fleetController.d.ts.map

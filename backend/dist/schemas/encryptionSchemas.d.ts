@@ -1,0 +1,31 @@
+import Joi from 'joi';
+export declare const encryptionSchemas: {
+    metadata: Joi.ObjectSchema<any>;
+    paginationQuery: Joi.ObjectSchema<any>;
+    userIdParam: Joi.ObjectSchema<any>;
+    dataIdParam: Joi.ObjectSchema<any>;
+    keyIdParam: Joi.ObjectSchema<any>;
+    claimIdParam: Joi.ObjectSchema<any>;
+    dekIdParam: Joi.ObjectSchema<any>;
+    dekUserPathParams: Joi.ObjectSchema<any>;
+    initializeEncryption: Joi.ObjectSchema<any>;
+    shareKey: Joi.ObjectSchema<any>;
+    storeEncryptedData: Joi.ObjectSchema<any>;
+    rotateKey: Joi.ObjectSchema<any>;
+    submitReEncryptedData: Joi.ObjectSchema<any>;
+    auditLogQuery: Joi.ObjectSchema<any>;
+    pendingReEncryptionQuery: Joi.ObjectSchema<any>;
+    initiateMigration: Joi.ObjectSchema<any>;
+    createClaim: Joi.ObjectSchema<any>;
+    completeClaim: Joi.ObjectSchema<any>;
+    listClaimsQuery: Joi.ObjectSchema<any>;
+    registerPublicKey: Joi.ObjectSchema<any>;
+    createDEK: Joi.ObjectSchema<any>;
+    grantDEKAccess: Joi.ObjectSchema<any>;
+    listDEKsQuery: Joi.ObjectSchema<any>;
+    storeHybridEncryptedData: Joi.ObjectSchema<any>;
+    listHybridEncryptedDataQuery: Joi.ObjectSchema<any>;
+    completeMigrationItem: Joi.ObjectSchema<any>;
+    migrationCandidatesQuery: Joi.ObjectSchema<any>;
+};
+//# sourceMappingURL=encryptionSchemas.d.ts.map

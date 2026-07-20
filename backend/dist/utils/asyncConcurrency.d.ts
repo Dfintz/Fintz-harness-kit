@@ -1,0 +1,2 @@
+export declare function mapWithConcurrency<TInput, TResult>(items: readonly TInput[], concurrency: number, worker: (item: TInput) => Promise<TResult>): Promise<TResult[]>;
+//# sourceMappingURL=asyncConcurrency.d.ts.map

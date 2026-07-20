@@ -181,6 +181,19 @@ function composeFixPrompt(loop, failures, iteration, journal) {
       (entry) =>
         `- Iteration ${entry.iteration}: still failing [${entry.failedChecks.join(", ")}] after the previous fix.`,
     );
+
+  // Wave boundary detection: check if this iteration is at a wave transition
+  const isAtWaveBoundary =
+    loop.waveBoundary &&
+    (iteration - 1) % loop.waveBoundary.iterationsPerWave === 0 &&
+    iteration > 1;
+  if (isAtWaveBoundary) {
+    console.log(`[run-loop]   [WAVE BOUNDARY] Iteration ${iteration} is at a wave transition.`);
+    console.log(
+      `[run-loop]   [WAVE BOUNDARY] Injecting wave summary prompt: ${loop.waveBoundary.summaryPrompt.slice(0, 80)}...`,
+    );
+  }
+
   return [
     `You are one iteration (${iteration}/${loop.maxIterations}) of the harness loop "${loop.name}".`,
     `Protocol: .github/harness/LOOPS.md. Loop definition: .github/harness/loops/${loop.name}.json.`,
@@ -193,6 +206,13 @@ function composeFixPrompt(loop, failures, iteration, journal) {
     "",
     loop.fixPrompt,
     "",
+    isAtWaveBoundary
+      ? [
+          "## Wave Summary (at iteration boundary)",
+          loop.waveBoundary.summaryPrompt,
+          "",
+        ]
+      : [],
     "Guardrails (never violate these to make a check pass):",
     ...(loop.guardrails ?? []).map((g) => `- ${g}`),
     "",
