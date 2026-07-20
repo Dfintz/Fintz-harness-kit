@@ -29,7 +29,7 @@
  * Exit codes: 0 improved, 1 exhausted (no net improvement), 2 configuration error,
  *             3 stuck (no improvement for noImprovementStop iterations).
  */
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,7 +132,7 @@ function resolveTargets(patterns) {
   const files = new Set();
   for (const pattern of patterns) {
     try {
-      const out = execSync(`git ls-files -- "${pattern}"`, {
+      const out = execFileSync('git', ['ls-files', '--', pattern], {
         cwd: repoRoot,
         encoding: 'utf8',
       }).trim();
@@ -172,26 +172,53 @@ function truncateOutput(text) {
 }
 
 /**
+ * Compute median of a numeric array. Returns the middle element for odd-length arrays,
+ * or the lower of two middle elements for even-length arrays.
+ */
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted[mid];
+}
+
+/**
  * Run the metric command and extract a number via the loop's regex. Returns
  * { value, output } where value is null when the command failed or no number matched
  * (callers treat a null mid-run as "not improved" and revert).
+ * 
+ * Supports repeatCount for statistical rigor: measures N times and returns the median.
+ * Majority-pass threshold: at least ceil(N/2) measurements must succeed for a non-null result.
  */
 function measureMetric(loop) {
-  const { run, extract, timeoutMs } = loop.metric;
-  let raw = '';
-  try {
-    raw = execSync(resolveTokens(run), {
-      cwd: repoRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      encoding: 'utf8',
-      timeout: timeoutMs,
-    });
-  } catch (err) {
-    raw = `${err.stdout ?? ''}\n${err.stderr ?? ''}`.trim();
+  const { run, extract, timeoutMs, repeatCount } = loop.metric;
+  const N = repeatCount ?? 1; // default 1 for backward compatibility
+  const values = [];
+  let lastOutput = '';
+
+  for (let attempt = 0; attempt < N; attempt++) {
+    let raw = '';
+    try {
+      raw = execSync(resolveTokens(run), {
+        cwd: repoRoot,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+        timeout: timeoutMs,
+      });
+    } catch (err) {
+      raw = `${err.stdout ?? ''}\n${err.stderr ?? ''}`.trim();
+    }
+    lastOutput = raw;
+    const match = new RegExp(extract).exec(raw);
+    const value = match?.[1] === undefined ? null : Number(match[1]);
+    if (Number.isFinite(value)) values.push(value);
   }
-  const match = new RegExp(extract).exec(raw);
-  const value = match?.[1] === undefined ? null : Number(match[1]);
-  return { value: Number.isFinite(value) ? value : null, output: truncateOutput(raw) };
+
+  // Majority-pass threshold: need at least ceil(N/2) successful measurements
+  const majorityThreshold = Math.ceil(N / 2);
+  const finalValue = values.length >= majorityThreshold ? median(values) : null;
+
+  return { value: finalValue, output: truncateOutput(lastOutput) };
 }
 
 function isImproved(direction, candidate, best) {

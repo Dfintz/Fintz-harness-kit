@@ -1,0 +1,40 @@
+import { Request, Response } from 'express';
+export declare class TradingControllerV2 {
+    private readonly uexPriceFeed;
+    private readonly ticketService;
+    private findTradingRouteById;
+    private findOrganizationMembership;
+    private findTradeTransactionByOrg;
+    private canManageTradeDisputes;
+    listOrgRoutes(req: Request, res: Response): Promise<void>;
+    createRoute(req: Request, res: Response): Promise<void>;
+    getUexRoutes(req: Request, res: Response): Promise<void>;
+    getUexTerminals(req: Request, res: Response): Promise<void>;
+    getUexCommodities(req: Request, res: Response): Promise<void>;
+    getRouteById(req: Request, res: Response): Promise<void>;
+    updateRoute(req: Request, res: Response): Promise<void>;
+    deleteRoute(req: Request, res: Response): Promise<void>;
+    getOpportunities(req: Request, res: Response): Promise<void>;
+    getOrgAnalytics(req: Request, res: Response): Promise<void>;
+    getMarketAnalysis(req: Request, res: Response): Promise<void>;
+    getCommodityPrices(req: Request, res: Response): Promise<void>;
+    getMarketTrends(req: Request, res: Response): Promise<void>;
+    recordPrice(req: Request, res: Response): Promise<void>;
+    getRouteProfitability(req: Request, res: Response): Promise<void>;
+    recordRouteRun(req: Request, res: Response): Promise<void>;
+    refreshRouteProfits(req: Request, res: Response): Promise<void>;
+    listPriceAlerts(req: Request, res: Response): Promise<void>;
+    createPriceAlert(req: Request, res: Response): Promise<void>;
+    updatePriceAlert(req: Request, res: Response): Promise<void>;
+    deletePriceAlert(req: Request, res: Response): Promise<void>;
+    executeTradeRun(req: Request, res: Response): Promise<void>;
+    createTradeOperation(req: Request, res: Response): Promise<void>;
+    getPriceFeedStatus(_req: Request, res: Response): Promise<void>;
+    getTradeReputation(req: Request, res: Response): Promise<void>;
+    getTradeReputationLeaderboard(req: Request, res: Response): Promise<void>;
+    getTradeTransactions(req: Request, res: Response): Promise<void>;
+    createTradeDispute(req: Request, res: Response): Promise<void>;
+    listTradeDisputes(req: Request, res: Response): Promise<void>;
+    resolveTradeDispute(req: Request, res: Response): Promise<void>;
+}
+//# sourceMappingURL=tradingController.d.ts.map

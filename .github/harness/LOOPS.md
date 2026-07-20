@@ -50,7 +50,7 @@ Every loop is a JSON file in `.github/harness/loops/` with this shape:
   agent only — the script runner will refuse them.
 - **`experiment`** — there is no done-ness; the loop **optimizes a numeric `metric`** instead of
   converging on pass/fail. Each iteration the agent edits a focused `target`, the runner re-measures
-  the metric and **keeps the edit only if it improved** (else reverts the target). Inspired by
+  the metric and **keeps the edit only if it improved** (else reverts to the prior state). Inspired by
   [karpathy/autoresearch](https://github.com/karpathy/autoresearch). Run with
   `scripts/harness/run-experiment.mjs` (use `--measure-only` to record just the baseline). Ends
   `converged` (net improvement), `exhausted` (budget spent, no gain), or `stuck` (no improvement for
@@ -86,6 +86,32 @@ re-examination — not a confirmation that the old findings are gone.
    Never start a destructive fix from an unrecorded state.
 7. **Scoped fixes.** A loop fixes what its checks cover. Discovering an unrelated bug mid-loop is
    reported, not fixed in-loop.
+
+### Wave Boundaries (workflow loops only)
+
+A workflow loop may define optional `waveBoundary` to inject synthetic checkpoints and context injection at iteration boundaries, preventing [context rot](https://en.wikipedia.org/wiki/Context_rot) in long-running loops:
+
+```jsonc
+{
+  "waveBoundary": {
+    "iterationsPerWave": 2,
+    "summaryPrompt": "At iteration boundaries, assess: (1) what passed? (2) what remains? (3) pattern? (4) next strategy?"
+  }
+}
+```
+
+**Wave boundary rule:** A wave boundary fires at iteration $k \times \text{iterationsPerWave} + 1$ for $k \geq 1$. 
+
+**Example:** If `iterationsPerWave: 2`, boundaries fire at iterations **3, 5, 7, …** (2×1+1, 2×2+1, 2×3+1, …).
+
+When a boundary fires:
+
+1. Before invoking the agent for that iteration's fix, log an informational notice: `[WAVE BOUNDARY] Iteration N is at a wave transition.`
+2. Inject `summaryPrompt` into the fix prompt as a "## Wave Summary" section.
+3. The agent uses the summary to assess current state, identify patterns, and adjust strategy for the next wave.
+4. **Advisory only** — the summary does not halt or fork the loop; iteration N proceeds as normal.
+
+**No wave boundaries for convergence or experiment loops** — checkpoints are stateless (convergence) or handled by metric comparison (experiment).
 
 ### Terminal states
 

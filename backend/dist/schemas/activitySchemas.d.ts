@@ -1,0 +1,34 @@
+import Joi from 'joi';
+export declare const bringAndInviteFleetSchema: Joi.ObjectSchema<any>;
+export declare const activitySchemas: {
+    createV2: Joi.ObjectSchema<any>;
+    updateV2: Joi.ObjectSchema<any>;
+    create: Joi.ObjectSchema<any>;
+    update: Joi.ObjectSchema<any>;
+    addParticipant: Joi.ObjectSchema<any>;
+    updateParticipant: Joi.ObjectSchema<any>;
+    query: Joi.ObjectSchema<any>;
+    param: Joi.ObjectSchema<any>;
+    complete: Joi.ObjectSchema<any>;
+    createReminder: Joi.ObjectSchema<any>;
+    rescheduleReminder: Joi.ObjectSchema<any>;
+    reminderParams: Joi.ObjectSchema<any>;
+    createActivityFull: Joi.ObjectSchema<any>;
+    completeActivityFull: Joi.ObjectSchema<any>;
+    loanShips: Joi.ObjectSchema<any>;
+    setCrewPosition: Joi.ObjectSchema<any>;
+    setPassengerSlots: Joi.ObjectSchema<any>;
+    joinPassenger: Joi.ObjectSchema<any>;
+    setCrewSlots: Joi.ObjectSchema<any>;
+    bringFleet: Joi.ObjectSchema<any>;
+    bringAndInviteFleet: Joi.ObjectSchema<any>;
+    inviteFleet: Joi.ObjectSchema<any>;
+    nestShip: Joi.ObjectSchema<any>;
+    initiateReadyCheck: Joi.ObjectSchema<any>;
+    respondReadyCheck: Joi.ObjectSchema<any>;
+    setCommandChain: Joi.ObjectSchema<any>;
+    issueCommand: Joi.ObjectSchema<any>;
+    acknowledgeCommand: Joi.ObjectSchema<any>;
+    provisionStarComms: Joi.ObjectSchema<any>;
+};
+//# sourceMappingURL=activitySchemas.d.ts.map
