@@ -54,8 +54,9 @@ entrypoint directly from that file.
 | **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`)                      |
 | **Memory**                                | [`.github/harness/memory/`](.github/harness/memory/)                                                                       | Committed lessons + Architecture Briefs (structure only — no lessons shipped)                      |
 | **Knowledge graph**                       | [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs)                                                         | Optional structural memory (needs the Understand-Anything plugin)                                  |
-| **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes 15 graph/memory/vector + loop/report tools over MCP (`.vscode/mcp.json` registers it)      |
+| **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes graph/memory/vector + routing/catalog/discovery tools over MCP (`.vscode/mcp.json` registers it)      |
 | **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
+| **Capability catalog**                    | [`harness-catalog.mjs`](scripts/harness/harness-catalog.mjs), [`llms.txt`](llms.txt), [`.github/harness/catalog/`](.github/harness/catalog/) | Machine-readable taxonomy + intent profiles for external agent/tool recommendation |
 
 ## The three loop kinds
 
@@ -75,6 +76,7 @@ node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"  
 # Optional: preview the repo's harness routing and operator handoff plans.
 # PowerShell: run each npm wrapper command separately instead of chaining wrappers with semicolons.
 npm run harness:route -- --task "fix auth middleware race"
+npm run harness:profile -- --task "design multi-agent coordinator" --json
 npm run harness:feature -- --task "ship federation audit hardening"
 npm run harness:handoff:review -- --task "review cache invalidation changes"
 
@@ -88,6 +90,9 @@ node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only
 # 4. See the dashboard.
 npm run harness:report          # writes .github/harness/runs/report.html
 npm run dashboard:up            # or serve it always-on at http://localhost:8099
+
+# 5. Publish machine-readable capability artifacts for other agents/tools.
+npm run harness:catalog:sync    # writes llms.txt + .github/harness/catalog/harness-profile.json
 
 # Optional: council-style parallel review synthesis (keeps stage machine intact)
 npm run harness:council:review -- --mode review --prompt "review this change set"
@@ -138,6 +143,8 @@ It does not intercept editor prompts by itself; instead it gives operators a det
 stage/model handoff plan based on [`harness.config.json`](harness.config.json).
 
 - `harness:route` classifies a prompt as trivial or non-trivial.
+- `harness:profile` picks an intent profile (`turnkey-coding`, `multi-agent-orchestration`, `drop-in-memory`) for a task.
+- `harness:route --intent <intent>` routes directly through the mapped profile.
 - `harness:feature` and `harness:handoff:feature` print the full feature-delivery handoff: Understand → Architect → Implement → Review Breadth → Review Depth → Feedback.
 - `harness:handoff:review` prints the independent review handoff: Understand → Review Breadth → Review Depth → Feedback.
 - `harness:prompt-pack` generates a gitignored prompt pack under `.github/harness/runs/prompt-packs/` with an orchestrator prompt, canonical stage prompts, cycle-memory scaffolding, and optional scout/challenger sidecars.
@@ -173,14 +180,24 @@ handles both runtimes (chat + embeddings); `vector-search.mjs` honors `--provide
 
 ## MCP integration
 
-The harness ships a first-class MCP stdio server exposing **15 read/observe tools** — knowledge graph
-(7), memory (3), vector search (3), plus loop discovery (`harness-loops`) and metrics
-(`harness-report`). [`.vscode/mcp.json`](.vscode/mcp.json) registers it for VS Code; for Claude
-Code / Cursor use the same `command`/`args` in their MCP config.
+The harness ships a first-class MCP stdio server exposing read/observe tools across knowledge graph,
+memory, vector search, loop/report introspection, and intent/catalog discovery.
+[`.vscode/mcp.json`](.vscode/mcp.json) registers it for VS Code; for Claude Code / Cursor use the
+same `command`/`args` in their MCP config.
 
 ```bash
 node scripts/harness/mcp-tools.mjs list-tools     # inspect the tool catalog
 npm run harness:mcp:server                         # run the stdio server directly
+npm run harness:mcp -- harness-catalog             # read taxonomy + profiles
+npm run harness:mcp -- harness-pick-profile --task "add memory retrieval path"
+npm run harness:mcp -- harness-tool-discover --intent drop-in-memory --limit 6
+```
+
+Convergence and experiment runners support resumable execution via checkpointed journals:
+
+```bash
+node scripts/harness/run-loop.mjs build-fix --resume latest
+node scripts/harness/run-experiment.mjs lint-debt-experiment --resume latest
 ```
 
 Loop **execution** stays CLI-only on purpose: a loop invokes an agent and runs for minutes, so

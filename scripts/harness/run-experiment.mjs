@@ -18,6 +18,7 @@
  *     --max-iterations N    override the loop's maxIterations (lower only)
  *     --agent "<cmd>"       agent command receiving the improvement prompt on stdin
  *                           (default: $HARNESS_AGENT_CMD, else "claude -p")
+ *     --resume <token>      resume an unfinished run ("latest" or journal path)
  *     --list                list available experiment loops
  *
  * Safety: the runner snapshots ONLY the declared target files (in memory) before each agent
@@ -54,6 +55,7 @@ function parseArgs(argv) {
     agent: undefined,
     list: false,
     commit: false,
+    resume: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -62,6 +64,7 @@ function parseArgs(argv) {
     else if (a === '--commit') args.commit = true;
     else if (a === '--max-iterations') args.maxIterations = Number(argv[++i]);
     else if (a === '--agent') args.agent = argv[++i];
+    else if (a === '--resume') args.resume = argv[++i];
     else if (a.startsWith('--')) fail(`Unknown option: ${a}`);
     else if (args.name) fail(`Unexpected argument: ${a}`);
     else args.name = a;
@@ -195,6 +198,11 @@ function isImproved(direction, candidate, best) {
   return direction === 'minimize' ? candidate < best : candidate > best;
 }
 
+function improvementDelta(direction, baseline, best) {
+  if (!Number.isFinite(baseline) || !Number.isFinite(best)) return null;
+  return direction === 'minimize' ? baseline - best : best - baseline;
+}
+
 function composeImprovementPrompt(loop, iteration, best, current, journal) {
   const { name, direction } = loop.metric;
   const history = journal
@@ -271,13 +279,80 @@ function writeJournal(journalFile, record) {
   }
 }
 
+function listRunJournals(loopName) {
+  if (!existsSync(runsDir)) return [];
+  return readdirSync(runsDir)
+    .filter(file => file.endsWith('.json') && file.startsWith(`${loopName}-`))
+    .sort();
+}
+
+function resolveResumeJournal(loopName, resumeValue) {
+  if (!resumeValue || typeof resumeValue !== 'string') {
+    fail('--resume requires a journal path or "latest".');
+  }
+  if (resumeValue === 'latest') {
+    const files = listRunJournals(loopName);
+    for (let i = files.length - 1; i >= 0; i -= 1) {
+      const candidatePath = join(runsDir, files[i]);
+      try {
+        const candidate = JSON.parse(readFileSync(candidatePath, 'utf8'));
+        if (
+          candidate?.loop === loopName &&
+          candidate?.kind === 'experiment' &&
+          candidate?.terminalState === null
+        ) {
+          return candidatePath;
+        }
+      } catch {
+        // skip malformed journals
+      }
+    }
+    fail(`No resumable experiment journal found for loop "${loopName}".`);
+  }
+  const direct = resolve(resumeValue);
+  if (existsSync(direct)) return direct;
+  return resolve(join(runsDir, resumeValue));
+}
+
+function loadResumableRecord(loopName, resumeValue) {
+  const journalPath = resolveResumeJournal(loopName, resumeValue);
+  if (!existsSync(journalPath)) {
+    fail(`Resume journal not found: ${journalPath}`);
+  }
+  let record;
+  try {
+    record = JSON.parse(readFileSync(journalPath, 'utf8'));
+  } catch (error) {
+    fail(
+      `Could not read resume journal ${journalPath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (record?.loop !== loopName) {
+    fail(
+      `Resume journal loop mismatch: expected "${loopName}" but found "${record?.loop ?? 'unknown'}".`
+    );
+  }
+  if (record?.kind !== 'experiment') {
+    fail(`Resume journal kind mismatch: expected experiment but found "${record?.kind ?? 'unknown'}".`);
+  }
+  if (record?.terminalState) {
+    fail(`Resume journal is already finished (terminalState=${record.terminalState}).`);
+  }
+  if (!Array.isArray(record.iterations)) {
+    fail('Resume journal is invalid: missing iterations array.');
+  }
+  return { journalPath, record };
+}
+
 const args = parseArgs(process.argv.slice(2));
 if (args.list) {
   listExperiments();
   process.exit(0);
 }
 if (!args.name)
-  fail('Usage: run-experiment.mjs <name> [--measure-only] [--max-iterations N] [--agent "<cmd>"]');
+  fail(
+    'Usage: run-experiment.mjs <name> [--measure-only] [--max-iterations N] [--agent "<cmd>"] [--resume <latest|journal-path>]'
+  );
 
 const loop = loadLoop(args.name);
 let maxIterations = loop.maxIterations;
@@ -296,21 +371,44 @@ const noImprovementStop = Number.isInteger(loop.noImprovementStop)
 const targetFiles = resolveTargets(loop.target);
 if (targetFiles.length === 0) fail(`target ${JSON.stringify(loop.target)} resolved to no files.`);
 
-const baseline = gitBaseline();
-const startedAt = new Date();
-const journalFile = join(
-  runsDir,
-  `${loop.name}-${startedAt.toISOString().replace(/[:.]/g, '-')}.json`
-);
-const record = {
-  loop: loop.name,
-  kind: 'experiment',
-  startedAt: startedAt.toISOString(),
-  baseline,
-  terminalState: null,
-  metric: { name: loop.metric.name ?? loop.name, direction },
-  iterations: [],
-};
+if (args.resume && args.measureOnly) {
+  fail('--measure-only cannot be used with --resume.');
+}
+const resumed = Boolean(args.resume);
+const resumePayload = resumed ? loadResumableRecord(loop.name, args.resume) : null;
+const baseline = resumePayload?.record?.baseline ?? gitBaseline();
+const startedAt = resumed ? null : new Date();
+const journalFile =
+  resumePayload?.journalPath ??
+  join(runsDir, `${loop.name}-${startedAt.toISOString().replace(/[:.]/g, '-')}.json`);
+const record =
+  resumePayload?.record ??
+  {
+    loop: loop.name,
+    kind: 'experiment',
+    startedAt: startedAt.toISOString(),
+    baseline,
+    recovery: {
+      tier: 'resumable',
+      checkpoints: true,
+      resumeSupported: true,
+      resumedFrom: null,
+    },
+    terminalState: null,
+    metric: { name: loop.metric.name ?? loop.name, direction },
+    iterations: [],
+  };
+if (!record.recovery || typeof record.recovery !== 'object') {
+  record.recovery = {
+    tier: 'resumable',
+    checkpoints: true,
+    resumeSupported: true,
+    resumedFrom: null,
+  };
+}
+if (resumed) {
+  record.recovery.resumedFrom = journalFile;
+}
 
 console.log(`[run-experiment] "${loop.name}" — ${loop.description}`);
 console.log(`[run-experiment] target: ${targetFiles.join(', ')}`);
@@ -323,23 +421,41 @@ if (baseline.dirty) {
 function finish(terminalState, exitCode, message) {
   record.terminalState = terminalState;
   record.finishedAt = new Date().toISOString();
+  record.recovery.lastCheckpointAt = record.finishedAt;
   writeJournal(journalFile, record);
   const log = exitCode === 0 ? console.log : console.error;
   log(`[run-experiment] ${message}`);
   log(`[run-experiment] journal: ${journalFile}`);
   process.exit(exitCode);
 }
+writeJournal(journalFile, record);
 
-console.log('[run-experiment] measuring baseline…');
-const baseMeasure = measureMetric(loop);
-if (baseMeasure.value === null) {
-  fail(
-    `baseline metric did not produce a number (regex ${JSON.stringify(loop.metric.extract)} on the command output). Cannot optimize an unmeasurable metric.`
+let baseMetricValue;
+let best;
+if (resumed) {
+  const savedBaseline = Number(record.metric?.baseline);
+  if (!Number.isFinite(savedBaseline)) {
+    fail('Resume journal is missing metric.baseline.');
+  }
+  baseMetricValue = savedBaseline;
+  const savedBest = Number(record.metric?.best);
+  best = Number.isFinite(savedBest) ? savedBest : savedBaseline;
+  console.log(
+    `[run-experiment] resumed baseline ${record.metric.name} = ${baseMetricValue}, best so far ${best} (goal: ${direction})`
   );
+} else {
+  console.log('[run-experiment] measuring baseline…');
+  const baseMeasure = measureMetric(loop);
+  if (baseMeasure.value === null) {
+    fail(
+      `baseline metric did not produce a number (regex ${JSON.stringify(loop.metric.extract)} on the command output). Cannot optimize an unmeasurable metric.`
+    );
+  }
+  baseMetricValue = baseMeasure.value;
+  best = baseMeasure.value;
+  record.metric.baseline = baseMeasure.value;
+  console.log(`[run-experiment] baseline ${record.metric.name} = ${best} (goal: ${direction})`);
 }
-record.metric.baseline = baseMeasure.value;
-let best = baseMeasure.value;
-console.log(`[run-experiment] baseline ${record.metric.name} = ${best} (goal: ${direction})`);
 
 if (args.measureOnly) {
   record.metric.best = best;
@@ -352,7 +468,24 @@ if (args.measureOnly) {
 }
 
 let noImprovementStreak = 0;
-for (let iteration = 1; iteration <= maxIterations; iteration++) {
+if (resumed) {
+  const existing = record.iterations;
+  for (let i = existing.length - 1; i >= 0; i -= 1) {
+    if (existing[i].kept) break;
+    noImprovementStreak += 1;
+  }
+}
+const startIteration = record.iterations.length + 1;
+if (startIteration > maxIterations) {
+  record.metric.best = best;
+  record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
+  finish(
+    'exhausted',
+    1,
+    `cannot resume: journal already has ${record.iterations.length} iteration(s), which meets/exceeds maxIterations ${maxIterations}.`
+  );
+}
+for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   console.log(
     `[run-experiment] iteration ${iteration}/${maxIterations} — best ${record.metric.name}=${best}`
   );
@@ -390,12 +523,16 @@ for (let iteration = 1; iteration <= maxIterations; iteration++) {
     best,
     kept: improved,
   });
+  record.metric.best = best;
+  record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
+  record.recovery.lastCheckpointAt = new Date().toISOString();
+  writeJournal(journalFile, record);
 
   if (!improved && noImprovementStreak >= noImprovementStop) {
     record.metric.best = best;
-    record.metric.improvedBy = baseMeasure.value - best; // positive = moved toward goal for minimize
+    record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
     const verdict =
-      best === baseMeasure.value
+      best === baseMetricValue
         ? 'no improvement over baseline'
         : `best ${record.metric.name}=${best}`;
     finish(
@@ -407,17 +544,17 @@ for (let iteration = 1; iteration <= maxIterations; iteration++) {
 }
 
 record.metric.best = best;
-record.metric.improvedBy = baseMeasure.value - best;
-const netImproved = isImproved(direction, best, baseMeasure.value);
+record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
+const netImproved = isImproved(direction, best, baseMetricValue);
 if (netImproved) {
   finish(
     'converged',
     0,
-    `improved ${record.metric.name}: ${baseMeasure.value} → ${best} over ${maxIterations} iteration(s).`
+    `improved ${record.metric.name}: ${baseMetricValue} → ${best} over ${maxIterations} iteration(s).`
   );
 }
 finish(
   'exhausted',
   1,
-  `exhausted ${maxIterations} iteration(s) with no net improvement (best ${record.metric.name}=${best}, baseline ${baseMeasure.value}). onExhausted: ${loop.onExhausted ?? '(none)'}`
+  `exhausted ${maxIterations} iteration(s) with no net improvement (best ${record.metric.name}=${best}, baseline ${baseMetricValue}). onExhausted: ${loop.onExhausted ?? '(none)'}`
 );
