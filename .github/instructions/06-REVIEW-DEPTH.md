@@ -172,6 +172,27 @@ Flag:
 - thin wrapper surfaces accumulating business or policy logic
 - documentation contracts claiming capabilities that the repo does not actually expose
 
+### Complexity-reduction test
+
+Adapted from [addyosmani/agent-skills `code-review-and-quality`](https://github.com/addyosmani/agent-skills).
+
+When reviewing a refactor, ask: **does this reduce complexity or just relocate it?**
+
+Count the concepts a reader must hold in mind to follow the change. If the count is unchanged after
+the refactor, the structure did not improve — it re-centralizes the same logic in a different place.
+
+Prefer the restructuring that makes whole branches, modes, or layers **disappear** over one that
+re-packages the same moving parts. A good structural improvement is visible as deletion, not just
+reorganization.
+
+Flag as a depth finding (Gate 3/4) when:
+
+- a refactor moves code around without reducing the number of concepts held in mind
+- feature-specific logic migrates into a shared or general-purpose module
+- a new conditional is bolted onto an unrelated flow (missing model or dispatcher)
+- repeated conditionals on the same shape appear across the diff (missing polymorphism)
+- a change grows an already-large file instead of decomposing it
+
 ---
 
 ## Findings rules

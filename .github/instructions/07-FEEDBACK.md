@@ -60,6 +60,30 @@ Do not force a verdict from incomplete evidence.
 
 ---
 
+## Disagreement resolution hierarchy
+
+Adapted from [addyosmani/agent-skills `code-review-and-quality`](https://github.com/addyosmani/agent-skills) and Google's engineering practices.
+
+When resolving disputes, apply this hierarchy — higher entries override lower ones:
+
+1. **Technical facts and data** — measurements, test results, documented behavior
+2. **Repository standards** — the absolute authority on style and convention matters
+3. **Engineering principles** — ownership, boundaries, reuse, safety (the harness gates)
+4. **Codebase consistency** — acceptable when it does not degrade overall health
+
+**Do not accept "I'll fix it later."** Experience shows deferred cleanup rarely happens.
+Require cleanup before closing, or require a tracked follow-up filed with explicit owner and
+self-assignment. "Later" is not an evidence-based verdict.
+
+**Honesty norms — do not capitulate under pressure:**
+- Don't soften real issues: "this might be a minor concern" when it's a production bug is dishonest.
+- Quantify problems when possible: "this N+1 query adds ~50ms per item" beats "this could be slow."
+- Push back on approaches with clear problems — sycophancy is a failure mode in adjudication.
+- Accept override gracefully *only* when the author has full context and can show it. Defer to
+  human judgment on tradeoffs; do not defer on facts.
+
+---
+
 ## For each feedback point
 
 Work every point independently.

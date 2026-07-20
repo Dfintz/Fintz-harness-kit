@@ -116,6 +116,31 @@ Run all lanes that apply to the change. Report failures only.
 - Do not re-report items intentionally deferred with an explicit TODO marker.
 - If confidence is not high, say why.
 - Save structural ownership arguments for Review Depth unless they are necessary to explain the bug.
+- **Lead with what matters.** Order findings by leverage: correctness and security first, then structural regressions and missed simplifications, then everything else. A few high-conviction findings beat a long list of nits.
+- **When flagging a structural problem, propose the remedy** — not just the problem. Reach for a named restructuring:
+  - Replace a chain of conditionals with a typed model or explicit dispatcher
+  - Collapse duplicate branches into a single clearer flow
+  - Separate orchestration from business logic so each reads on its own
+  - Move feature-specific logic out of a shared module into the package that owns the concept
+  - Reuse the canonical helper instead of a bespoke near-duplicate
+  - Make a type boundary explicit so downstream branching disappears
+  - Delete a pass-through wrapper that adds indirection without clarifying the API
+
+---
+
+## Anti-rationalization
+
+Adapted from [addyosmani/agent-skills `code-review-and-quality`](https://github.com/addyosmani/agent-skills).
+
+| Rationalization | Reality |
+|---|---|
+| "It works, that's good enough" | Working code that's unreadable, insecure, or structurally wrong creates debt that compounds. |
+| "AI-generated code is probably fine" | Model-produced code needs more scrutiny, not less. It is confident and plausible even when wrong. |
+| "The tests pass, so it's good" | Tests are necessary but not sufficient. They don't catch structural problems, security issues, or readability concerns. |
+| "I'll clean it up later" | Later never comes. The review is the quality gate — use it. Require cleanup before closing. |
+| "The refactor makes it cleaner" | Relocating complexity is not reducing it. If the reader still holds the same number of concepts, the structure didn't improve. |
+| "It's just a small addition to this file" | Small diffs can still push a file past a healthy size and bolt branches onto unrelated flows. Judge the resulting structure, not the diff size. |
+| "LGTM" without review evidence | Rubber-stamping helps no one. Don't soften real issues — quantify problems when possible. |
 
 ---
 
@@ -126,6 +151,8 @@ Produce a **findings ledger** grouped by severity:
 - **Blocker** - unsafe, broken, or cannot be accepted as-is
 - **Major** - important issue or missing proof that should be fixed before closing
 - **Minor** - improvement or follow-up that does not block the task
+- **Nit** - optional micro-polish; author may ignore
+- **FYI** - informational context only; no action required — use when something is worth noting for future reference but demands nothing now
 
 For each finding include:
 

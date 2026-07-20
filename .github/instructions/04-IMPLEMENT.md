@@ -120,6 +120,22 @@ Before writing the change, verify the current patterns you intend to reuse.
 - verify that slice before expanding scope
 - if a slice fails validation, repair before layering on more change
 
+### 1b. Scope discipline
+
+Touch only what the task requires. When you notice an issue outside the task scope:
+
+```
+NOTICED BUT NOT TOUCHING:
+- <file>: <what you noticed> (out of scope for this task)
+→ Should I create a follow-up task for this?
+```
+
+Do NOT:
+- "clean up" code adjacent to your change
+- refactor imports or naming in files you are only reading
+- remove comments you don't fully understand
+- add features not in the Brief because they "seem useful"
+
 ### 2. Stay inside the contract
 
 - follow the Brief's ownership, boundary, and reuse decisions
@@ -178,6 +194,22 @@ Before handing off, work through these checks.
 
 - [ ] Directly dependent docs, tests, or workflow notes were updated where required
 - [ ] The next reviewer can tell what changed, why, and how it was proved
+
+---
+
+## Anti-rationalization
+
+Adapted from [addyosmani/agent-skills `incremental-implementation`](https://github.com/addyosmani/agent-skills).
+
+| Rationalization | Reality |
+|---|---|
+| "I'll test it all at the end" | Bugs compound. A bug in slice 1 makes slices 2–5 wrong. Test each slice. |
+| "It's faster to do it all at once" | It *feels* faster until something breaks and you can't find which of 500 changed lines caused it. |
+| "These changes are too small to commit separately" | Small commits are free. Large commits hide bugs and make rollbacks painful. |
+| "Let me clean this up while I'm here" | Scope creep mixed with the feature makes both harder to review and debug. Note it — don't fix it. |
+| "I'll add the test / doc / follow-up later" | Later never comes. The handoff is the quality gate — use it. Require proof before hand-off. |
+| "AI-generated code is probably fine" | Model-produced code needs more scrutiny, not less. It is confident and plausible even when wrong. |
+| "This refactor makes it cleaner" | Relocating complexity is not reducing it. If the reader still holds the same number of concepts, the structure didn't improve. |
 
 ---
 
