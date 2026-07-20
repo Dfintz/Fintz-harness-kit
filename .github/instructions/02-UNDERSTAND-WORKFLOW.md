@@ -6,8 +6,9 @@ applyTo: '**'
 
 # Understand Workflow
 
-> **Model:** GPT-5.3-Codex **Purpose:** Require architecture-aware context using Understand before
-> planning, implementation, and review.
+> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
+> requires sustained multi-hop context-holding across the component graph.
+> **Purpose:** Require architecture-aware context using Understand before planning, implementation, and review.
 
 Your core standards remain in `.github/copilot-instructions.md` and `CLAUDE.md`. This file adds an
 Understand operating mode to improve agent reasoning and reduce blind edits.
@@ -33,10 +34,11 @@ Before planning code changes:
 
 1. Run `npm run harness:graph -- status` (exits non-zero and reports how many commits / source files
    the graph is behind HEAD; this automates the old manual `gitCommitHash` compare).
-2. If stale:
+2. Optionally run `npm run harness:graph -- provider-status` to confirm which provider/path is active.
+3. If stale:
    - Run `/understand` for incremental refresh.
    - Use `/understand --full` for broad refactors or major architecture changes.
-3. If refresh is not possible, continue only with explicit warning about reduced confidence.
+4. If refresh is not possible, continue only with explicit warning about reduced confidence.
 
 Then query the graph instead of reading the multi-megabyte JSON — these commands return only the
 slice you need:

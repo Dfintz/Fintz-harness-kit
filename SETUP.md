@@ -56,6 +56,24 @@ This is the only required step. Point the tokens at your project's real commands
     "ollama": { "host": "http://localhost:11434" },
     "lmstudio": { "host": "http://localhost:1234" },
   },
+  "graph": {
+    "provider": "understand-anything", // or "graphify" | "both"
+    "path": ".understand-anything/knowledge-graph.json",
+    "sync": {
+      "rebuildVectorIndex": false,
+      "rebuildMemoryLinkIndex": false,
+      "continueOnSyncError": false
+    },
+    "observability": {
+      "eventsPath": ".github/harness/runs/graph-events.jsonl"
+    },
+    "graphify": {
+      "path": ".graphify/knowledge-graph.json",
+      "graphHtmlPath": ".graphify/graph.html",
+      "refreshCommand": "graphify export --out .graphify/knowledge-graph.json", // required for graphify refresh
+      "refreshCwd": "."
+    }
+  },
   "experiments": {
     "exampleMetricCommand": "npm run lint",
     "exampleMetricExtract": "(\\d+) problems", // regex with ONE capture group = the number
@@ -116,6 +134,11 @@ npm run dashboard:up           # http://localhost:8099
 # Knowledge-graph refresh (needs the Understand-Anything plugin checkout):
 UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
   docker compose -f docker-compose.harness.yml --profile graph-refresh up -d --build graph-refresh
+
+# Inspect provider abstraction + availability:
+npm run harness:graph:provider
+npm run harness:graph:genui
+npm run harness:graph:parity -- --local-only
 ```
 
 ## 6. (Optional) MCP integration

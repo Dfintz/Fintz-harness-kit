@@ -1,3 +1,8 @@
+---
+name: eval-first-tuning
+description: Establish baselines and run comparative evaluations before adopting a technique or library. Use when tuning retrieval, prompts, or agent quality.
+---
+
 # Skill: Eval-First Tuning
 
 > Use when: You are considering prompt, model, routing, retrieval, or memory changes because output

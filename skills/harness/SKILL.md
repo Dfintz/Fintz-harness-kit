@@ -18,7 +18,8 @@ description: >-
 
 A repository-level operating contract: it tells any AI coding agent **what to load, what sequence to
 follow, and how to iterate until done**. It is project-agnostic — project-specific commands come from
-`harness.config.json`.
+`harness.config.json`, while the stage files define reusable contracts for code, docs, and workflow
+work.
 
 ## When this skill applies
 
@@ -43,16 +44,32 @@ only — it never overrides standards, it tells you *when* to apply which docume
 | # | Stage | Instruction | Output |
 |---|-------|-------------|--------|
 | 0 | Understand | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | component/layer impact map + graph status |
-| 1 | Architect | `.github/instructions/03-ARCHITECT.md` | Architecture Brief (gates 1–5) |
-| 2 | Implement | `.github/instructions/04-IMPLEMENT.md` | code + self-review checklist |
-| 3 | Review breadth | `.github/instructions/05-REVIEW-BREADTH.md` | severity-tagged findings |
-| 4 | Review depth | `.github/instructions/06-REVIEW-DEPTH.md` | gate verdicts + structural findings |
-| 5 | Feedback | `.github/instructions/07-FEEDBACK.md` | verdict table + updated Brief |
+| 1 | Architect | `.github/instructions/03-ARCHITECT.md` | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 2 | Implement | `.github/instructions/04-IMPLEMENT.md` | delivered change + proof summary + self-review summary |
+| 2′ | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | minimal-diff change + proof summary + surgical boundary note |
+| 3 | Review breadth | `.github/instructions/05-REVIEW-BREADTH.md` | findings ledger (severity, evidence, impact, confidence, fix) |
+| 4 | Review depth | `.github/instructions/06-REVIEW-DEPTH.md` | gate ledger + structural findings + Brief divergences |
+| 5 | Feedback | `.github/instructions/07-FEEDBACK.md` | verdict record + Brief updates + response notes |
 
 The five gates (run at stages 1 and 4): Domain Alignment, Generality, Data Ownership, Layer
 Boundaries, Reuse (plus 4b Multi-Tenant Isolation where applicable). Read
 `.github/harness/HARNESS.md` for the full contract and `.github/harness/LOOPS.md` for the loop
 protocol.
+
+Stage metadata now also lives in `.github/harness/registry.json`, so prompt routing and future tools
+can consume required handoff artifacts, output artifact kinds, and approval triggers without
+re-parsing prose instructions.
+
+## Skill and stage design policy
+
+- Keep always-on norms in repository instructions; keep repeatable, on-demand workflows in skills.
+- Create a new skill or specialist only when the instructions, tools, approval policy, or output
+  contract materially differ from an existing one.
+- Prefer the repo's real evidence surfaces — graph, MCP, loops, registry, report, grade, otel — over
+  prose-only claims when those surfaces exist.
+- Pass compact artifacts between stages instead of full transcript history whenever possible.
+- Treat capability-expanding changes (for example, widened tool permissions or relaxed guardrails) as
+  human-review events, not automatic refinements.
 
 ## The three loop kinds
 
@@ -75,6 +92,7 @@ node scripts/harness/run-loop.mjs build-fix --agent "<agent CLI>"   # convergenc
 node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only   # baseline a metric
 node scripts/harness/harness-report.mjs                  # write the metrics dashboard
 node scripts/harness/report-server.mjs                   # serve it at http://localhost:8099
+npm run harness:docs:check                               # validate harness doc and stage contracts
 ```
 
 ### Local-LLM loop agents (optional)

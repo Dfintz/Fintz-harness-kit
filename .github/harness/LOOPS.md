@@ -31,7 +31,7 @@ Every loop is a JSON file in `.github/harness/loops/` with this shape:
     },
   ],
   "rubric": [], // workflow loops: gradeable done-criteria (see below)
-  "skills": ["testing"], // skills the fixing agent must load
+  "skills": ["deterministic-validation"], // skills the fixing agent must load
   "instructions": [".github/instructions/04-IMPLEMENT.md"],
   "fixPrompt": "…", // instruction given to the agent on each failing iteration
   "guardrails": ["…"], // rules the loop may never violate while converging
@@ -86,6 +86,12 @@ re-examination — not a confirmation that the old findings are gone.
    Never start a destructive fix from an unrecorded state.
 7. **Scoped fixes.** A loop fixes what its checks cover. Discovering an unrelated bug mid-loop is
    reported, not fixed in-loop.
+8. **Approval surfaces stay explicit.** If convergence would require widening allowed tools, weakening
+   guardrails, removing a human gate, or changing a destructive default, terminal state is `blocked`
+   pending human approval.
+9. **Pass compact state forward.** Workflow loops should carry the smallest useful artifact between
+   phases (Brief, findings ledger, gate ledger, verdict record, attempt journal) instead of replaying
+   full transcripts when a structured artifact already exists.
 
 ### Wave Boundaries (workflow loops only)
 
@@ -136,6 +142,8 @@ Any agent can run any loop without the script. Treat the JSON as a protocol:
 2. Record the baseline: current commit, dirty/clean working tree.
 3. iteration = 1; journal = []
 4. Run all `checks` (or for workflow loops, grade every `rubric` item per `fixPrompt`).
+   When a workflow loop is stage-based, prefer the stage's named artifact contracts over raw
+   transcript recaps.
 5. All pass → terminal state `converged`; report and exit.
 6. Any fail →
    a. If the failures match the previous iteration's (same checks, same root cause):

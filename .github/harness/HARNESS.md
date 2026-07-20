@@ -32,13 +32,28 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 - `npm run harness:feature -- --task "<feature task>"` or `npm run harness:handoff:feature -- --task "<feature task>"` prints the full operator handoff plan.
 - `npm run harness:handoff:review -- --task "<review task>"` prints the review-only handoff plan.
 - `npm run harness:review` runs the plan-review workflow (backward-compatible behavior).
+- `npm run harness:docs:check` validates registry stage contracts, loop references, skill metadata, and cited script or npm command paths across the harness docs surfaces.
 - `npm run harness:catalog:sync` publishes machine-readable capability artifacts (`llms.txt` + `.github/harness/catalog/harness-profile.json`).
 
 ### Model Roles In The Shipped Environment Policy
 
-- **Claude Opus 4.8** owns **Understand, Architect, Review Breadth, Review Depth, and Feedback**.
-- **GPT-5.3 Codex** owns **Implement** and targeted fix loops.
-- **Cross-model review** runs Codex first, then Opus as the independent challenger.
+The harness applies a **three-tier capability model**. Copilot Auto is the recommended default for
+all tiers when using GitHub Copilot — it selects an appropriate model dynamically. The tier labels
+govern _what kind_ of capability a stage requires. Pinned examples show which models map well to
+each tier today, but treat them as examples, not requirements: any model in the same capability
+class works.
+
+| Tier | Stages | Copilot default | Pinned examples | Rationale |
+|---|---|---|---|---|
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4.8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
+| **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
+| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
+
+**Cross-model review:** implementer and reviewer must differ. The router enforces
+`models.implementer ≠ models.reviewer`. If both are on Copilot Auto, explicitly select distinct
+models for the `review-fix` pass to break single-model echo chambers. The cross-model pass runs
+the balanced-coding model first (implement), then the high-reasoning model as the independent
+challenger.
 
 ---
 
@@ -68,7 +83,40 @@ the other as reference — do not load both copies of the same skill.
 
 Workflow-stage skills (`architect`, `implement`, `review-breadth`, `review-depth`, `feedback`) exist
 only under `.claude/skills/` as invocable commands; non-Claude agents get identical content from the
-corresponding `.github/instructions/0*.md` file.
+corresponding `.github/instructions/0*.md` file. Those instruction files define reusable stage
+contracts; repository standards and domain skills provide the stack-specific rules.
+
+---
+
+## Customization and specialization policy
+
+Choose the lightest surface that can carry the contract:
+
+| Need | Preferred surface |
+| --- | --- |
+| Always-on repository norms | `.github/copilot-instructions.md`, `AGENTS.md`, `CLAUDE.md` |
+| Reusable task or workflow procedure | skill directories under `.github/skills/`, `.claude/skills/`, or `skills/` |
+| A stage-specific contract in the harness flow | `.github/instructions/0*.md` |
+| A branch that needs materially different tools, policy, or output ownership | handoff / custom agent / subagent |
+| External evidence or real-time system state | MCP wrappers / MCP server |
+
+Use a new specialist only when the next branch truly needs different instructions, tools, approval
+policy, or output contract. Otherwise, extend the existing stage or skill.
+
+## Stage design principles
+
+The harness stage files follow a few public, cross-vendor agent-design rules:
+
+1. **Compact state transfer.** Pass the smallest artifact that preserves the contract: Brief, proof
+   summary, findings ledger, gate ledger, verdict record.
+2. **Evidence before summary.** Prefer graph, MCP, loop, report, grade, and otel surfaces over
+   narrative certainty when the repo already exposes them.
+3. **Progressive disclosure.** Keep the main stage contract concise and push detailed reference
+   material into the actual files, loops, scripts, and skills it names.
+4. **Human approval on sensitive capability changes.** Widening tool permissions, weakening
+   guardrails, or changing destructive defaults is never auto-approved.
+5. **Specialize only when the contract changes.** Extra agents or skills are justified by different
+   tools, policy, or outputs, not by preference alone.
 
 ---
 
@@ -106,35 +154,56 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 └──────────────┘
 ```
 
+> **Multi-session work?** When the task is too large for a single run — the destination isn't yet
+> visible and the full journey spans multiple sessions — use the
+> [**wayfinder skill**](https://github.com/mattpocock/skills/tree/main/skills/engineering/wayfinder)
+> before entering this stage machine. Wayfinder charts a shared decision-ticket map on the repo's
+> issue tracker, then resolves tickets one at a time. Each resolved ticket typically feeds one
+> harness run. See `harness.config.json` `routing.intentProfiles.wayfinder` for the profile and
+> keywords the router uses to detect wayfinder-scale tasks.
+
 ### Stage Reference
 
 | #   | Stage          | Instruction file                                 | Claude Code skill                        | Mandatory output                                                         |
 | --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
 | 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
-| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (files, decisions, constraints, Do-NOTs, assumptions) |
-| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Code + completed self-review checklist                                   |
-| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings list (severity-tagged)                                          |
-| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate verdicts + structural findings                                      |
-| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict table + updated Brief (if changed)                               |
+| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 1′  | Architect Challenge *(manual opt-in)* | `.github/agents/architect-challenge.agent.md` | — | VERDICT: APPROVED \| REVISE \| BLOCKED on the Brief |
+| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Delivered change + proof summary + self-review summary                   |
+| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + proof summary + surgical boundary note             |
+| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings ledger (severity, evidence, impact, confidence, fix)            |
+| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate ledger + structural findings + Brief divergences                    |
+| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict record + Brief updates + response notes                          |
+
+> **Architect Challenge:** Stage 1′ is a manual opt-in that runs a cross-model adversarial review
+> on the Architecture Brief before implementation. It is **not** auto-emitted by the prompt router.
+> Invoke it explicitly with `npm run harness:plan-review -- --lens plan` when the change is high-risk
+> or when a second opinion on the Brief is desired. The workflow-stage prompt templates include
+> inline guidance for cases when the route omits this stage.
 
 ### Stage Contract (applies to every stage)
 
 1. **Memory before discovery.** Consult the two memory surfaces before re-deriving anything: the
-   committed knowledge graph (`.understand-anything/knowledge-graph.json`) for structure, and the
+   committed knowledge graph snapshot (provider-selected; default
+   `.understand-anything/knowledge-graph.json`) for structure, and the
    harness memory store ([`memory/`](./memory/README.md)) for lessons and prior Architecture Briefs.
    Rediscovering what a previous session already recorded is wasted budget.
 2. **Context Sufficiency Check first.** Every stage instruction begins with one. Inventory what you
    have, identify what you need, and request missing context before producing output. Never guess at
    an Architecture Brief, reviewer intent, or file contents you were not given.
-3. **Carry artifacts forward — and persist them.** The Architecture Brief from stage 1 is input to
-   stages 2, 4, and 5; save it to `memory/briefs/` per that directory's protocol so a later session
-   inherits the gate decisions. Breadth findings from stage 3 are pasted into stage 4 to avoid
-   duplication.
+3. **Carry artifacts forward — and persist them.** Stage 1 produces the Architecture Brief; stage 2
+   adds a proof summary; stage 3 produces a findings ledger; stage 4 produces a gate ledger and
+   structural findings; stage 5 resolves them into a verdict record. Pass these compact artifacts
+   forward instead of full transcript dumps. Save the Brief to `memory/briefs/` per that directory's
+   protocol so a later session inherits the gate decisions.
 4. **Honor the gates.** Stages 1 and 4 run the five architectural gates (Domain Alignment,
    Generality, Data Ownership, Layer Boundaries, Reuse — plus 4b Multi-Tenant Isolation).
    Implementations that bypass a gate decision must be flagged, not silently merged.
-5. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
-   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`.
+5. **Use direct evidence tools when available.** For harness work, prefer the graph CLI, MCP wrappers,
+   loop JSON, registry metadata, and report / grade / otel outputs over memory or prose-only claims.
+6. **Close with status.** Non-trivial tasks end with the Understand status line (graph status, tools
+   used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`, plus the stage artifacts needed by the next
+   pass.
 
 ---
 
@@ -143,23 +212,40 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 Load a skill **before** writing code in its area. Triggers below are matched against the task
 description and the files being touched.
 
-### Domain Skills
+### Shipped Skills
 
-| Skill                 | Load when the task involves…                                            |
-| --------------------- | ----------------------------------------------------------------------- |
-| `backend-service`     | Services, controllers, routes, Joi schemas, entities, migrations        |
-| `frontend-component`  | React components, pages, hooks, frontend services, React Query          |
-| `full-stack-feature`  | End-to-end features spanning backend API + frontend UI + shared types   |
-| `testing`             | Unit, integration, component, or E2E tests                              |
-| `discord-bot`         | Slash commands, sharding, IPC, guild management, role sync              |
-| `infrastructure`      | Bicep IaC, Azure Container Apps, Docker, GitHub Actions, deploy scripts |
-| `security-encryption` | Auth, encryption, GDPR, consent, audit logging, TOTP/WebAuthn, SSO      |
-| `star-citizen-domain` | Ships, fleets, activities, mining, trading, bounties, RSI sync, crew    |
-| `teach-agent`         | Machine-first guidance curation, promotion gates, and agent teachability |
-| `understand-process`  | Any non-trivial change (always pairs with stage 0)                      |
+| Skill                               | Load when the task involves…                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------------- |
+| `understand-process`                | Any non-trivial change; stage-0 impact analysis and graph freshness           |
+| `context-engineering`               | Task switching, stale context, compact handoffs, and session memory hygiene   |
+| `deterministic-validation`          | Exit criteria, proof selection, and objective completion checks               |
+| `doubt-driven-development`          | Security, correctness skepticism, and evidence-led bug diagnosis              |
+| `observability-and-instrumentation` | Telemetry, instrumentation, RED signals, and operational proof                |
+| `eval-first-tuning`                 | Retrieval, prompt, or agent quality tuning with explicit evals                |
+| `ai-techniques-radar`               | External technique intake, triage, and adoption decisions                     |
+| `budget-aware-execution`            | Cost-aware tool/model selection and bounded execution                         |
+| `teach-agent`                       | Machine-first guidance curation, promotion gates, and agent teachability      |
+| `setup-harness-bootstrap`           | Adopting the harness in a new repository or workflow surface                  |
+| `retrieval-quality-ops`             | A/B evaluation of retrieval stacks (vector-only vs contextual+BM25+rerank)    |
+| `remember` *(Claude Code only)*     | Persisting reusable lessons and Architecture Briefs to harness memory. Non-Claude agents: follow the write protocol in `memory/README.md` directly. |
+| `run-loop` *(Claude Code only)*     | Native execution of workflow loops using checked-in loop JSON and guardrails. Non-Claude agents: follow the loop JSON as protocol per `LOOPS.md § Native Execution`. |
+| `pr`                                | PR creation, verification, and review-before-ship workflow                    |
 
-Multiple skills can apply: a fleet API feature loads `star-citizen-domain` + `backend-service`; an
-end-to-end feature with tests loads `full-stack-feature` + `testing`.
+Repositories may add domain specialists under `.github/skills/` or `.claude/skills/`, but they
+should only be listed in `registry.json` once the skill files are actually checked in.
+
+### Sidecar Prompts (optional, generated by `harness:prompt-pack`)
+
+When running `npm run harness:prompt-pack`, two optional sidecar prompt files are generated
+alongside the main stage prompts:
+
+| Sidecar | Purpose | When to use |
+|---|---|---|
+| `optional-scout.md` | Parallel research — find reuse opportunities, missing context, and adjacent risks | Highest value before or during Understand and Architect |
+| `optional-challenger.md` | Independent challenge — pressure-test assumptions, risks, and review blind spots | After architecture or implementation artifacts exist; can run in parallel with breadth review |
+
+Both sidecars are optional and do not replace canonical harness stages. Run them with a
+high-reasoning model; write output to `scout-notes.md` or `challenger-findings.md` respectively.
 
 ### Workflow Skills (stage executors)
 
@@ -172,21 +258,24 @@ stage (see Stage Reference table). They are not auto-loaded by topic; they are t
 
 Run the narrowest command that covers the change; loops use these as their convergence checks.
 
-| Scope touched       | Required before completion                                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Backend code        | `npm run lint --workspace=backend` · `npm run type-check` · `npm test --workspace=backend -- <changed>.test.ts`    |
-| Frontend code       | `npm run lint --workspace=frontend` · `npm run type-check` · `npm test --workspace=frontend -- <changed>.test.tsx` |
-| Shared types        | `npm run build --workspace=@sc-fleet-manager/shared-types` then rebuild dependents                                 |
-| Migrations/entities | Migration generated + backend tests pass                                                                           |
-| API contract        | `npm run test:pact --workspace=backend` · `npm run test:openapi --workspace=backend`                               |
-| Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                                               |
+> **Harness-kit note:** The rows below show the pattern — adapt `commands.*` tokens to your project's
+> actual commands, which are resolved from `harness.config.json`. Replace scope names and commands
+> with whatever applies to your stack.
 
-Hard rules (from `CLAUDE.md`, restated because loops are tempted to violate them):
+| Scope touched       | Required before completion                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| Any code change     | `{{commands.lint}}` · `{{commands.typeCheck}}` · `{{commands.build}}`                        |
+| Tests               | `{{commands.test}}`                                                                           |
+| Backend-only        | `{{commands.testBackend}}`                                                                    |
+| Frontend-only       | `{{commands.testFrontend}}`                                                                   |
+| Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                         |
+
+Hard rules (loop guardrails — restated here because loops are tempted to violate them):
 
 - Never skip, delete, or weaken a failing test to make a loop converge — fix the cause.
-- Never reduce coverage below the 40% backend threshold.
-- Never add `any` to silence the type-checker.
-- Never touch `/api/v1/` routes or `docs-archive/`.
+- Never lower coverage thresholds to converge.
+- Never add type suppressions (`any`, `@ts-ignore`, lint-disable) to silence a checker — fix the root cause.
+- Never mutate the eval suite or its targets to make a convergence check pass.
 
 ---
 
@@ -272,14 +361,18 @@ See `LOOPS.md` for scoring semantics and loop protocol details.
 Persistent, committed memory keeps sessions from rediscovering what earlier sessions learned. Full
 protocol: [`memory/README.md`](./memory/README.md).
 
-- **Structure** — `.understand-anything/knowledge-graph.json` (Understand-Anything graph:
-  components, layers, dependencies; edges carry a `confidence` tag — `EXTRACTED` for AST-derived
-  facts). Committed; refresh incrementally with `/understand` and commit the result. Caches under
-  `.understand-anything/` stay gitignored. **Query it, don't read it** — the graph is
-  multi-megabyte;
-  `npm run harness:graph -- <status|banner|neighbors|dependents|path|layers|layer|hubs>` returns
-  only the slice you need (`scripts/harness/graph.mjs`). `status` is the freshness gate from
-  stage 0.
+- **Structure** — provider-agnostic graph surface (default Understand-Anything path
+  `.understand-anything/knowledge-graph.json`, optional Graphify path via `graph.provider` and
+  `graph.graphify.path` in `harness.config.json`). Committed structural snapshots are queried through
+  `scripts/harness/graph.mjs`; **query it, don't read it**. Use
+  `npm run harness:graph -- <status|provider-status|banner|neighbors|dependents|path|layers|layer|hubs>`
+  to fetch only the slice you need. `status` remains the stage-0 freshness gate.
+
+  > **Graph disabled?** If `graph.enabled` is `false` in `harness.config.json` (the harness-kit
+  > default for new adopters), `npm run harness:graph -- status` will exit non-zero with "Graph file
+  > not found." This is expected — set `graph.enabled = true` and run the graph provider pipeline to
+  > populate the snapshot. Until then, the stage-0 gate degrades gracefully: continue with explicit
+  > reduced-confidence annotation and ground discoveries in direct file reads.
 - **Lessons** — `memory/lessons/`: one non-obvious, hard-won fact per file; first line is the
   scannable summary. Write via the `remember` skill (Claude Code) or the protocol directly.
   Agent-local lesson stores (e.g. Copilot's memory tool) are promoted into this committed store with
@@ -308,13 +401,13 @@ runner). It is an efficiency adapter, not a dependency — nothing in the harnes
 Implemented scaffolding (optional, all adapters):
 
 1. **MCP wrappers plus first-class stdio transport.** `scripts/harness/mcp-tools.mjs` exposes stable
-   JSON command wrappers for `graph.mjs` plus `memory/lessons/` and `memory/briefs/`, and
+   JSON command wrappers for provider-agnostic graph queries (`graph.mjs`) plus `memory/lessons/` and `memory/briefs/`, and
    `scripts/harness/mcp-server.mjs` exposes the same tools through MCP tool schema + stdio
    transport: `npm run harness:mcp -- list-tools` and `npm run harness:mcp:server`.
 2. **Dockerized deterministic graph refresh.** `scripts/harness/refresh-graph.mjs` runs
    scan/import/build/validate/save with plugin scripts and core APIs. Optional sidecar profile
    (`graph-refresh`) runs `scripts/harness/graph-refresh-loop.mjs` continuously:
-   `UNDERSTAND_PLUGIN_ROOT=<path> npm run dev:up:graph-refresh`.
+   `UNDERSTAND_PLUGIN_ROOT=<path> docker compose -f docker-compose.harness.yml --profile graph-refresh up -d --build graph-refresh`.
 3. **Local Ollama adapter for loop runner fan-out.** `scripts/harness/ollama-agent.mjs` consumes the
    loop runner prompt from stdin and calls `/api/generate` on Ollama. Use with:
    `npm run harness:loop -- build-fix --agent "node scripts/harness/ollama-agent.mjs --model qwen2.5-coder:14b"`.

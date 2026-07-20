@@ -1,3 +1,8 @@
+---
+name: observability-and-instrumentation
+description: Telemetry, RED metrics, structured logging, and trace analysis. Use when adding or debugging observability in a service.
+---
+
 # Skill: Observability and Instrumentation
 
 > Use when: Adding telemetry to a new feature, debugging production issues, setting up harness trace

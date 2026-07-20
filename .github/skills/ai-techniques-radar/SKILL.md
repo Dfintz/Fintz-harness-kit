@@ -1,3 +1,8 @@
+---
+name: ai-techniques-radar
+description: Track and evaluate external AI techniques and engineering trends. Use when deciding whether to adopt a new approach, library, or method.
+---
+
 # Skill: AI Techniques Radar
 
 > Use when: You need to track and triage new AI engineering ideas over time for possible adoption in

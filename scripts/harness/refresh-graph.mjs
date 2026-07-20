@@ -8,16 +8,22 @@
  *
  * Usage:
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path>
+ *   node scripts/harness/refresh-graph.mjs --provider understand-anything --plugin-root <path>
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path> --commit
  *   node scripts/harness/refresh-graph.mjs --plugin-root <path> --with-local-state
  */
 import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import {
+  buildGraphStatusCore,
+  emitGraphEvent,
+  resolveGraphProviderState,
+  resolveRefreshBackends,
+} from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const GRAPH_RELATIVE_PATH = '.understand-anything/knowledge-graph.json';
 const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports']);
 
 function parseArgs(argv) {
@@ -266,6 +272,69 @@ function runGit(args, cwd, allowFailure = false) {
   };
 }
 
+function ensureGraphRelativePath(projectRoot, absoluteGraphPath) {
+  const graphRelativePath = toPosix(relative(projectRoot, absoluteGraphPath));
+  if (graphRelativePath.startsWith('..')) {
+    throw new Error(
+      `Configured graph path ${absoluteGraphPath} is outside the project root (${projectRoot}).`
+    );
+  }
+  return graphRelativePath;
+}
+
+function validateGraphShape(graphPath) {
+  if (!existsSync(graphPath)) {
+    throw new Error(`Graph file not found after refresh: ${graphPath}`);
+  }
+  let graph;
+  try {
+    graph = JSON.parse(readFileSync(graphPath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Graph file is not valid JSON at ${graphPath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+    throw new Error(`Graph file at ${graphPath} is missing required nodes/edges arrays.`);
+  }
+  return graph;
+}
+
+function runGraphifyRefreshBackend(projectRoot, backend) {
+  const graphRelativePath = ensureGraphRelativePath(projectRoot, backend.graphPath);
+  const command = String(backend.refreshCommand || '').trim();
+  if (!command) {
+    throw new Error('Graphify refresh backend is missing refreshCommand.');
+  }
+
+  const result = spawnSync(command, {
+    cwd: backend.refreshCwd || projectRoot,
+    shell: true,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+
+  if (result.status !== 0) {
+    const stderr = (result.stderr || '').trim();
+    const stdout = (result.stdout || '').trim();
+    const details = stderr || stdout || `exit ${result.status ?? 'unknown'}`;
+    throw new Error(
+      `Graphify refresh command failed (${command}): ${details}. ` +
+        'Action: verify graph.graphify.refreshCommand and Graphify runtime setup.'
+    );
+  }
+
+  const graph = validateGraphShape(backend.graphPath);
+  return {
+    provider: 'graphify',
+    graphPath: graphRelativePath,
+    nodeCount: graph.nodes.length,
+    edgeCount: graph.edges.length,
+    refreshCommand: command,
+  };
+}
+
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === '') return fallback;
   const normalized = String(value).trim().toLowerCase();
@@ -278,14 +347,127 @@ function parseBoolean(value, fallback = false) {
   return fallback;
 }
 
+function emitGraphEventWarning(outcome) {
+  if (outcome?.ok) return;
+  const message = outcome?.error || 'unknown event-write failure';
+  process.stderr.write(`[refresh-graph] observability event write failed: ${message}\n`);
+}
+
+function emitRefreshEvent({
+  projectRoot,
+  configPath,
+  providerOverride,
+  eventType,
+  details,
+  degradationReason = null,
+}) {
+  let coreStatus;
+  try {
+    coreStatus = buildGraphStatusCore({
+      repoRoot: projectRoot,
+      configPath,
+      overrideProvider: providerOverride,
+      probe: false,
+    });
+  } catch (error) {
+    coreStatus = {
+      provider: providerOverride || null,
+      activeProviders: [],
+      queryProvider: null,
+      queryGraphPath: null,
+      refreshReadiness: {
+        ready: false,
+        requiredProviders: [],
+        byProvider: {},
+        reason: error instanceof Error ? error.message : String(error),
+      },
+      degradationReason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (degradationReason) {
+    coreStatus.degradationReason = degradationReason;
+  }
+  const outcome = emitGraphEvent({
+    repoRoot: projectRoot,
+    configPath,
+    eventType,
+    coreStatus,
+    details,
+  });
+  emitGraphEventWarning(outcome);
+}
+
+function parseJsonMaybe(text) {
+  if (typeof text !== 'string' || text.trim().length === 0) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function runPostRefreshSync({ projectRoot, providerState }) {
+  const syncConfig = providerState.sync || {};
+  const tasks = [];
+  if (syncConfig.rebuildVectorIndex) {
+    tasks.push({
+      id: 'vector-index',
+      script: join(projectRoot, 'scripts', 'harness', 'vector-search.mjs'),
+      args: ['index', '--scope', 'all'],
+    });
+  }
+  if (syncConfig.rebuildMemoryLinkIndex) {
+    tasks.push({
+      id: 'memory-link-index',
+      script: join(projectRoot, 'scripts', 'harness', 'memory-link-index.mjs'),
+      args: ['build'],
+    });
+  }
+
+  const runs = [];
+  for (const task of tasks) {
+    const startedAt = new Date().toISOString();
+    try {
+      const output = runNodeScript(task.script, task.args, projectRoot);
+      runs.push({
+        id: task.id,
+        ok: true,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        output: parseJsonMaybe(output) ?? output,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      runs.push({
+        id: task.id,
+        ok: false,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        error: errorMessage,
+      });
+      if (!syncConfig.continueOnSyncError) {
+        throw new Error(`Post-refresh sync step "${task.id}" failed: ${errorMessage}`);
+      }
+    }
+  }
+
+  return {
+    configured: tasks.map(task => task.id),
+    continueOnSyncError: syncConfig.continueOnSyncError === true,
+    runs,
+  };
+}
+
 function showHelp() {
   const payload = {
     usage: {
-      command: 'node scripts/harness/refresh-graph.mjs --plugin-root <path> [options]',
+      command: 'node scripts/harness/refresh-graph.mjs [--plugin-root <path>] [options]',
       options: {
         '--project-root <path>': 'Project root to analyze (default: repository root).',
-        '--plugin-root <path>': 'Understand plugin root (or set UNDERSTAND_PLUGIN_ROOT).',
-        '--commit': 'Commit only .understand-anything/knowledge-graph.json when it changed.',
+        '--plugin-root <path>':
+          'Understand plugin root (required only when refreshing understand-anything backend).',
+        '--provider <name>': 'Graph provider override (understand-anything|graphify|both).',
+        '--commit': 'Commit only the configured graph file when it changed.',
         '--commit-message <text>': 'Override commit message.',
         '--with-local-state': 'Also write .understand-anything/meta.json and fingerprints.json.',
       },
@@ -302,271 +484,389 @@ async function main() {
   }
 
   const projectRoot = resolve(String(flags['project-root'] || repoRoot));
-  const pluginRootRaw = String(
-    flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || ''
-  ).trim();
-  if (!pluginRootRaw) {
-    throw new Error('Missing plugin root. Provide --plugin-root or UNDERSTAND_PLUGIN_ROOT.');
-  }
-  const pluginRoot = resolve(pluginRootRaw);
+  const configPath = join(projectRoot, 'harness.config.json');
+  const providerOverride = flags.provider || process.env.HARNESS_GRAPH_PROVIDER;
+  let providerState = null;
 
-  const scanScript = join(pluginRoot, 'skills', 'understand', 'scan-project.mjs');
-  const extractImportScript = join(pluginRoot, 'skills', 'understand', 'extract-import-map.mjs');
-  const coreIndexPath = join(pluginRoot, 'packages', 'core', 'dist', 'index.js');
+  try {
+    providerState = resolveGraphProviderState({
+      repoRoot: projectRoot,
+      configPath,
+      overrideProvider: providerOverride,
+    });
+    const refreshBackends = resolveRefreshBackends(providerState);
+    emitRefreshEvent({
+      projectRoot,
+      configPath,
+      providerOverride,
+      eventType: 'refresh.start',
+      details: {
+        selectedProvider: providerState.selectedProvider,
+        refreshBackends: refreshBackends.map(item => item.providerId),
+      },
+    });
+    const uaBackend = refreshBackends.find(backend => backend.providerId === 'understand-anything');
+    const graphifyBackend = refreshBackends.find(backend => backend.providerId === 'graphify');
 
-  for (const requiredPath of [scanScript, extractImportScript, coreIndexPath]) {
-    if (!existsSync(requiredPath)) {
-      throw new Error(`Missing required plugin file: ${requiredPath}`);
-    }
-  }
+    if (!uaBackend) {
+      const graphifySummary = runGraphifyRefreshBackend(projectRoot, graphifyBackend);
+      const postRefreshSync = runPostRefreshSync({ projectRoot, providerState });
+      let committed = false;
+      let commitHash = null;
+      const shouldCommit =
+        Boolean(flags.commit) || parseBoolean(process.env.GRAPH_REFRESH_AUTO_COMMIT, false);
+      if (shouldCommit) {
+        const commitMessage = String(
+          flags['commit-message'] ||
+            process.env.GRAPH_REFRESH_COMMIT_MESSAGE ||
+            'chore(harness): refresh knowledge graph'
+        );
+        const worktreeChanged = runGit(
+          ['diff', '--quiet', '--', graphifySummary.graphPath],
+          projectRoot,
+          true
+        ).status;
+        const stagedChanged = runGit(
+          ['diff', '--cached', '--quiet', '--', graphifySummary.graphPath],
+          projectRoot,
+          true
+        ).status;
+        const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
+        if (hasGraphChanges) {
+          runGit(['commit', '--only', '-m', commitMessage, '--', graphifySummary.graphPath], projectRoot);
+          committed = true;
+          commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
+        }
+      }
 
-  const uaDir = join(projectRoot, '.understand-anything');
-  const intermediateDir = join(uaDir, 'intermediate');
-  mkdirSync(intermediateDir, { recursive: true });
-
-  const scanPath = join(intermediateDir, 'scan-script.json');
-  const importInputPath = join(intermediateDir, 'import-input.json');
-  const importMapPath = join(intermediateDir, 'import-map.json');
-  const summaryPath = join(intermediateDir, 'full-rebuild-summary.json');
-
-  runNodeScript(scanScript, [projectRoot, scanPath], projectRoot);
-
-  const scan = JSON.parse(readFileSync(scanPath, 'utf8'));
-  const scanFiles = Array.isArray(scan.files) ? scan.files : [];
-
-  const importInput = {
-    projectRoot: toPosix(projectRoot),
-    files: scanFiles,
-  };
-  writeFileSync(importInputPath, JSON.stringify(importInput, null, 2));
-  runNodeScript(extractImportScript, [importInputPath, importMapPath], projectRoot);
-
-  const importPayload = JSON.parse(readFileSync(importMapPath, 'utf8'));
-  const importMap =
-    importPayload && typeof importPayload.importMap === 'object' && importPayload.importMap !== null
-      ? importPayload.importMap
-      : {};
-
-  const coreModule = await import(pathToFileURL(coreIndexPath).href);
-  const {
-    TreeSitterPlugin,
-    PluginRegistry,
-    builtinLanguageConfigs,
-    registerAllParsers,
-    GraphBuilder,
-    detectLayers,
-    generateHeuristicTour,
-    validateGraph,
-    saveGraph,
-    saveMeta,
-    saveFingerprints,
-    buildFingerprintStore,
-  } = coreModule;
-
-  const tsConfigs = builtinLanguageConfigs.filter(config => config.treeSitter);
-  const tsPlugin = new TreeSitterPlugin(tsConfigs);
-  await tsPlugin.init();
-
-  const registry = new PluginRegistry();
-  registry.register(tsPlugin);
-  registerAllParsers(registry);
-
-  const gitCommitHash = execSync('git rev-parse HEAD', {
-    cwd: projectRoot,
-    encoding: 'utf8',
-  }).trim();
-
-  const builder = new GraphBuilder(scan.projectName || basename(projectRoot), gitCommitHash);
-
-  let analyzedFiles = 0;
-  for (const file of scanFiles) {
-    const relPath = toPosix(String(file.path || ''));
-    if (!relPath) continue;
-
-    const absolutePath = join(projectRoot, relPath);
-    if (!existsSync(absolutePath)) continue;
-
-    let content;
-    try {
-      content = readFileSync(absolutePath, 'utf8');
-    } catch {
-      continue;
-    }
-
-    const lineCount = content.length === 0 ? 0 : content.split(/\r?\n/).length;
-    const fileCategory = String(file.fileCategory || 'code');
-    const language = String(file.language || 'unknown');
-    const complexity = complexityFromLines(lineCount);
-
-    const tags = [`language:${language}`, `category:${fileCategory}`];
-    const summary = summarizeFile(relPath, fileCategory, language, lineCount);
-
-    let analysis = null;
-    try {
-      analysis = registry.analyzeFile(relPath, content);
-    } catch {
-      analysis = null;
-    }
-
-    if (isCodeCategory(fileCategory)) {
-      const normalizedCode = normalizeCodeAnalysis(analysis);
-      const meta = {
-        fileSummary: summary,
-        tags,
-        complexity,
-        summaries: {},
+      const summary = {
+        generatedAt: new Date().toISOString(),
+        projectRoot,
+        provider: providerState.selectedProvider,
+        refreshBackends: [graphifySummary],
+        graphPath: graphifySummary.graphPath,
+        postRefreshSync,
       };
+      emitRefreshEvent({
+        projectRoot,
+        configPath,
+        providerOverride,
+        eventType: 'refresh.success',
+        details: { summary, committed, commitHash },
+      });
+      process.stdout.write(`${JSON.stringify({ ok: true, summary, committed, commitHash }, null, 2)}\n`);
+      return;
+    }
 
-      if (normalizedCode.functions.length > 0 || normalizedCode.classes.length > 0) {
-        builder.addFileWithAnalysis(relPath, normalizedCode, meta);
+    const pluginRootRaw = String(
+      flags['plugin-root'] || process.env.UNDERSTAND_PLUGIN_ROOT || uaBackend.pluginRoot || ''
+    ).trim();
+    if (!pluginRootRaw) {
+      throw new Error(
+        `Missing plugin root for provider ${providerState.selectedProvider}. ` +
+          'Provide --plugin-root, UNDERSTAND_PLUGIN_ROOT, or graph.pluginRoot.'
+      );
+    }
+    const pluginRoot = resolve(pluginRootRaw);
+
+    const scanScript = join(pluginRoot, 'skills', 'understand', 'scan-project.mjs');
+    const extractImportScript = join(pluginRoot, 'skills', 'understand', 'extract-import-map.mjs');
+    const coreIndexPath = join(pluginRoot, 'packages', 'core', 'dist', 'index.js');
+
+    for (const requiredPath of [scanScript, extractImportScript, coreIndexPath]) {
+      if (!existsSync(requiredPath)) {
+        throw new Error(`Missing required plugin file: ${requiredPath}`);
+      }
+    }
+
+    const uaDir = join(projectRoot, '.understand-anything');
+    const intermediateDir = join(uaDir, 'intermediate');
+    mkdirSync(intermediateDir, { recursive: true });
+    const graphRelativePath = ensureGraphRelativePath(projectRoot, uaBackend.graphPath);
+
+    const scanPath = join(intermediateDir, 'scan-script.json');
+    const importInputPath = join(intermediateDir, 'import-input.json');
+    const importMapPath = join(intermediateDir, 'import-map.json');
+    const summaryPath = join(intermediateDir, 'full-rebuild-summary.json');
+
+    runNodeScript(scanScript, [projectRoot, scanPath], projectRoot);
+
+    const scan = JSON.parse(readFileSync(scanPath, 'utf8'));
+    const scanFiles = Array.isArray(scan.files) ? scan.files : [];
+
+    const importInput = {
+      projectRoot: toPosix(projectRoot),
+      files: scanFiles,
+    };
+    writeFileSync(importInputPath, JSON.stringify(importInput, null, 2));
+    runNodeScript(extractImportScript, [importInputPath, importMapPath], projectRoot);
+
+    const importPayload = JSON.parse(readFileSync(importMapPath, 'utf8'));
+    const importMap =
+      importPayload && typeof importPayload.importMap === 'object' && importPayload.importMap !== null
+        ? importPayload.importMap
+        : {};
+
+    const coreModule = await import(pathToFileURL(coreIndexPath).href);
+    const {
+      TreeSitterPlugin,
+      PluginRegistry,
+      builtinLanguageConfigs,
+      registerAllParsers,
+      GraphBuilder,
+      detectLayers,
+      generateHeuristicTour,
+      validateGraph,
+      saveGraph,
+      saveMeta,
+      saveFingerprints,
+      buildFingerprintStore,
+    } = coreModule;
+
+    const tsConfigs = builtinLanguageConfigs.filter(config => config.treeSitter);
+    const tsPlugin = new TreeSitterPlugin(tsConfigs);
+    await tsPlugin.init();
+
+    const registry = new PluginRegistry();
+    registry.register(tsPlugin);
+    registerAllParsers(registry);
+
+    const gitCommitHash = execSync('git rev-parse HEAD', {
+      cwd: projectRoot,
+      encoding: 'utf8',
+    }).trim();
+
+    const builder = new GraphBuilder(scan.projectName || basename(projectRoot), gitCommitHash);
+
+    let analyzedFiles = 0;
+    for (const file of scanFiles) {
+      const relPath = toPosix(String(file.path || ''));
+      if (!relPath) continue;
+
+      const absolutePath = join(projectRoot, relPath);
+      if (!existsSync(absolutePath)) continue;
+
+      let content;
+      try {
+        content = readFileSync(absolutePath, 'utf8');
+      } catch {
+        continue;
+      }
+
+      const lineCount = content.length === 0 ? 0 : content.split(/\r?\n/).length;
+      const fileCategory = String(file.fileCategory || 'code');
+      const language = String(file.language || 'unknown');
+      const complexity = complexityFromLines(lineCount);
+
+      const tags = [`language:${language}`, `category:${fileCategory}`];
+      const summary = summarizeFile(relPath, fileCategory, language, lineCount);
+
+      let analysis = null;
+      try {
+        analysis = registry.analyzeFile(relPath, content);
+      } catch {
+        analysis = null;
+      }
+
+      if (isCodeCategory(fileCategory)) {
+        const normalizedCode = normalizeCodeAnalysis(analysis);
+        const meta = {
+          fileSummary: summary,
+          tags,
+          complexity,
+          summaries: {},
+        };
+
+        if (normalizedCode.functions.length > 0 || normalizedCode.classes.length > 0) {
+          builder.addFileWithAnalysis(relPath, normalizedCode, meta);
+        } else {
+          builder.addFile(relPath, {
+            summary,
+            tags,
+            complexity,
+          });
+        }
       } else {
-        builder.addFile(relPath, {
+        const normalizedNonCode = {
+          definitions: normalizeDefinitions(analysis),
+          services: normalizeServices(analysis),
+          endpoints: normalizeEndpoints(analysis),
+          steps: normalizeSteps(analysis),
+          resources: normalizeResources(analysis),
+        };
+
+        const meta = {
+          nodeType: inferNodeType(relPath, fileCategory),
           summary,
           tags,
           complexity,
-        });
+          ...normalizedNonCode,
+        };
+
+        if (hasNonCodeStructure(normalizedNonCode)) {
+          builder.addNonCodeFileWithAnalysis(relPath, meta);
+        } else {
+          builder.addNonCodeFile(relPath, meta);
+        }
       }
-    } else {
-      const normalizedNonCode = {
-        definitions: normalizeDefinitions(analysis),
-        services: normalizeServices(analysis),
-        endpoints: normalizeEndpoints(analysis),
-        steps: normalizeSteps(analysis),
-        resources: normalizeResources(analysis),
-      };
 
-      const meta = {
-        nodeType: inferNodeType(relPath, fileCategory),
-        summary,
-        tags,
-        complexity,
-        ...normalizedNonCode,
-      };
+      analyzedFiles += 1;
+    }
 
-      if (hasNonCodeStructure(normalizedNonCode)) {
-        builder.addNonCodeFileWithAnalysis(relPath, meta);
-      } else {
-        builder.addNonCodeFile(relPath, meta);
+    for (const [source, targets] of Object.entries(importMap)) {
+      if (!Array.isArray(targets)) continue;
+      const normalizedSource = toPosix(source);
+      for (const target of targets) {
+        if (typeof target !== 'string') continue;
+        builder.addImportEdge(normalizedSource, toPosix(target));
       }
     }
 
-    analyzedFiles += 1;
-  }
-
-  for (const [source, targets] of Object.entries(importMap)) {
-    if (!Array.isArray(targets)) continue;
-    const normalizedSource = toPosix(source);
-    for (const target of targets) {
-      if (typeof target !== 'string') continue;
-      builder.addImportEdge(normalizedSource, toPosix(target));
-    }
-  }
-
-  let graph = builder.build();
-  graph.project = {
-    ...graph.project,
-    name: scan.projectName || graph.project.name,
-    description: scan.projectDescription || graph.project.description || '',
-    frameworks: Array.isArray(scan.frameworks) ? scan.frameworks : graph.project.frameworks,
-    languages: Array.isArray(scan.languages)
-      ? [...new Set(scan.languages)].sort((left, right) =>
-          String(left).localeCompare(String(right))
-        )
-      : graph.project.languages,
-    analyzedAt: new Date().toISOString(),
-    gitCommitHash,
-  };
-
-  graph.layers = detectLayers(graph);
-  graph.tour = generateHeuristicTour(graph);
-  graph.edges = graph.edges.map(edge => ({
-    ...edge,
-    confidence: edge.confidence || (EXTRACTED_EDGE_TYPES.has(edge.type) ? 'EXTRACTED' : 'INFERRED'),
-  }));
-
-  const validation = validateGraph(graph);
-  if (!validation.success || !validation.data) {
-    const issueText = Array.isArray(validation.issues)
-      ? validation.issues.map(issue => issue.message).join('; ')
-      : '';
-    const details = validation.fatal || issueText || 'unknown validation failure';
-    throw new Error(`Graph validation failed: ${details}`);
-  }
-
-  const finalGraph = validation.data;
-  saveGraph(projectRoot, finalGraph);
-
-  const withLocalState = Boolean(flags['with-local-state']);
-  if (withLocalState) {
-    saveMeta(projectRoot, {
-      lastAnalyzedAt: new Date().toISOString(),
+    let graph = builder.build();
+    graph.project = {
+      ...graph.project,
+      name: scan.projectName || graph.project.name,
+      description: scan.projectDescription || graph.project.description || '',
+      frameworks: Array.isArray(scan.frameworks) ? scan.frameworks : graph.project.frameworks,
+      languages: Array.isArray(scan.languages)
+        ? [...new Set(scan.languages)].sort((left, right) =>
+            String(left).localeCompare(String(right))
+          )
+        : graph.project.languages,
+      analyzedAt: new Date().toISOString(),
       gitCommitHash,
-      version: finalGraph.version || '1.0.0',
-      analyzedFiles,
-    });
-    const sourceFilePaths = scanFiles.map(file => toPosix(String(file.path || ''))).filter(Boolean);
+    };
 
-    const store = buildFingerprintStore(projectRoot, sourceFilePaths, registry, gitCommitHash);
-    saveFingerprints(projectRoot, store);
-  }
+    graph.layers = detectLayers(graph);
+    graph.tour = generateHeuristicTour(graph);
+    graph.edges = graph.edges.map(edge => ({
+      ...edge,
+      confidence: edge.confidence || (EXTRACTED_EDGE_TYPES.has(edge.type) ? 'EXTRACTED' : 'INFERRED'),
+    }));
 
-  const summary = {
-    generatedAt: new Date().toISOString(),
-    projectRoot,
-    pluginRoot,
-    analyzedFiles,
-    totalScanFiles: scanFiles.length,
-    nodeCount: finalGraph.nodes.length,
-    edgeCount: finalGraph.edges.length,
-    layerCount: finalGraph.layers.length,
-    tourSteps: finalGraph.tour.length,
-    validationIssues: Array.isArray(validation.issues) ? validation.issues : [],
-    withLocalState,
-  };
-  writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
-
-  let committed = false;
-  let commitHash = null;
-  const shouldCommit =
-    Boolean(flags.commit) || parseBoolean(process.env.GRAPH_REFRESH_AUTO_COMMIT, false);
-  if (shouldCommit) {
-    const commitMessage = String(
-      flags['commit-message'] ||
-        process.env.GRAPH_REFRESH_COMMIT_MESSAGE ||
-        'chore(harness): refresh knowledge graph'
-    );
-
-    const worktreeChanged = runGit(
-      ['diff', '--quiet', '--', GRAPH_RELATIVE_PATH],
-      projectRoot,
-      true
-    ).status;
-    const stagedChanged = runGit(
-      ['diff', '--cached', '--quiet', '--', GRAPH_RELATIVE_PATH],
-      projectRoot,
-      true
-    ).status;
-
-    const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
-    if (hasGraphChanges) {
-      runGit(['commit', '--only', '-m', commitMessage, '--', GRAPH_RELATIVE_PATH], projectRoot);
-      committed = true;
-      commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
+    const validation = validateGraph(graph);
+    if (!validation.success || !validation.data) {
+      const issueText = Array.isArray(validation.issues)
+        ? validation.issues.map(issue => issue.message).join('; ')
+        : '';
+      const details = validation.fatal || issueText || 'unknown validation failure';
+      throw new Error(`Graph validation failed: ${details}`);
     }
-  }
 
-  process.stdout.write(
-    `${JSON.stringify(
+    const finalGraph = validation.data;
+    saveGraph(projectRoot, finalGraph);
+
+    const withLocalState = Boolean(flags['with-local-state']);
+    if (withLocalState) {
+      saveMeta(projectRoot, {
+        lastAnalyzedAt: new Date().toISOString(),
+        gitCommitHash,
+        version: finalGraph.version || '1.0.0',
+        analyzedFiles,
+      });
+      const sourceFilePaths = scanFiles.map(file => toPosix(String(file.path || ''))).filter(Boolean);
+
+      const store = buildFingerprintStore(projectRoot, sourceFilePaths, registry, gitCommitHash);
+      saveFingerprints(projectRoot, store);
+    }
+
+    const refreshBackendSummaries = [
       {
-        ok: true,
-        summary,
-        committed,
-        commitHash,
+        provider: 'understand-anything',
+        graphPath: graphRelativePath,
+        analyzedFiles,
+        nodeCount: finalGraph.nodes.length,
+        edgeCount: finalGraph.edges.length,
+        layerCount: finalGraph.layers.length,
+        tourSteps: finalGraph.tour.length,
+        validationIssues: Array.isArray(validation.issues) ? validation.issues : [],
       },
-      null,
-      2
-    )}\n`
-  );
+    ];
+
+    if (graphifyBackend) {
+      refreshBackendSummaries.push(runGraphifyRefreshBackend(projectRoot, graphifyBackend));
+    }
+
+    const postRefreshSync = runPostRefreshSync({ projectRoot, providerState });
+
+    const summary = {
+      generatedAt: new Date().toISOString(),
+      projectRoot,
+      pluginRoot,
+      provider: providerState.selectedProvider,
+      refreshBackends: refreshBackendSummaries,
+      graphPath: graphRelativePath,
+      analyzedFiles,
+      totalScanFiles: scanFiles.length,
+      nodeCount: finalGraph.nodes.length,
+      edgeCount: finalGraph.edges.length,
+      layerCount: finalGraph.layers.length,
+      tourSteps: finalGraph.tour.length,
+      validationIssues: Array.isArray(validation.issues) ? validation.issues : [],
+      withLocalState,
+      postRefreshSync,
+    };
+    writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+
+    let committed = false;
+    let commitHash = null;
+    const shouldCommit =
+      Boolean(flags.commit) || parseBoolean(process.env.GRAPH_REFRESH_AUTO_COMMIT, false);
+    if (shouldCommit) {
+      const commitMessage = String(
+        flags['commit-message'] ||
+          process.env.GRAPH_REFRESH_COMMIT_MESSAGE ||
+          'chore(harness): refresh knowledge graph'
+      );
+
+      const graphPaths = [...new Set(refreshBackendSummaries.map(item => item.graphPath).filter(Boolean))];
+      const worktreeChanged = runGit(['diff', '--quiet', '--', ...graphPaths], projectRoot, true).status;
+      const stagedChanged = runGit(
+        ['diff', '--cached', '--quiet', '--', ...graphPaths],
+        projectRoot,
+        true
+      ).status;
+
+      const hasGraphChanges = worktreeChanged === 1 || stagedChanged === 1;
+      if (hasGraphChanges) {
+        runGit(['commit', '--only', '-m', commitMessage, '--', ...graphPaths], projectRoot);
+        committed = true;
+        commitHash = runGit(['rev-parse', 'HEAD'], projectRoot).stdout;
+      }
+    }
+
+    emitRefreshEvent({
+      projectRoot,
+      configPath,
+      providerOverride,
+      eventType: 'refresh.success',
+      details: { summary, committed, commitHash },
+    });
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          ok: true,
+          summary,
+          committed,
+          commitHash,
+        },
+        null,
+        2
+      )}\n`
+    );
+  } catch (error) {
+    emitRefreshEvent({
+      projectRoot,
+      configPath,
+      providerOverride,
+      eventType: 'refresh.fail',
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+      degradationReason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }
 
 main().catch(error => {

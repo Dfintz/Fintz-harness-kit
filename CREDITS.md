@@ -31,6 +31,19 @@ of the adapted files.
 - **Note:** the graph features require a local checkout of that plugin (see `SETUP.md`); the rest of
   the harness works without it.
 
+### Graphify — optional graph backend surface
+
+- **Source:** https://www.graphify.ai (product/runtime)
+- **What we adapted:** a provider abstraction in `scripts/harness/graph-provider.mjs` that allows
+  optional Graphify selection (`graph.provider = graphify|both`) without replacing the deterministic
+  Understand-Anything path.
+- **Where:** [`scripts/harness/graph-provider.mjs`](scripts/harness/graph-provider.mjs),
+  [`scripts/harness/graph.mjs`](scripts/harness/graph.mjs),
+  [`scripts/harness/mcp-tools.mjs`](scripts/harness/mcp-tools.mjs),
+  [`scripts/harness/mcp-server.mjs`](scripts/harness/mcp-server.mjs).
+- **Note:** this release ships provider abstraction, provider-aware querying, deterministic
+  refresh via configurable Graphify command execution, and HTTP/GenUI graph rendering hooks.
+
 ### Model Context Protocol (MCP)
 
 - **Source:** https://modelcontextprotocol.io · SDK: https://github.com/modelcontextprotocol

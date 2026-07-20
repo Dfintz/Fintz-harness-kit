@@ -25,16 +25,12 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveGraphProviderState } from "./graph-provider.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
 const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
-const graphPath = join(
-  repoRoot,
-  ".understand-anything",
-  "knowledge-graph.json",
-);
 const configPath = join(repoRoot, "harness.config.json");
 const NON_LESSON_FILES = new Set(["_template.md", "readme.md"]);
 const BRIEF_STATUSES = ["active", "implemented", "superseded"];
@@ -173,17 +169,42 @@ function loadBriefs() {
 }
 
 function loadGraph() {
+  const providerState = resolveGraphProviderState({ repoRoot, configPath });
+  const uaPath = providerState.providers["understand-anything"].graphPath;
+  const graphifyPath = providerState.providers.graphify.graphPath;
+  const graphPath =
+    providerState.selectedProvider === "graphify"
+      ? graphifyPath
+      : providerState.selectedProvider === "both"
+        ? existsSync(uaPath)
+          ? uaPath
+          : graphifyPath
+        : uaPath;
   if (!existsSync(graphPath))
-    return { present: false, ageDays: null, sizeKb: null };
+    return {
+      present: false,
+      ageDays: null,
+      sizeKb: null,
+      provider: providerState.selectedProvider,
+      path: graphPath,
+    };
   try {
     const st = statSync(graphPath);
     return {
       present: true,
       ageDays: Math.floor((Date.now() - st.mtimeMs) / 86_400_000),
       sizeKb: Math.round(st.size / 1024),
+      provider: providerState.selectedProvider,
+      path: graphPath,
     };
   } catch {
-    return { present: false, ageDays: null, sizeKb: null };
+    return {
+      present: false,
+      ageDays: null,
+      sizeKb: null,
+      provider: providerState.selectedProvider,
+      path: graphPath,
+    };
   }
 }
 
@@ -640,8 +661,8 @@ function printExperiments(experiments) {
 
 function fmtGraph(graph) {
   if (!graph.present)
-    return "NOT committed — run /understand and commit knowledge-graph.json";
-  return `present (age ${graph.ageDays}d, ${graph.sizeKb} KB)`;
+    return `NOT committed for provider ${graph.provider ?? "unknown"} — expected ${graph.path ?? "graph file"}`;
+  return `present (${graph.provider ?? "unknown"}, age ${graph.ageDays}d, ${graph.sizeKb} KB)`;
 }
 
 function printMemory(memory) {

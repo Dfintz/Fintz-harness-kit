@@ -1,3 +1,8 @@
+---
+name: setup-harness-bootstrap
+description: Adopt the harness in a new repository. Use when initializing stage workflows, skill trees, registry, and validation for a fresh project.
+---
+
 # Skill: Setup Harness Bootstrap
 
 > Use when: onboarding or standardizing repository-level agent configuration for issue tracking,

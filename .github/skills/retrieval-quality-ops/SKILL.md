@@ -1,3 +1,8 @@
+---
+name: retrieval-quality-ops
+description: A/B evaluation of retrieval stacks comparing vector-only against contextual+BM25+rerank. Use when measuring recall@K, token cost, and task success to inform retrieval stack adoption decisions.
+---
+
 # Skill: Retrieval-Quality-Ops Pilot
 
 **Status:** pilot (A/B evaluation phase, 2026-07-17)  

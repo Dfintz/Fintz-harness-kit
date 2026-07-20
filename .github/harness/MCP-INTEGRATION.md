@@ -45,7 +45,7 @@ npm run harness:mcp:find -- <component-name-or-pattern>
   "query": "SkillRegistry",
   "results": [
     {
-      "file": "scripts/harness/skill-registry.mjs",
+      "file": "scripts/harness/registry.mjs",
       "line": 1,
       "type": "class_definition",
       "excerpt": "export class SkillRegistry {"
@@ -54,7 +54,7 @@ npm run harness:mcp:find -- <component-name-or-pattern>
       "file": "scripts/harness/prompt-router.mjs",
       "line": 7,
       "type": "import",
-      "excerpt": "import { SkillRegistry } from './skill-registry.mjs';"
+      "excerpt": "import { loadRegistry } from './registry.mjs';"
     }
   ],
   "matchCount": 7,
@@ -110,7 +110,7 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
         "reason": "Reads registry for skill routing"
       },
       {
-        "file": "scripts/harness/optimize-skills.ps1",
+        "file": "scripts/harness/optimize-all-skills.mjs",
         "type": "reference",
         "reason": "Passes registry entries to dspy-bridge"
       }
@@ -155,6 +155,20 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 
 ---
 
+### Provider-status helper: `graph-provider-status`
+
+Use the MCP wrapper/server tool `graph-provider-status` to inspect configured provider mode
+(`understand-anything`, `graphify`, `both`), active graph paths, and availability before relying on
+graph evidence in an Understand pass.
+
+Use `graph-genui-status` to fetch provider-agnostic `graph.html` serving readiness metadata for HTTP/GenUI consumers.
+Use `graph-events` to read structured graph lifecycle events (`refresh.start|refresh.success|refresh.fail|query.fallback|degradation`).
+
+All graph status surfaces now share core contract fields:
+`provider`, `activeProviders`, `queryGraphPath`, `refreshReadiness`, `degradationReason`.
+
+---
+
 ## Integration with Harness Workflow
 
 ### Understand Stage
@@ -167,7 +181,7 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 └──────────────────────────────────────────┘
    │
    ├─ 1. Check graph freshness
-   │     (→ `.understand-anything/knowledge-graph.json`)
+   │     (→ provider-selected graph snapshot; inspect with `graph-provider-status`)
    │
    ├─ 2. Run /understand-chat on task
    │     (→ graph-based component discovery)
@@ -260,7 +274,7 @@ fields ignored by v1 clients.
 # 1. Find who calls dspy-bridge
 npm run harness:mcp:find -- "dspy-bridge.mjs"
 
-# Output: optimize-skills.ps1, dspy-optimize-ollama.py, dspy-optimize.py
+# Output: optimize-all-skills.mjs, dspy-optimize-ollama.py, dspy-optimize.py
 
 # 2. Analyze impact on optimization pipeline
 npm run harness:mcp:impact -- --files "scripts/harness/dspy-bridge.mjs" --depth 2

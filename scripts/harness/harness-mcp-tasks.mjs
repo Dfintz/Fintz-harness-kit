@@ -42,6 +42,9 @@ function requireString(flags, key, message) {
 
 function cmdStatus() {
   const graph = executeMcpTool('graph-status');
+  const graphProvider = executeMcpTool('graph-provider-status');
+  const graphGenUi = executeMcpTool('graph-genui-status');
+  const graphEvents = executeMcpTool('graph-events');
   const vector = executeMcpTool('vector-status');
   const memoryLink = executeMcpTool('memory-link-status');
   const memory = executeMcpTool('memory-list', { scope: 'all' });
@@ -49,8 +52,11 @@ function cmdStatus() {
   const recentMemory = Array.isArray(memory.entries) ? memory.entries.slice(0, 5) : [];
 
   return {
-    ok: graph.ok && vector.ok && memory.ok,
+    ok: graph.ok && graphProvider.ok && graphGenUi.ok && graphEvents.ok && vector.ok && memory.ok,
     graph,
+    graphProvider,
+    graphGenUi,
+    graphEvents,
     vector,
     memoryLink,
     memory: {

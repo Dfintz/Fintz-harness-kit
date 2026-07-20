@@ -5,7 +5,7 @@
  * Builds and queries an optional local vector index over:
  * - .github/harness/memory/lessons
  * - .github/harness/memory/briefs
- * - .understand-anything/knowledge-graph.json nodes
+ * - provider-selected graph snapshot nodes (understand-anything default, graphify optional)
  *
  * Usage:
  *   node scripts/harness/vector-search.mjs status
@@ -18,11 +18,12 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { embedOne, normalizeHost as resolveProviderHost, resolveProvider } from './llm-provider.mjs';
+import { resolveGraphProviderState } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
 const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
-const graphPath = join(repoRoot, '.understand-anything', 'knowledge-graph.json');
+const configPath = join(repoRoot, 'harness.config.json');
 const indexPath = join(
   repoRoot,
   '.understand-anything',
@@ -40,6 +41,17 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.HARNESS_EMBED_TIMEOUT_MS || 60000)
 
 const ALLOWED_SCOPE_TOKENS = new Set(['all', 'memory', 'lessons', 'briefs', 'graph']);
 const DOC_SCOPE_ORDER = ['lessons', 'briefs', 'graph'];
+
+function resolveGraphPathFromProvider() {
+  const state = resolveGraphProviderState({ repoRoot, configPath });
+  const uaPath = state.providers['understand-anything'].graphPath;
+  const graphifyPath = state.providers.graphify.graphPath;
+
+  if (state.selectedProvider === 'understand-anything') return uaPath;
+  if (state.selectedProvider === 'graphify') return graphifyPath;
+  if (existsSync(uaPath)) return uaPath;
+  return graphifyPath;
+}
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -218,8 +230,12 @@ function readMemoryDocuments() {
 }
 
 function readGraphDocuments(graphLimit) {
+  const graphPath = resolveGraphPathFromProvider();
   if (!existsSync(graphPath)) {
-    throw new Error(`Knowledge graph not found at ${toWorkspacePath(graphPath)}.`);
+    const state = resolveGraphProviderState({ repoRoot, configPath });
+    throw new Error(
+      `Knowledge graph not found at ${toWorkspacePath(graphPath)} for provider ${state.selectedProvider}.`
+    );
   }
 
   const graphText = readFileSync(graphPath, 'utf8');
@@ -490,6 +506,7 @@ async function buildOrUpdateIndex(options) {
 }
 
 function readCurrentGraphCommit() {
+  const graphPath = resolveGraphPathFromProvider();
   if (!existsSync(graphPath)) return null;
   try {
     const parsed = JSON.parse(readFileSync(graphPath, 'utf8'));
@@ -500,6 +517,8 @@ function readCurrentGraphCommit() {
 }
 
 function buildStatusPayload() {
+  const providerState = resolveGraphProviderState({ repoRoot, configPath });
+  const queryGraphPath = resolveGraphPathFromProvider();
   const exists = existsSync(indexPath);
   if (!exists) {
     return {
@@ -507,6 +526,8 @@ function buildStatusPayload() {
       exists: false,
       path: toWorkspacePath(indexPath),
       message: 'No vector index exists yet. Run `npm run harness:vector -- index --scope all`.',
+      graphProvider: providerState.selectedProvider,
+      queryGraphPath: toWorkspacePath(queryGraphPath),
     };
   }
 
@@ -517,6 +538,8 @@ function buildStatusPayload() {
       exists: true,
       path: toWorkspacePath(indexPath),
       message: 'Index file exists but could not be loaded.',
+      graphProvider: providerState.selectedProvider,
+      queryGraphPath: toWorkspacePath(queryGraphPath),
     };
   }
 
@@ -540,6 +563,8 @@ function buildStatusPayload() {
     source: index.source || {},
     graphFreshAgainstIndex: graphCommitMatches,
     currentGraphCommit,
+    graphProvider: providerState.selectedProvider,
+    queryGraphPath: toWorkspacePath(queryGraphPath),
   };
 }
 

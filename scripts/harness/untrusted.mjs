@@ -28,6 +28,11 @@ const INJECTION_PATTERNS = [
   /system prompt[:\s]/gi,
   /\bdeveloper (message|mode)\b/gi,
   /<\/?(system|assistant|tool|instructions?)>/gi,
+  // Additional role-play and persona-override patterns
+  /\bact as\b.*\bassistant\b/gi,
+  /\bpretend (you are|to be)\b/gi,
+  /\bforget (everything|all previous|all your|your previous)\b/gi,
+  /\bnew (persona|role|identity|instructions?)\b/gi,
 ];
 
 export function defangInjections(text) {

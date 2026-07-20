@@ -1,3 +1,8 @@
+---
+name: pr
+description: PR creation, verification, and review-before-ship workflow. Use when opening a pull request or running a verification sub-agent before human review.
+---
+
 # Skill: /pr — Prove the Feature Works, Then Open the PR
 
 > **Use when:** A code change is ready to ship and you need to prove the feature actually works

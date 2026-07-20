@@ -23,10 +23,20 @@ Required outputs:
 - stage route decision
 - clearer naming note captured when documentation-only alias language is used
 
+Surface selection rule:
+
+- Always-on norms -> repo instructions
+- Reusable multi-step procedure -> skill
+- Different tools / policy / output ownership -> agent or handoff
+- External evidence -> MCP wrapper or MCP server
+- **Task too large for one session?** -> use [wayfinder](https://github.com/mattpocock/skills/tree/main/skills/engineering/wayfinder) to chart a decision-ticket map first; each ticket maps to one harness run
+
+If the router output includes intent `wayfinder` (matched by keywords: "multi-session", "too big for one session", "chart the map", "fog of war"), do not enter the stage machine directly — chart the wayfinder map first, then run the harness per resolved ticket.
+
 If graph is stale and source code will be changed:
 
 ```bash
-npm run harness:graph:refresh
+npm run harness:graph:refresh:loop
 ```
 
 ## 1) Understand Stage
@@ -52,7 +62,8 @@ Research-style adapter (background evidence gathering):
 
 Skills: `deterministic-validation`, `doubt-driven-development`
 
-Goal: produce a Brief that passes gates and survives adversarial review before code changes.
+Goal: produce an Architecture Brief that passes the gates and can guide code, docs, or workflow
+changes without re-deciding ownership later.
 
 Required method:
 
@@ -62,6 +73,7 @@ Required method:
 Exit proof:
 
 - Brief saved in `.github/harness/memory/briefs/`
+- validation plan, constraints, and assumptions captured explicitly
 - no unresolved Blocker/Major architectural risks
 
 To-tickets planning adapter (for architecture outputs):
@@ -76,13 +88,12 @@ To-tickets planning adapter (for architecture outputs):
 Recommended check:
 
 ```bash
-node scripts/harness/record-run.mjs --loop spec-review --state converged --pass "Brief gates complete"
+node scripts/harness/record-run.mjs --loop plan-review --state converged --pass "Brief gates complete"
 ```
 
 ## 3) Implement Stage
 
-Core skills: domain skills (`backend-service`, `frontend-component`, `full-stack-feature`,
-`testing`) + `deterministic-validation`
+Core skills: the relevant checked-in domain skills for the touched area + `deterministic-validation`
 
 Add-on skills by change type:
 
@@ -91,19 +102,31 @@ Add-on skills by change type:
 
 Execution pattern:
 
-1. implement smallest vertical slice
-2. run narrow deterministic proof immediately
+1. implement the smallest coherent slice of the Brief
+2. run the narrowest deterministic proof immediately
 3. if proof fails, repair before expanding scope
+4. keep directly dependent artifacts in sync (tests, docs, templates, workflow notes)
+
+Use the surgical implement variant when the task is a bug fix, hotfix, backport, or other
+minimal-diff change where blast radius matters more than cleanup.
 
 Common proof commands:
 
 ```bash
-npm run lint --workspace=backend
-npm run lint --workspace=frontend
-npm run type-check
-npm test --workspace=backend -- <changed>.test.ts
-npm test --workspace=frontend -- <changed>.test.tsx
+<project lint command for touched scope>
+<project type-check command for touched scope>
+<project test command for touched scope>
 ```
+
+Harness-surface proof sources when code is not the main change:
+
+- `git --no-pager diff --check` for clean doc/metadata edits
+- `npm run harness:docs:check` for registry/stage-skill/loop/script reference integrity
+- `npm run harness:report` when report outputs or run artifacts are described
+- `npm run harness:grade` when evaluation or trajectory-scoring surfaces are described
+- `npm run harness:otel` when trace-export or telemetry contracts are described
+- direct inspection of `registry.json`, loop JSON, skill frontmatter, and MCP docs when the change is
+  about those contracts
 
 Observability minimum for production-facing slices:
 
@@ -115,7 +138,7 @@ Live-app verification (optional — load `.github/skills/pr/SKILL.md`):
 
 1. Bring up the real stack: `docker-compose -f docker-compose.dev.yml up -d`
 2. Spawn a fresh verifier sub-agent with the feature's acceptance criteria
-3. Capture screenshot evidence: `npm run screenshot -- --route <route>`
+3. Capture browser or screenshot evidence with the repo's normal UI verification workflow
 4. Include `FEATURE: works | broken` verdict + evidence path in the PR body
 5. Cap at 3 verification rounds; escalate if still broken
 
@@ -127,8 +150,8 @@ Skills: `doubt-driven-development`, `deterministic-validation`, `run-loop` (agen
 
 Load the `run-loop` skill and execute the `review-fix` loop natively. The loop will:
 
-1. Run the breadth review pass (05) over the current diff
-2. Run the depth review pass (06) with breadth findings pasted in
+1. Run the breadth review pass (05) and produce a findings ledger for the current diff
+2. Run the depth review pass (06) with the breadth findings ledger pasted in
 3. If Blocker/Major findings remain, fix them via Implement and re-run
 4. Converge when zero Blocker and zero Major findings remain
 
@@ -159,9 +182,12 @@ Skills: `context-engineering`
 
 Before closing:
 
+- resolve challenged findings or reviewer disagreement into a verdict record
 - persist/update Brief if architecture changed
 - add one lesson if a non-obvious issue was discovered
 - record run outcome
+- require explicit human acceptance before widening tool permissions, weakening guardrails, or
+  changing destructive defaults
 
 ## 6) Continuous Harness Improvement (Weekly or Post-Incident)
 
@@ -169,9 +195,8 @@ Skills: `ai-techniques-radar`, `eval-first-tuning`, `deterministic-validation`
 
 Technique intake:
 
-```bash
-npm run harness:loop technique-triage
-```
+Record the candidate technique in radar memory, then evaluate it with `ai-techniques-radar` and
+`eval-first-tuning` before adopting it into the harness.
 
 Harness optimization:
 
@@ -194,7 +219,7 @@ Wayfinder-like epic planning adapter:
   1. Route with `harness:feature` (or `harness:route` + explicit feature handoff).
   2. Persist/refresh a Brief in `.github/harness/memory/briefs/` each cycle.
   3. Build the plan as frontier-ordered slices using blocker edges.
-  4. Execute `spec-review` before implementation changes on each major scope update.
+  4. Execute `plan-review` before implementation changes on each major scope update.
   5. Run `feature-cycle` until blocker/major findings converge.
 
 ## Skill Stack Matrix
@@ -205,7 +230,7 @@ Wayfinder-like epic planning adapter:
 | Security/auth/tenant changes            | add `doubt-driven-development`                                            |
 | Production feature or performance work  | add `observability-and-instrumentation`                                   |
 | Prompt/routing/retrieval quality issues | add `eval-first-tuning`                                                   |
-| External AI technique adoption          | `ai-techniques-radar` + `technique-triage` before implementation          |
+| External AI technique adoption          | `ai-techniques-radar` + `eval-first-tuning` before implementation         |
 | Feature ready to ship (live proof)      | add `pr` (verify-before-ship, optional during trial)                      |
 
 ## Default Command Sequence (Route -> Plan -> Execute)
@@ -223,8 +248,9 @@ npm run harness:report
 ## First Commands (Agent Operators, Clear Naming)
 
 > **Note:** These commands are agent instructions via the harness skills (especially `run-loop`),
-> not shell commands to copy-paste manually. Humans can use `npm run harness:doctor` to validate
-> health, but workflow loop execution (review-fix, feature-cycle, spec-review) requires agent skill
+> not shell commands to copy-paste manually. Humans can use `npm run harness:docs:check` and
+> `npm run harness:loops` to inspect shipped contracts, but workflow loop execution (review-fix,
+> feature-cycle, plan-review) requires agent skill
 > invocation.
 
 **Convergence loops (script runner capable):**
@@ -241,11 +267,10 @@ the script runner.
 **Health and task discovery:**
 
 ```bash
-npm run harness:help
-npm run harness:start -- --task "<task>"
-npm run harness:doctor
-npm run harness:doctor:strict
-npm run harness:list
+npm run harness:loops
+npm run harness:route -- --task "<task>"
+npm run harness:feature -- --task "<task>"
+npm run harness:docs:check
 ```
 
 Canonical quick-reference: `docs/harness/COMMAND_INDEX.md`
