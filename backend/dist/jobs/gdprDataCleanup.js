@@ -97,7 +97,7 @@ class GdprDataCleanupJob {
         }
         catch (error) {
             logger_1.logger.error('Error cleaning up access logs:', error);
-            throw error;
+            return 0;
         }
     }
     async anonymizeUserActivities() {
@@ -134,7 +134,7 @@ class GdprDataCleanupJob {
         }
         catch (error) {
             logger_1.logger.error('Error anonymizing user activities:', error);
-            throw error;
+            return 0;
         }
     }
     async cleanupExpiredConsents() {
@@ -158,7 +158,7 @@ class GdprDataCleanupJob {
         }
         catch (error) {
             logger_1.logger.error('Error cleaning up expired consents:', error);
-            throw error;
+            return 0;
         }
     }
     async processDueDeletions() {
@@ -175,7 +175,7 @@ class GdprDataCleanupJob {
         }
         catch (error) {
             logger_1.logger.error('Error processing due deletions:', error);
-            throw error;
+            return 0;
         }
     }
     async getStatistics() {

@@ -34,7 +34,7 @@ export declare class FleetLogisticsService {
     };
     calculateCargoCapacity(logistics: FleetLogistics): {
         totalCargoCapacity: number;
-        totalCargoUsed: ResourceItem;
+        totalCargoUsed: number;
         cargoAvailable: number;
         cargoUtilization: string;
         canFitAllResources: boolean;

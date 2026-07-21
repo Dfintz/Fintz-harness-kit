@@ -66,7 +66,7 @@ import Add from '@mui/icons-material/Add';
 
 // Recipient type configuration — grouped by routing category
 interface RecipientTypeInfo {
-  icon: React.ReactNode;
+  icon: React.ReactElement;
   label: string;
   description: string;
   group: 'role' | 'function' | 'direct';
@@ -158,7 +158,7 @@ const PRIORITY_CONFIG: Record<TicketPriority, { color: string; label: string }> 
 };
 
 // Category configuration
-const CATEGORY_CONFIG: Record<TicketCategory, { icon: React.ReactNode; label: string }> = {
+const CATEGORY_CONFIG: Record<TicketCategory, { icon: React.ReactElement; label: string }> = {
   [TicketCategory.HR]: { icon: <Groups fontSize="small" />, label: 'HR' },
   [TicketCategory.RECRUITMENT]: { icon: <Assignment fontSize="small" />, label: 'Recruitment' },
   [TicketCategory.DIPLOMACY]: { icon: <Handshake fontSize="small" />, label: 'Diplomacy' },
@@ -193,7 +193,11 @@ function getQueryErrorMessage(queryError: Error | null): string | null {
   return queryError instanceof Error ? queryError.message : 'Failed to load tickets';
 }
 
-export const TicketManagement: React.FC = () => {
+interface TicketManagementProps {
+  categoryFilter?: TicketCategory;
+}
+
+export const TicketManagement: React.FC<TicketManagementProps> = ({ categoryFilter }) => {
   const theme = useTheme();
   const [selectedTab, setSelectedTab] = useState<string>('open');
   const [searchTerm, setSearchTerm] = useState('');
@@ -207,6 +211,7 @@ export const TicketManagement: React.FC = () => {
   // React Query hooks
   const ticketFilters = {
     status: selectedTab === 'all' ? undefined : selectedTab,
+    category: categoryFilter,
     searchTerm: searchTerm || undefined,
   };
   const {
@@ -373,6 +378,14 @@ export const TicketManagement: React.FC = () => {
 
         {/* Search and Filters */}
         <Stack spacing={2} alignItems="end">
+          {categoryFilter && (
+            <Chip
+              label={`Category: ${CATEGORY_CONFIG[categoryFilter].label}`}
+              icon={CATEGORY_CONFIG[categoryFilter].icon}
+              variant="outlined"
+              color="primary"
+            />
+          )}
           <TextField
             label="Search tickets"
             value={searchTerm}

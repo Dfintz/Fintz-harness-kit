@@ -1,0 +1,1449 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonInteraction,
+  ButtonStyle,
+  channelMention,
+  ChatInputCommandInteraction,
+  EmbedBuilder,
+  MessageFlags,
+  ModalBuilder,
+  ModalSubmitInteraction,
+  PermissionFlagsBits,
+  roleMention,
+  SlashCommandBuilder,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
+  TextInputBuilder,
+  TextInputStyle,
+  type ModalActionRowComponentBuilder,
+} from 'discord.js';
+
+import type {
+  AuditLogSettings,
+  EventSettings,
+  NotificationPreferences,
+  RecruitmentSettings,
+  RoleSyncSettings,
+  TicketSettings,
+  VoiceChannelSettings,
+  WelcomeSettings,
+} from '../../models/DiscordGuildSettings';
+import { discordSettingsService } from '../../services/discord/DiscordSettingsService';
+import { GuildOrganizationService } from '../../services/discord/GuildOrganizationService';
+import { OrganizationMemberService } from '../../services/organization/OrganizationMemberService';
+import { UserService } from '../../services/user/UserService';
+import { logger } from '../../utils/logger';
+import {
+  parsePanelCustomId,
+  replyWithCommandPanel,
+  type CommandPanelConfig,
+} from '../utils/commandPanelBuilder';
+import { buildCustomId, parseCustomId } from '../utils/customId';
+import { EmbedColors } from '../utils/embedBuilder';
+import {
+  BOT_FEATURE_FLAG_REGISTRY,
+  BotFeatureFlag,
+  describeGuildFeatureFlag,
+  type GuildFeatureFlagOverrides,
+  type ResolvedFeatureFlag,
+} from '../utils/guildFeatureFlags';
+import { formatVoiceHubs, getConfiguredVoiceHubs } from '../utils/voiceHubs';
+
+import { BotCommand } from './types';
+
+let guildOrgService: GuildOrganizationService | null = null;
+function getGuildOrgService(): GuildOrganizationService {
+  guildOrgService ??= GuildOrganizationService.getInstance();
+  return guildOrgService;
+}
+
+// ── customId convention (C9 / ARCH-09) ──
+// The settings "toggle" select is `guild_settings_toggle_<category>` where
+// category is a fixed `_`-free key (events/voice/tickets/…), so the shared codec
+// round-trips it. Decomposed as prefix=`guild`, action=`settings`,
+// params=[`toggle`, category]; the helpers keep build/route/parse in sync.
+const GUILD_PREFIX = 'guild';
+const GUILD_SETTINGS_ACTION = 'settings';
+const GUILD_SETTINGS_TOGGLE_PARAM = 'toggle';
+
+/** Build the `guild_settings_toggle_<category>` select-menu customId. */
+export function buildGuildSettingsToggleId(category: string): string {
+  return buildCustomId(GUILD_PREFIX, GUILD_SETTINGS_ACTION, GUILD_SETTINGS_TOGGLE_PARAM, category);
+}
+
+/**
+ * Parse a `guild_settings_toggle_<category>` customId → category, or null when it
+ * is not that select. Replaces the previous `replace('guild_settings_toggle_',
+ * '')` + `startsWith` pair. Categories are fixed `_`-free keys, so `params[1]`
+ * recovers the whole category.
+ */
+export function parseGuildSettingsToggleCategory(customId: string): string | null {
+  const { prefix, action, params } = parseCustomId(customId);
+  if (
+    prefix !== GUILD_PREFIX ||
+    action !== GUILD_SETTINGS_ACTION ||
+    params[0] !== GUILD_SETTINGS_TOGGLE_PARAM
+  ) {
+    return null;
+  }
+  return params[1] ?? null;
+}
+
+/**
+ * The feature-flags toggle select customId (ARCH-11). The chosen flag id travels
+ * in the select's value (not the customId), so this is a static id matched by
+ * `===`. Decomposed via the codec as prefix=`guild`, action=`flags`.
+ */
+const GUILD_FLAGS_TOGGLE_ID = buildCustomId(GUILD_PREFIX, 'flags', 'toggle');
+
+let _userService: UserService | null = null;
+function getUserService(): UserService {
+  _userService ??= new UserService();
+  return _userService;
+}
+
+let _orgMemberService: OrganizationMemberService | null = null;
+function getOrgMemberService(): OrganizationMemberService {
+  _orgMemberService ??= new OrganizationMemberService();
+  return _orgMemberService;
+}
+
+const PANEL_CONFIG: CommandPanelConfig = {
+  prefix: 'guild',
+  title: '🏠 Server Management',
+  description: 'Link this server to your organization, view status, or configure Discord features.',
+  buttons: [
+    { subcommand: 'status', label: 'Status', emoji: '📊', style: ButtonStyle.Primary },
+    { subcommand: 'setup', label: 'Setup', emoji: '🔗', style: ButtonStyle.Success },
+    { subcommand: 'settings', label: 'Settings', emoji: '⚙️' },
+    { subcommand: 'flags', label: 'Feature Flags', emoji: '🚩' },
+    { subcommand: 'help_settings', label: 'Help', emoji: '❓' },
+    { subcommand: 'unlink', label: 'Unlink', emoji: '❌', style: ButtonStyle.Danger },
+  ],
+};
+
+export const guild: BotCommand = {
+  data: new SlashCommandBuilder()
+    .setName('guild')
+    .setDescription('Manage Discord server to organization linking')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+
+  category: 'organization',
+  guildOnly: true,
+  examples: [
+    '/guild setup org-id:5788f024-23db-4738-b32a-0dc2162f32bc',
+    '/guild status',
+    '/guild unlink',
+  ],
+
+  async execute(interaction: ChatInputCommandInteraction) {
+    await replyWithCommandPanel(interaction, PANEL_CONFIG);
+  },
+
+  async handleButton(interaction: ButtonInteraction) {
+    const subcommand = parsePanelCustomId(interaction.customId, 'guild');
+    if (!subcommand) {
+      return;
+    }
+
+    if (!interaction.guildId) {
+      await interaction.reply({
+        content: '❌ This command can only be used in a Discord server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const guildId = interaction.guildId;
+
+    switch (subcommand) {
+      case 'status':
+        await handleStatus(interaction, guildId);
+        break;
+      case 'unlink':
+        await handleUnlink(interaction, guildId);
+        break;
+      case 'settings':
+        await handleSettingsPanel(interaction, guildId);
+        break;
+      case 'flags':
+        await handleFeatureFlagsPanel(interaction, guildId);
+        break;
+      case 'help_settings':
+        await handleHelpSettings(interaction);
+        break;
+      case 'setup':
+        await handleSetupStart(interaction, guildId);
+        break;
+      case 'setup_manual': {
+        const modal = buildSetupModal();
+        await interaction.showModal(modal);
+        break;
+      }
+      default:
+        // Handle setup_confirm_{orgId} pattern
+        if (subcommand.startsWith('setup_confirm_')) {
+          const orgId = subcommand.replace('setup_confirm_', '');
+          await handleSetupOrgSelected(interaction, guildId, orgId);
+        } else {
+          await interaction.reply({ content: '❌ Unknown action.', flags: MessageFlags.Ephemeral });
+        }
+    }
+  },
+
+  async handleSelectMenu(interaction: StringSelectMenuInteraction) {
+    if (!interaction.guildId) {
+      return;
+    }
+    const { customId, guildId } = interaction;
+    const toggleCategory = parseGuildSettingsToggleCategory(customId);
+
+    if (customId === 'guild_setup_org_select') {
+      await handleSetupOrgSelected(interaction, guildId);
+    } else if (customId === 'guild_settings_category') {
+      await handleSettingsCategorySelected(interaction, guildId);
+    } else if (customId === GUILD_FLAGS_TOGGLE_ID) {
+      await handleFeatureFlagToggle(interaction, guildId);
+    } else if (toggleCategory !== null) {
+      await handleSettingsToggle(interaction, guildId, toggleCategory);
+    } else if (customId.startsWith('guild_settings_channel_')) {
+      await handleSettingsChannelModal(interaction, guildId);
+    }
+  },
+
+  async handleModal(interaction: ModalSubmitInteraction) {
+    const { customId } = interaction;
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      await interaction.reply({
+        content: '❌ This command can only be used in a Discord server.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (customId === 'guild_setup_modal') {
+      await handleSetupFromModal(interaction, guildId);
+    } else if (customId.startsWith('guild_settings_chmodal_')) {
+      await handleSettingsChannelModalSubmit(interaction, guildId);
+    }
+  },
+};
+
+// =====================================================================
+// D1 — Auto-resolve org in /guild setup
+// =====================================================================
+
+async function handleSetupStart(interaction: ButtonInteraction, guildId: string): Promise<void> {
+  // Check if already linked
+  const existing = await getGuildOrgService().resolveOrganization(guildId);
+  if (existing) {
+    await interaction.reply({
+      content:
+        `⚠️ This server is already linked to organization \`${existing}\`.\n` +
+        'Use **Unlink** first to remove the existing link.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Try to auto-resolve the user's organizations
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const user = await getUserService().getUserByDiscordId(interaction.user.id);
+    if (user) {
+      const memberships = await getOrgMemberService().getUserOrganizations(user.id);
+      const active = memberships.filter(m => m.isActive);
+
+      if (active.length === 1) {
+        // Auto-resolve: single org — confirm with a button
+        const org = active[0];
+        const orgName = org.organization?.name ?? org.organizationId;
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`guild_panel_setup_confirm_${org.organizationId}`)
+            .setLabel(`Link to ${String(orgName).substring(0, 60)}`)
+            .setEmoji('✅')
+            .setStyle(ButtonStyle.Success),
+          new ButtonBuilder()
+            .setCustomId('guild_panel_setup_manual')
+            .setLabel('Enter ID Manually')
+            .setEmoji('✏️')
+            .setStyle(ButtonStyle.Secondary)
+        );
+        await interaction.editReply({
+          content: `You're a member of **${String(orgName)}**. Link this server to it?`,
+          components: [row],
+        });
+        return;
+      }
+
+      if (active.length > 1) {
+        // Multiple orgs — show select menu
+        const options = active.slice(0, 25).map(m => ({
+          label: String(m.organization?.name ?? m.organizationId).substring(0, 100),
+          value: m.organizationId,
+          description: `Role: ${String(m.role?.name ?? 'member')}`.substring(0, 100),
+        }));
+        const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+          new StringSelectMenuBuilder()
+            .setCustomId('guild_setup_org_select')
+            .setPlaceholder('Select an organization...')
+            .addOptions(options)
+        );
+        await interaction.editReply({
+          content: `You're a member of ${active.length} organizations. Which one should this server be linked to?`,
+          components: [row],
+        });
+        return;
+      }
+    }
+
+    // No orgs found or user not linked — fall back to manual entry
+    await showManualSetupModal(interaction);
+  } catch (error: unknown) {
+    logger.warn('Auto-resolve org failed, falling back to manual', {
+      userId: interaction.user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await showManualSetupModal(interaction);
+  }
+}
+
+/** Fallback: show the original modal for manual org ID entry */
+async function showManualSetupModal(interaction: ButtonInteraction): Promise<void> {
+  // editReply was already called — show a followUp with instructions
+  // Actually we need to handle both deferred and non-deferred states
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply({
+      content:
+        'Could not auto-detect your organization.\n' +
+        'Please use the button below to enter your Organization ID manually.',
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId('guild_panel_setup_manual')
+            .setLabel('Enter Organization ID')
+            .setEmoji('✏️')
+            .setStyle(ButtonStyle.Primary)
+        ),
+      ],
+    });
+  } else {
+    const modal = buildSetupModal();
+    await interaction.showModal(modal);
+  }
+}
+
+function buildSetupModal(): ModalBuilder {
+  const modal = new ModalBuilder()
+    .setCustomId('guild_setup_modal')
+    .setTitle('Link Server to Organization');
+
+  const orgIdInput = new TextInputBuilder()
+    .setCustomId('org_id')
+    .setStyle(TextInputStyle.Short)
+    .setPlaceholder('e.g. 5788f024-23db-4738-b32a-0dc2162f32bc')
+    .setRequired(true)
+    .setMaxLength(200);
+
+  modal.addComponents(
+    new ActionRowBuilder<ModalActionRowComponentBuilder>().addComponents(orgIdInput)
+  );
+  return modal;
+}
+
+async function handleSetupOrgSelected(
+  interaction: StringSelectMenuInteraction | ButtonInteraction,
+  guildId: string,
+  orgIdOverride?: string
+): Promise<void> {
+  const orgId = orgIdOverride ?? ('values' in interaction ? interaction.values[0] : '');
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ No organization selected.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const guildName = interaction.guild?.name ?? guildId;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    await getGuildOrgService().createOrUpdateMapping(
+      guildId,
+      orgId,
+      guildName,
+      true,
+      interaction.user.id
+    );
+    logger.info('Guild linked to organization via auto-resolve', {
+      guildId,
+      guildName,
+      organizationId: orgId,
+      userId: interaction.user.id,
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(EmbedColors.SUCCESS)
+      .setTitle('✅ Server Linked Successfully')
+      .setDescription(
+        `**${guildName}** is now linked to organization \`${orgId}\`.\n\n` +
+          'Use **⚙️ Settings** to configure Discord features for your org.'
+      )
+      .addFields(
+        { name: 'Server', value: guildName, inline: true },
+        { name: 'Organization ID', value: `\`${orgId}\``, inline: true }
+      )
+      .setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await interaction.editReply({ content: `❌ Failed to link: ${msg}` });
+  }
+}
+
+async function handleSetupFromModal(
+  interaction: ModalSubmitInteraction,
+  guildId: string
+): Promise<void> {
+  const orgId = interaction.fields.getTextInputValue('org_id').trim();
+  const guildName = interaction.guild?.name ?? guildId;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const existing = await getGuildOrgService().resolveOrganization(guildId);
+    if (existing) {
+      await interaction.editReply({
+        content: `⚠️ Already linked to \`${existing}\`. Unlink first.`,
+      });
+      return;
+    }
+
+    await getGuildOrgService().createOrUpdateMapping(
+      guildId,
+      orgId,
+      guildName,
+      true,
+      interaction.user.id
+    );
+    logger.info('Guild linked via manual setup', {
+      guildId,
+      guildName,
+      organizationId: orgId,
+      userId: interaction.user.id,
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(EmbedColors.SUCCESS)
+      .setTitle('✅ Server Linked Successfully')
+      .setDescription(
+        `**${guildName}** is now linked to organization \`${orgId}\`.\n\n` +
+          'Use **⚙️ Settings** to configure Discord features for your org.'
+      )
+      .addFields(
+        { name: 'Server', value: guildName, inline: true },
+        { name: 'Organization ID', value: `\`${orgId}\``, inline: true }
+      )
+      .setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error: unknown) {
+    logger.error('Failed to link guild', {
+      guildId,
+      orgId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await interaction.editReply({
+      content: '❌ Failed to link this server. Check the organization ID and try again.',
+    });
+  }
+}
+
+// =====================================================================
+// C1 — Enhanced status with settings summary
+// =====================================================================
+
+async function handleStatus(
+  interaction: ButtonInteraction | ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  const guildName = interaction.guild?.name ?? guildId;
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const service = getGuildOrgService();
+    const orgId = await service.resolveOrganization(guildId);
+
+    if (!orgId) {
+      const embed = new EmbedBuilder()
+        .setColor(EmbedColors.NEUTRAL)
+        .setTitle('🔗 Not Linked')
+        .setDescription(
+          'This server is not linked to any Fringe Core organization.\n\n' +
+            'Use the **Setup** button to link it, or connect from the web dashboard under ' +
+            '**Organization Settings → Discord Server**.'
+        )
+        .setTimestamp();
+
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    // Build enhanced status with settings summary
+    const embed = new EmbedBuilder()
+      .setColor(EmbedColors.SC_BLUE)
+      .setTitle('🏠 Server Status')
+      .addFields(
+        { name: 'Server', value: guildName, inline: true },
+        { name: 'Organization', value: `\`${orgId}\``, inline: true },
+        { name: '\u200b', value: '\u200b', inline: true } // spacer
+      )
+      .setTimestamp();
+
+    // Fetch settings for the summary
+    try {
+      const allSettings = await discordSettingsService.getSettingsByGuildId(guildId);
+      const settings = allSettings?.[0];
+
+      if (settings) {
+        const lines = buildSettingsSummary(settings);
+        embed.addFields({
+          name: '⚙️ Feature Status',
+          value: lines.join('\n') || '*No features configured*',
+          inline: false,
+        });
+      } else {
+        embed.addFields({
+          name: '⚙️ Feature Status',
+          value: '*No settings configured yet. Use **⚙️ Settings** to get started.*',
+          inline: false,
+        });
+      }
+    } catch {
+      // Settings fetch failed — show status without summary
+      embed.addFields({
+        name: '⚙️ Feature Status',
+        value: '*Could not load settings summary.*',
+        inline: false,
+      });
+    }
+
+    embed.setFooter({ text: 'Use ⚙️ Settings to configure features, or the web dashboard.' });
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error: unknown) {
+    logger.error('Failed to check guild status', {
+      guildId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await interaction.editReply({ content: '❌ Failed to check link status.' });
+  }
+}
+
+/** One ✅/❌ status line for the temporary-voice feature, mirroring voiceAutoCreate's gate. */
+function voiceStatusLine(vc: VoiceChannelSettings | undefined, on: string, off: string): string {
+  const hubs = getConfiguredVoiceHubs(vc);
+  if (!vc?.autoCreateChannels || hubs.length === 0) {
+    return `${off} **Voice** — not configured`;
+  }
+  const hubLabel =
+    hubs.length === 1
+      ? channelMention(hubs[0])
+      : `${channelMention(hubs[0])} (+${hubs.length - 1} more)`;
+  return `${on} **Voice** — hub: ${hubLabel}`;
+}
+
+/** Build a concise summary showing ✅/❌ per settings section */
+export function buildSettingsSummary(
+  settings: import('../../models/DiscordGuildSettings').DiscordGuildSettings
+): string[] {
+  const lines: string[] = [];
+  const on = '✅';
+  const off = '❌';
+
+  // Events
+  const ev = settings.eventSettings;
+  if (ev?.eventAnnouncementChannelId) {
+    lines.push(
+      `${on} **Events** — ${channelMention(ev.eventAnnouncementChannelId)}` +
+        `${ev.remindersEnabled ? ', reminders on' : ''}`
+    );
+  } else {
+    lines.push(`${off} **Events** — not configured`);
+  }
+
+  // Voice — configured when auto-create is on AND a hub exists in the union of the legacy
+  // `hubChannelId` and the `hubChannelIds` array (see voiceStatusLine / voiceAutoCreate.ts).
+  lines.push(voiceStatusLine(settings.voiceChannelSettings, on, off));
+
+  // Tickets
+  const tk = settings.ticketSettings;
+  if (tk?.enabled) {
+    const support = tk.supportRoleId ? `, support: ${roleMention(tk.supportRoleId)}` : '';
+    lines.push(`${on} **Tickets** — enabled${support}`);
+  } else {
+    lines.push(`${off} **Tickets** — disabled`);
+  }
+
+  // Notifications
+  const nt = settings.notificationPreferences;
+  if (nt?.announcementChannelId) {
+    lines.push(`${on} **Notifications** — ${channelMention(nt.announcementChannelId)}`);
+  } else {
+    lines.push(`${off} **Notifications** — not configured`);
+  }
+
+  // Welcome
+  const wl = settings.welcomeSettings;
+  if (wl?.welcomeEnabled && wl.welcomeChannelId) {
+    lines.push(`${on} **Welcome** — ${channelMention(wl.welcomeChannelId)}`);
+  } else {
+    lines.push(`${off} **Welcome** — disabled`);
+  }
+
+  // Recruitment
+  const rc = settings.recruitmentSettings;
+  if (rc?.enabled) {
+    lines.push(`${on} **Recruitment** — enabled`);
+  } else {
+    lines.push(`${off} **Recruitment** — disabled`);
+  }
+
+  // Role Sync
+  const rs = settings.roleSyncSettings;
+  if (rs?.enabled) {
+    lines.push(`${on} **Role Sync** — enabled`);
+  } else {
+    lines.push(`${off} **Role Sync** — disabled`);
+  }
+
+  // Audit Log
+  const al = settings.auditLogSettings;
+  if (al?.enabled && al.logChannelId) {
+    lines.push(`${on} **Audit Log** — ${channelMention(al.logChannelId)}`);
+  } else {
+    lines.push(`${off} **Audit Log** — disabled`);
+  }
+
+  return lines;
+}
+
+async function handleUnlink(
+  interaction: ButtonInteraction | ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const service = getGuildOrgService();
+    const orgId = await service.resolveOrganization(guildId);
+
+    if (!orgId) {
+      await interaction.editReply({
+        content: 'ℹ️ This server is not linked to any organization.',
+      });
+      return;
+    }
+
+    await service.deactivateMapping(guildId, interaction.user.id);
+
+    logger.info('Guild unlinked from organization via /guild unlink', {
+      guildId,
+      organizationId: orgId,
+      userId: interaction.user.id,
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(EmbedColors.WARNING)
+      .setTitle('🔓 Server Unlinked')
+      .setDescription(`This server has been unlinked from organization \`${orgId}\`.`)
+      .setFooter({ text: 'Use the Setup button to link to a different organization.' })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error: unknown) {
+    logger.error('Failed to unlink guild', {
+      guildId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    await interaction.editReply({ content: '❌ Failed to unlink this server.' });
+  }
+}
+
+// =====================================================================
+// A1 — /guild settings sub-panel
+// =====================================================================
+
+/** Settings categories with their most important toggles/fields */
+interface SettingsCategory {
+  label: string;
+  value: string;
+  emoji: string;
+  description: string;
+}
+
+const SETTINGS_CATEGORIES: SettingsCategory[] = [
+  {
+    label: 'Events',
+    value: 'events',
+    emoji: '📅',
+    description: 'Announcement channel, mentions, reminders',
+  },
+  {
+    label: 'Voice Channels',
+    value: 'voice',
+    emoji: '🔊',
+    description: 'Auto-create, hub channel, templates',
+  },
+  {
+    label: 'Tickets',
+    value: 'tickets',
+    emoji: '🎫',
+    description: 'Support system, roles, auto-close',
+  },
+  {
+    label: 'Notifications',
+    value: 'notifications',
+    emoji: '🔔',
+    description: 'Channels, member join/leave alerts',
+  },
+  {
+    label: 'Welcome',
+    value: 'welcome',
+    emoji: '👋',
+    description: 'Join/leave messages, auto-roles',
+  },
+  {
+    label: 'Recruitment',
+    value: 'recruitment',
+    emoji: '📋',
+    description: 'Application channel, roles, messages',
+  },
+  {
+    label: 'Role Sync',
+    value: 'rolesync',
+    emoji: '🔄',
+    description: 'Org role mapping, auto-management',
+  },
+  {
+    label: 'Audit Log',
+    value: 'auditlog',
+    emoji: '📝',
+    description: 'Event logging, channel selection',
+  },
+];
+
+// =====================================================================
+// C2 — Help settings guide
+// =====================================================================
+
+async function handleHelpSettings(interaction: ButtonInteraction): Promise<void> {
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('❓ Settings Guide')
+    .setDescription(
+      'Fringe Core provides extensive Discord integration. ' +
+        'Configure features via **⚙️ Settings** above, or the web dashboard.\n\u200b'
+    )
+    .addFields(
+      {
+        name: '📅 Events',
+        value:
+          'Announcement channel, role mentions, reminders, RSVP, auto-delete, Discord Scheduled Events, event threads, archiving.',
+        inline: false,
+      },
+      {
+        name: '🔊 Voice Channels',
+        value:
+          'Join-to-create hubs, auto-delete, name templates, user limits, bitrate, moderator role, interface buttons.',
+        inline: false,
+      },
+      {
+        name: '🎫 Tickets',
+        value:
+          'Support/escalation roles, form channel, transcripts, auto-close/escalate, member close, satisfaction rating, quick responses.',
+        inline: false,
+      },
+      {
+        name: '🔔 Notifications',
+        value:
+          'Announcement/system/moderation/audit channels, member join/leave/role-change alerts, mention roles.',
+        inline: false,
+      },
+      {
+        name: '👋 Welcome',
+        value:
+          'Welcome/goodbye messages in-channel or DM, auto-role assignment on join, template variables ({server}, {user}, {memberCount}).',
+        inline: false,
+      },
+      {
+        name: '📋 Recruitment',
+        value:
+          'Application channel, accept/deny/pending roles, auto-assign, confirmation/welcome/denied messages, invite form binding.',
+        inline: false,
+      },
+      {
+        name: '🔄 Role Sync',
+        value:
+          'Map org roles to Discord roles, auto-management, remove on leave, verified role for RSI-linked members.',
+        inline: false,
+      },
+      {
+        name: '📝 Audit Log',
+        value:
+          'Log message edits/deletes, role changes, channel changes, member join/leave to a designated channel.',
+        inline: false,
+      }
+    )
+    .setFooter({
+      text: 'Toggle basic settings via ⚙️ Settings. For channel/role pickers, use the web dashboard.',
+    });
+
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+}
+
+async function handleSettingsPanel(interaction: ButtonInteraction, guildId: string): Promise<void> {
+  // Check if guild is linked first
+  const orgId = await getGuildOrgService().resolveOrganization(guildId);
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ This server must be linked to an organization first. Use **Setup**.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('guild_settings_category')
+      .setPlaceholder('Select a settings category...')
+      .addOptions(
+        SETTINGS_CATEGORIES.map(c => ({
+          label: c.label,
+          value: c.value,
+          emoji: c.emoji,
+          description: c.description,
+        }))
+      )
+  );
+
+  await interaction.reply({
+    content: '⚙️ **Server Settings** — Select a category to view and configure:',
+    components: [row],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+// ── Feature flags (ARCH-11 admin surface) ─────────────────────────
+
+/** Resolve every registered feature flag against a guild's stored overrides. */
+function describeAllFeatureFlags(overrides: GuildFeatureFlagOverrides): ResolvedFeatureFlag[] {
+  return Object.values(BotFeatureFlag).map(flag => describeGuildFeatureFlag(flag, overrides));
+}
+
+/** Human-readable note for which resolver layer is deciding a flag's state. */
+function featureFlagSourceLabel(resolved: ResolvedFeatureFlag): string {
+  if (resolved.operatorLocked) {
+    return '🔒 Operator-locked (environment override)';
+  }
+  return resolved.source === 'guild-override' ? 'Server override' : 'Default';
+}
+
+/** Build the feature-flags status embed (one field per registered flag). */
+function buildFeatureFlagsEmbed(resolved: ResolvedFeatureFlag[]): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('🚩 Feature Flags')
+    .setDescription(
+      'Enable or disable optional bot features for this server. Select a flag below to toggle it.'
+    );
+
+  for (const resolved_ of resolved) {
+    const def = BOT_FEATURE_FLAG_REGISTRY[resolved_.flag];
+    const state = resolved_.enabled ? '✅ Enabled' : '❌ Disabled';
+    embed.addFields({
+      name: `${state} — ${def.label}`,
+      value: `${def.description}\n_${featureFlagSourceLabel(resolved_)}_`,
+      inline: false,
+    });
+  }
+
+  return embed;
+}
+
+/** Build the select menu for toggling a feature flag (one option per flag). */
+function buildFeatureFlagsSelect(
+  resolved: ResolvedFeatureFlag[]
+): ActionRowBuilder<StringSelectMenuBuilder> {
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(GUILD_FLAGS_TOGGLE_ID)
+      .setPlaceholder('Select a feature to toggle…')
+      .addOptions(
+        resolved.map(resolved_ => {
+          const def = BOT_FEATURE_FLAG_REGISTRY[resolved_.flag];
+          const next = resolved_.guildEnabled ? 'disable' : 'enable';
+          return {
+            label: def.label,
+            value: resolved_.flag,
+            emoji: resolved_.enabled ? '✅' : '❌',
+            description: `Currently ${resolved_.guildEnabled ? 'on' : 'off'} — select to ${next}`,
+          };
+        })
+      )
+  );
+}
+
+/**
+ * ARCH-11 admin surface: render the per-guild feature-flag toggle panel. Lists
+ * every registered flag with its effective state + deciding layer and a select
+ * menu to flip one. Reached via the `/guild` panel, which is gated by the slash
+ * command's `ManageGuild` default member permission. Read-only until a flag is
+ * selected.
+ */
+async function handleFeatureFlagsPanel(
+  interaction: ButtonInteraction,
+  guildId: string
+): Promise<void> {
+  const orgId = await getGuildOrgService().resolveOrganization(guildId);
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ This server must be linked to an organization first. Use **Setup**.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const overrides = await discordSettingsService.getGuildFeatureFlagOverrides(orgId, guildId);
+  const resolved = describeAllFeatureFlags(overrides);
+
+  await interaction.reply({
+    embeds: [buildFeatureFlagsEmbed(resolved)],
+    components: [buildFeatureFlagsSelect(resolved)],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/**
+ * Toggle the selected feature flag's per-guild override (ARCH-11). Flips the
+ * guild's own lever (`guildOverride ?? default`) and persists it; the operator
+ * env kill-switch still wins for the effective state, so a notice is shown when
+ * the flag is operator-locked. Re-renders the panel in place.
+ */
+async function handleFeatureFlagToggle(
+  interaction: StringSelectMenuInteraction,
+  guildId: string
+): Promise<void> {
+  const selected = interaction.values[0];
+  const flag = (Object.values(BotFeatureFlag) as string[]).includes(selected)
+    ? (selected as BotFeatureFlag)
+    : null;
+  if (flag === null) {
+    await interaction.reply({ content: '❌ Unknown feature flag.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const orgId = await getGuildOrgService().resolveOrganization(guildId);
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ Server not linked to an organization.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const before = await discordSettingsService.getGuildFeatureFlagOverrides(orgId, guildId);
+    const newValue = !describeGuildFeatureFlag(flag, before).guildEnabled;
+
+    await discordSettingsService.setGuildFeatureFlagOverride(
+      orgId,
+      guildId,
+      flag,
+      newValue,
+      interaction.user.id
+    );
+
+    const after = await discordSettingsService.getGuildFeatureFlagOverrides(orgId, guildId);
+    const resolved = describeAllFeatureFlags(after);
+    const updated = describeGuildFeatureFlag(flag, after);
+    const def = BOT_FEATURE_FLAG_REGISTRY[flag];
+
+    const lines = [`${newValue ? '✅ Enabled' : '❌ Disabled'} **${def.label}** for this server.`];
+    if (updated.operatorLocked) {
+      lines.push(
+        `⚠️ An operator override (environment) is active, so the effective state stays **${
+          updated.enabled ? 'enabled' : 'disabled'
+        }** until it is cleared.`
+      );
+    }
+
+    await interaction.editReply({
+      content: lines.join('\n'),
+      embeds: [buildFeatureFlagsEmbed(resolved)],
+      components: [buildFeatureFlagsSelect(resolved)],
+    });
+    logger.info(
+      `Guild feature flag toggled: org=${orgId} guild=${guildId} flag=${flag} value=${newValue} by=${interaction.user.id}`
+    );
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Failed to update feature flag';
+    await interaction.editReply({ content: `❌ ${msg}` });
+  }
+}
+
+async function handleSettingsCategorySelected(
+  interaction: StringSelectMenuInteraction,
+  guildId: string
+): Promise<void> {
+  const category = interaction.values[0];
+  const orgId = await getGuildOrgService().resolveOrganization(guildId);
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ Server not linked to an organization.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const settings = await discordSettingsService.getOrCreateSettings(orgId, guildId);
+
+    switch (category) {
+      case 'events':
+        await showEventSettings(interaction, settings);
+        break;
+      case 'voice':
+        await showVoiceSettings(interaction, settings);
+        break;
+      case 'tickets':
+        await showTicketSettings(interaction, settings);
+        break;
+      case 'notifications':
+        await showNotificationSettings(interaction, settings);
+        break;
+      case 'welcome':
+        await showWelcomeSettings(interaction, settings);
+        break;
+      case 'recruitment':
+        await showRecruitmentSettings(interaction, settings);
+        break;
+      case 'rolesync':
+        await showRoleSyncSettings(interaction, settings);
+        break;
+      case 'auditlog':
+        await showAuditLogSettings(interaction, settings);
+        break;
+      default:
+        await interaction.editReply({ content: '❌ Unknown category.' });
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await interaction.editReply({ content: `❌ Failed to load settings: ${msg}` });
+  }
+}
+
+// ── Per-category settings views ──────────────────────────────
+
+type GuildSettings = import('../../models/DiscordGuildSettings').DiscordGuildSettings;
+
+function ch(id?: string): string {
+  return id ? channelMention(id) : '*not set*';
+}
+
+function rl(id?: string): string {
+  return id ? roleMention(id) : '*not set*';
+}
+
+function bool(val?: boolean): string {
+  return val ? '✅ On' : '❌ Off';
+}
+
+async function showEventSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const ev: Partial<EventSettings> = settings.eventSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('📅 Event Settings')
+    .addFields(
+      { name: 'Announcement Channel', value: ch(ev.eventAnnouncementChannelId), inline: true },
+      { name: 'Reminders', value: bool(ev.remindersEnabled), inline: true },
+      { name: 'Event RSVP', value: bool(ev.allowEventRsvp), inline: true },
+      { name: 'Create Discord Event', value: bool(ev.createDiscordEvent), inline: true },
+      { name: 'Auto-Delete Messages', value: bool(ev.autoDeleteEventMessages), inline: true },
+      { name: 'Event Thread', value: bool(ev.createEventThread), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for advanced event settings.' });
+
+  const toggleRow = buildToggleRow('events', [
+    { label: 'Reminders', field: 'remindersEnabled', current: ev.remindersEnabled },
+    { label: 'RSVP', field: 'allowEventRsvp', current: ev.allowEventRsvp },
+    { label: 'Discord Event', field: 'createDiscordEvent', current: ev.createDiscordEvent },
+    { label: 'Event Thread', field: 'createEventThread', current: ev.createEventThread },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showVoiceSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const vc: Partial<VoiceChannelSettings> = settings.voiceChannelSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('🔊 Voice Channel Settings')
+    .addFields(
+      { name: 'Auto-Create', value: bool(vc.autoCreateChannels), inline: true },
+      { name: 'Hub Channel', value: formatVoiceHubs(vc), inline: true },
+      { name: 'Auto-Delete Empty', value: bool(vc.autoDeleteEmptyChannels), inline: true },
+      { name: 'User Can Rename', value: bool(vc.userCanRename), inline: true },
+      { name: 'Interface Message', value: bool(vc.interfaceMessageEnabled), inline: true },
+      { name: 'Owner Transfer', value: bool(vc.ownershipTransferEnabled), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for templates and advanced voice settings.' });
+
+  const toggleRow = buildToggleRow('voice', [
+    { label: 'Auto-Create', field: 'autoCreateChannels', current: vc.autoCreateChannels },
+    { label: 'Auto-Delete', field: 'autoDeleteEmptyChannels', current: vc.autoDeleteEmptyChannels },
+    { label: 'User Rename', field: 'userCanRename', current: vc.userCanRename },
+    {
+      label: 'Interface Msg',
+      field: 'interfaceMessageEnabled',
+      current: vc.interfaceMessageEnabled,
+    },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showTicketSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const tk: Partial<TicketSettings> = settings.ticketSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('🎫 Ticket Settings')
+    .addFields(
+      { name: 'Enabled', value: bool(tk.enabled), inline: true },
+      { name: 'Support Role', value: rl(tk.supportRoleId), inline: true },
+      { name: 'Form Channel', value: ch(tk.formChannelId), inline: true },
+      { name: 'Transcript Channel', value: ch(tk.transcriptChannelId), inline: true },
+      { name: 'Auto-Close (hrs)', value: String(tk.autoCloseHours ?? 'off'), inline: true },
+      { name: 'Member Close', value: bool(tk.allowMemberClose), inline: true },
+      {
+        name: 'Private Channels',
+        value: bool(tk.ticketChannelEnabled),
+        inline: true,
+      },
+      {
+        name: 'Ticket Category',
+        value: tk.ticketChannelCategoryId ? ch(tk.ticketChannelCategoryId) : '*not set*',
+        inline: true,
+      }
+    )
+    .setFooter({ text: 'Use the web dashboard for quick responses and advanced ticket config.' });
+
+  const toggleRow = buildToggleRow('tickets', [
+    { label: 'Enable Tickets', field: 'enabled', current: tk.enabled },
+    { label: 'Member Close', field: 'allowMemberClose', current: tk.allowMemberClose },
+    {
+      label: 'Mention Support',
+      field: 'mentionSupportRoleOnCreate',
+      current: tk.mentionSupportRoleOnCreate,
+    },
+    { label: 'Notify Close', field: 'notifyOnClose', current: tk.notifyOnClose },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showNotificationSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const nt: Partial<NotificationPreferences> = settings.notificationPreferences ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('🔔 Notification Settings')
+    .addFields(
+      { name: 'Announcement Channel', value: ch(nt.announcementChannelId), inline: true },
+      { name: 'System Alert Channel', value: ch(nt.systemAlertChannelId), inline: true },
+      { name: 'Member Join', value: bool(nt.memberJoinNotifications), inline: true },
+      { name: 'Member Leave', value: bool(nt.memberLeaveNotifications), inline: true },
+      { name: 'Role Changes', value: bool(nt.roleChangeNotifications), inline: true },
+      { name: 'Exclude Bots', value: bool(nt.excludeBotJoins), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for mention role configuration.' });
+
+  const toggleRow = buildToggleRow('notifications', [
+    { label: 'Member Join', field: 'memberJoinNotifications', current: nt.memberJoinNotifications },
+    {
+      label: 'Member Leave',
+      field: 'memberLeaveNotifications',
+      current: nt.memberLeaveNotifications,
+    },
+    {
+      label: 'Role Changes',
+      field: 'roleChangeNotifications',
+      current: nt.roleChangeNotifications,
+    },
+    { label: 'Exclude Bots', field: 'excludeBotJoins', current: nt.excludeBotJoins },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showWelcomeSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const wl: Partial<WelcomeSettings> = settings.welcomeSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('👋 Welcome Settings')
+    .addFields(
+      { name: 'Welcome', value: bool(wl.welcomeEnabled), inline: true },
+      { name: 'Welcome Channel', value: ch(wl.welcomeChannelId), inline: true },
+      { name: 'Welcome DM', value: bool(wl.welcomeDmEnabled), inline: true },
+      { name: 'Goodbye', value: bool(wl.goodbyeEnabled), inline: true },
+      { name: 'Goodbye Channel', value: ch(wl.goodbyeChannelId), inline: true },
+      {
+        name: 'Auto-Roles',
+        value: wl.autoRoleIds?.length ? wl.autoRoleIds.map(roleMention).join(', ') : '*none*',
+        inline: false,
+      }
+    )
+    .setFooter({ text: 'Use the web dashboard to edit welcome/goodbye messages.' });
+
+  const toggleRow = buildToggleRow('welcome', [
+    { label: 'Welcome', field: 'welcomeEnabled', current: wl.welcomeEnabled },
+    { label: 'Welcome DM', field: 'welcomeDmEnabled', current: wl.welcomeDmEnabled },
+    { label: 'Goodbye', field: 'goodbyeEnabled', current: wl.goodbyeEnabled },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showRecruitmentSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const rc: Partial<RecruitmentSettings> = settings.recruitmentSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('📋 Recruitment Settings')
+    .addFields(
+      { name: 'Enabled', value: bool(rc.enabled), inline: true },
+      { name: 'Application Channel', value: ch(rc.applicationChannelId), inline: true },
+      { name: 'Accept Role', value: rl(rc.acceptRoleId), inline: true },
+      { name: 'Auto-Assign Role', value: bool(rc.autoAssignRole), inline: true },
+      { name: 'Require Verification', value: bool(rc.requireDiscordVerification), inline: true },
+      { name: 'Invite Form', value: bool(rc.inviteFormEnabled), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for messages and role configuration.' });
+
+  const toggleRow = buildToggleRow('recruitment', [
+    { label: 'Enable', field: 'enabled', current: rc.enabled },
+    { label: 'Auto-Assign', field: 'autoAssignRole', current: rc.autoAssignRole },
+    {
+      label: 'Require Verify',
+      field: 'requireDiscordVerification',
+      current: rc.requireDiscordVerification,
+    },
+    { label: 'Invite Form', field: 'inviteFormEnabled', current: rc.inviteFormEnabled },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showRoleSyncSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const rs: Partial<RoleSyncSettings> = settings.roleSyncSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('🔄 Role Sync Settings')
+    .addFields(
+      { name: 'Enabled', value: bool(rs.enabled), inline: true },
+      { name: 'Auto-Management', value: bool(rs.autoRoleManagement), inline: true },
+      { name: 'Remove on Leave', value: bool(rs.removeRolesOnLeave), inline: true },
+      { name: 'Sync on Bot Join', value: bool(rs.syncOnBotJoin), inline: true },
+      { name: 'Verified Role', value: rl(rs.verifiedRoleId), inline: true },
+      { name: 'Error Channel', value: ch(rs.syncErrorNotificationChannelId), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for role mappings.' });
+
+  const toggleRow = buildToggleRow('rolesync', [
+    { label: 'Enable', field: 'enabled', current: rs.enabled },
+    { label: 'Auto-Manage', field: 'autoRoleManagement', current: rs.autoRoleManagement },
+    { label: 'Remove on Leave', field: 'removeRolesOnLeave', current: rs.removeRolesOnLeave },
+    { label: 'Sync on Join', field: 'syncOnBotJoin', current: rs.syncOnBotJoin },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+async function showAuditLogSettings(
+  interaction: StringSelectMenuInteraction,
+  settings: GuildSettings
+): Promise<void> {
+  const al: Partial<AuditLogSettings> = settings.auditLogSettings ?? {};
+  const embed = new EmbedBuilder()
+    .setColor(EmbedColors.SC_BLUE)
+    .setTitle('📝 Audit Log Settings')
+    .addFields(
+      { name: 'Enabled', value: bool(al.enabled), inline: true },
+      { name: 'Log Channel', value: ch(al.logChannelId), inline: true },
+      { name: 'Message Edits', value: bool(al.logMessageEdits), inline: true },
+      { name: 'Message Deletes', value: bool(al.logMessageDeletes), inline: true },
+      { name: 'Role Changes', value: bool(al.logRoleChanges), inline: true },
+      { name: 'Member Join/Leave', value: bool(al.logMemberJoinLeave), inline: true }
+    )
+    .setFooter({ text: 'Use the web dashboard for ignored channel configuration.' });
+
+  const toggleRow = buildToggleRow('auditlog', [
+    { label: 'Enable', field: 'enabled', current: al.enabled },
+    { label: 'Msg Edits', field: 'logMessageEdits', current: al.logMessageEdits },
+    { label: 'Msg Deletes', field: 'logMessageDeletes', current: al.logMessageDeletes },
+    { label: 'Join/Leave', field: 'logMemberJoinLeave', current: al.logMemberJoinLeave },
+  ]);
+
+  await interaction.editReply({ embeds: [embed], components: [toggleRow] });
+}
+
+// ── Toggle handling ──────────────────────────────────────────
+
+interface ToggleOption {
+  label: string;
+  field: string;
+  current?: boolean;
+}
+
+function buildToggleRow(
+  category: string,
+  toggles: ToggleOption[]
+): ActionRowBuilder<StringSelectMenuBuilder> {
+  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(buildGuildSettingsToggleId(category))
+      .setPlaceholder('Toggle a setting...')
+      .addOptions(
+        toggles.map(t => ({
+          label: `${t.current ? '✅' : '❌'} ${t.label}`,
+          value: t.field,
+          description: `Currently ${t.current ? 'enabled' : 'disabled'} — click to toggle`,
+        }))
+      )
+  );
+}
+
+/** Map from settings category → entity JSONB field + service update method name */
+const CATEGORY_FIELD_MAP: Record<string, string> = {
+  events: 'eventSettings',
+  voice: 'voiceChannelSettings',
+  tickets: 'ticketSettings',
+  notifications: 'notificationPreferences',
+  welcome: 'welcomeSettings',
+  recruitment: 'recruitmentSettings',
+  rolesync: 'roleSyncSettings',
+  auditlog: 'auditLogSettings',
+};
+
+const CATEGORY_UPDATE_MAP: Record<
+  string,
+  (
+    orgId: string,
+    guildId: string,
+    partial: Record<string, unknown>,
+    userId: string
+  ) => Promise<unknown>
+> = {
+  events: (o, g, p, u) => discordSettingsService.updateEventSettings(o, g, p, u),
+  voice: (o, g, p, u) => discordSettingsService.updateVoiceChannelSettings(o, g, p, u),
+  tickets: (o, g, p, u) => discordSettingsService.updateTicketSettings(o, g, p, u),
+  notifications: (o, g, p, u) => discordSettingsService.updateNotificationPreferences(o, g, p, u),
+  welcome: (o, g, p, u) => discordSettingsService.updateWelcomeSettings(o, g, p, u),
+  recruitment: (o, g, p, u) => discordSettingsService.updateRecruitmentSettings(o, g, p, u),
+  rolesync: (o, g, p, u) => discordSettingsService.updateRoleSyncSettings(o, g, p, u),
+  auditlog: (o, g, p, u) => discordSettingsService.updateAuditLogSettings(o, g, p, u),
+};
+
+async function handleSettingsToggle(
+  interaction: StringSelectMenuInteraction,
+  guildId: string,
+  category: string
+): Promise<void> {
+  const field = interaction.values[0];
+
+  const orgId = await getGuildOrgService().resolveOrganization(guildId);
+  if (!orgId) {
+    await interaction.reply({
+      content: '❌ Server not linked to an organization.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const settings = await discordSettingsService.getOrCreateSettings(orgId, guildId);
+    const jsonbField = CATEGORY_FIELD_MAP[category];
+    if (!jsonbField) {
+      await interaction.editReply({ content: '❌ Unknown category.' });
+      return;
+    }
+
+    // Read current value and toggle
+    const sectionData =
+      (settings as unknown as Record<string, Record<string, unknown>>)[jsonbField] ?? {};
+    const currentValue = sectionData[field] as boolean | undefined;
+    const newValue = !currentValue;
+
+    // Update via the service's deep-merge method
+    const updateFn = CATEGORY_UPDATE_MAP[category];
+    if (updateFn) {
+      await updateFn(orgId, guildId, { [field]: newValue }, interaction.user.id);
+    } else {
+      // Generic fallback: direct save
+      sectionData[field] = newValue;
+      (settings as unknown as Record<string, unknown>)[jsonbField] = sectionData;
+      settings.lastModifiedBy = interaction.user.id;
+      await discordSettingsService.saveSettings(settings);
+    }
+
+    const emoji = newValue ? '✅' : '❌';
+    await interaction.editReply({
+      content: `${emoji} **${field}** is now **${newValue ? 'enabled' : 'disabled'}** for ${category}.`,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await interaction.editReply({ content: `❌ Failed to toggle setting: ${msg}` });
+  }
+}
+
+// Placeholder for channel modal — directs to web dashboard
+async function handleSettingsChannelModal(
+  _interaction: StringSelectMenuInteraction,
+  _guildId: string
+): Promise<void> {
+  // Future: implement channel picker modals for bot-based channel selection
+  // For now, channel pickers are web-dashboard only
+}
+
+async function handleSettingsChannelModalSubmit(
+  _interaction: ModalSubmitInteraction,
+  _guildId: string
+): Promise<void> {
+  // Future: handle channel modal submissions
+}

@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TradingRoute = exports.RouteVisibility = exports.RouteStatus = void 0;
 const shared_types_1 = require("@sc-fleet-manager/shared-types");
@@ -68,7 +67,7 @@ __decorate([
         type: 'varchar',
         default: shared_types_1.RouteVisibility.ORGANIZATION,
     }),
-    __metadata("design:type", typeof (_a = typeof shared_types_1.RouteVisibility !== "undefined" && shared_types_1.RouteVisibility) === "function" ? _a : Object)
+    __metadata("design:type", String)
 ], TradingRoute.prototype, "visibility", void 0);
 __decorate([
     (0, typeorm_1.Column)('simple-json'),
@@ -95,7 +94,7 @@ __decorate([
         type: 'varchar',
         default: shared_types_1.RouteStatus.ACTIVE,
     }),
-    __metadata("design:type", typeof (_b = typeof shared_types_1.RouteStatus !== "undefined" && shared_types_1.RouteStatus) === "function" ? _b : Object)
+    __metadata("design:type", String)
 ], TradingRoute.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)('simple-json', { nullable: true }),

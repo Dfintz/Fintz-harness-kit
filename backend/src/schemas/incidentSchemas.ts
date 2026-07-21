@@ -1,0 +1,79 @@
+import Joi from 'joi';
+
+/**
+ * Incident validation schemas
+ */
+
+export const incidentSchemas = {
+    // Report a breach
+    reportBreach: Joi.object({
+        title: Joi.string().trim().min(3).max(200).required()
+            .messages({
+                'string.empty': 'Title is required',
+                'string.min': 'Title must be at least 3 characters',
+                'string.max': 'Title must not exceed 200 characters'
+            }),
+        description: Joi.string().trim().min(10).max(5000).required()
+            .messages({
+                'string.empty': 'Description is required',
+                'string.min': 'Description must be at least 10 characters',
+                'string.max': 'Description must not exceed 5000 characters'
+            }),
+        severity: Joi.string().valid('critical', 'high', 'medium', 'low').required()
+            .messages({
+                'any.only': 'Severity must be one of: critical, high, medium, low',
+                'any.required': 'Severity is required'
+            }),
+        affectedUsers: Joi.array().items(Joi.string().trim()).default([])
+            .messages({
+                'array.base': 'Affected users must be an array of user IDs'
+            }),
+        affectedDataTypes: Joi.array().items(Joi.string().trim()).min(1).required()
+            .messages({
+                'array.base': 'Affected data types must be an array',
+                'array.min': 'At least one affected data type is required',
+                'any.required': 'Affected data types are required'
+            })
+    }),
+
+    // Update status
+    updateStatus: Joi.object({
+        status: Joi.string().valid('INVESTIGATING', 'CONTAINED', 'NOTIFIED', 'RESOLVED').required()
+            .messages({
+                'any.only': 'Status must be one of: INVESTIGATING, CONTAINED, NOTIFIED, RESOLVED',
+                'any.required': 'Status is required'
+            })
+    }),
+
+    // Add remediation step
+    addRemediationStep: Joi.object({
+        step: Joi.string().trim().min(5).max(1000).required()
+            .messages({
+                'string.empty': 'Remediation step is required',
+                'string.min': 'Remediation step must be at least 5 characters',
+                'string.max': 'Remediation step must not exceed 1000 characters',
+                'any.required': 'Remediation step is required'
+            })
+    }),
+
+    // Add recommendation
+    addRecommendation: Joi.object({
+        recommendation: Joi.string().trim().min(5).max(1000).required()
+            .messages({
+                'string.empty': 'Recommendation is required',
+                'string.min': 'Recommendation must be at least 5 characters',
+                'string.max': 'Recommendation must not exceed 1000 characters',
+                'any.required': 'Recommendation is required'
+            })
+    })
+};
+
+export const paramSchemas = {
+    incidentId: Joi.object({
+        id: Joi.string().uuid().required()
+            .messages({
+                'string.guid': 'Invalid incident ID format',
+                'any.required': 'Incident ID is required'
+            })
+    })
+};

@@ -319,7 +319,7 @@ class WebAuthnController {
                     return;
                 }
                 const normalizedCode = String(totpCode).trim().toUpperCase();
-                const verified = await this.twoFactorService.verifyToken(user.twoFactorSecret, normalizedCode, userId);
+                const verified = this.twoFactorService.verifyToken(user.twoFactorSecret, normalizedCode);
                 if (!verified) {
                     res.status(401).json({
                         error: 'Verification failed',

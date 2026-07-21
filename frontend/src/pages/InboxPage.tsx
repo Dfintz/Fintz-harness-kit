@@ -1,5 +1,6 @@
 import { MyInvitationsPanel } from '@/components/organization/MyInvitationsPanel';
 import { TicketManagement } from '@/components/TicketManagement';
+import { TicketCategory } from '@/services/ticketService';
 import {
     useAddInboxReply,
     useInboxMessageDetail,
@@ -36,7 +37,7 @@ import {
     Typography,
 } from '@mui/material';
 import React, { useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import {
     type ContactRequestReplyItem,
@@ -56,6 +57,12 @@ function tabKeyToIndex(key: string | null): number {
   return Math.max(0, idx);
 }
 
+function parseTicketCategory(value: string | null): TicketCategory | undefined {
+  if (!value) return undefined;
+  const values = Object.values(TicketCategory);
+  return values.includes(value as TicketCategory) ? (value as TicketCategory) : undefined;
+}
+
 /**
  * InboxPage - Unified communication hub
  *
@@ -67,14 +74,26 @@ function tabKeyToIndex(key: string | null): number {
 export const InboxPage: React.FC = () => {
   const theme = useTheme();
   const { requestId } = useParams<{ requestId?: string }>();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // Tab state — "messages", "invitations", or "tickets"
-  const activeTab = tabKeyToIndex(searchParams.get('tab'));
+  const isTicketsPath = location.pathname === '/tickets' || location.pathname.startsWith('/tickets/');
+  const ticketCategoryFilter = parseTicketCategory(searchParams.get('category'));
+  const activeTab = isTicketsPath && !searchParams.get('tab') ? 2 : tabKeyToIndex(searchParams.get('tab'));
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     const key = TAB_KEYS[newValue];
-    setSearchParams(key === 'messages' ? {} : { tab: key });
+    if (key === 'messages') {
+      setSearchParams({});
+      return;
+    }
+
+    const next: Record<string, string> = { tab: key };
+    if (key === 'tickets' && ticketCategoryFilter) {
+      next.category = ticketCategoryFilter;
+    }
+    setSearchParams(next);
   };
 
   // Server state via React Query
@@ -404,7 +423,7 @@ export const InboxPage: React.FC = () => {
       {activeTab === 1 && <MyInvitationsPanel />}
 
       {/* Tickets tab — reuses TicketManagement (HR, Recruitment, Diplomacy) */}
-      {activeTab === 2 && <TicketManagement />}
+      {activeTab === 2 && <TicketManagement categoryFilter={ticketCategoryFilter} />}
     </Box>
   );
 };

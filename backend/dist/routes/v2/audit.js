@@ -4,13 +4,12 @@ exports.router = void 0;
 const express_1 = require("express");
 const adminAuth_1 = require("../../middleware/adminAuth");
 const auth_1 = require("../../middleware/auth");
-const rateLimiting_1 = require("../../middleware/rateLimiting");
 const AuditService_1 = require("../../services/audit/AuditService");
 const router = (0, express_1.Router)();
 exports.router = router;
 router.use(auth_1.authenticate);
 router.use(adminAuth_1.requireAdmin);
-router.use(rateLimiting_1.adminRateLimiter);
+router.use((0, adminAuth_1.adminRateLimit)());
 router.get('/logs', (req, res) => {
     const { userId, action, category, severity, correlationId, startDate, endDate, limit, offset } = req.query;
     const entries = AuditService_1.auditService.query({

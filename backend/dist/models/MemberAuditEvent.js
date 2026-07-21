@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MemberAuditEvent = void 0;
 const shared_types_1 = require("@sc-fleet-manager/shared-types");
@@ -93,14 +92,14 @@ __decorate([
         type: 'varchar',
         length: 40,
     }),
-    __metadata("design:type", typeof (_a = typeof shared_types_1.MemberFlagType !== "undefined" && shared_types_1.MemberFlagType) === "function" ? _a : Object)
+    __metadata("design:type", String)
 ], MemberAuditEvent.prototype, "flagType", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'varchar',
         length: 10,
     }),
-    __metadata("design:type", typeof (_b = typeof shared_types_1.FlagSeverity !== "undefined" && shared_types_1.FlagSeverity) === "function" ? _b : Object)
+    __metadata("design:type", String)
 ], MemberAuditEvent.prototype, "severity", void 0);
 __decorate([
     (0, typeorm_1.Column)({
@@ -108,7 +107,7 @@ __decorate([
         length: 12,
         default: shared_types_1.FlagStatus.OPEN,
     }),
-    __metadata("design:type", typeof (_c = typeof shared_types_1.FlagStatus !== "undefined" && shared_types_1.FlagStatus) === "function" ? _c : Object)
+    __metadata("design:type", String)
 ], MemberAuditEvent.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text' }),

@@ -36,7 +36,7 @@ __decorate([
 ], OrgActivityScore.prototype, "score", void 0);
 __decorate([
     (0, typeorm_1.Column)({ length: 20 }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], OrgActivityScore.prototype, "tier", void 0);
 __decorate([
     (0, typeorm_1.Column)('jsonb'),

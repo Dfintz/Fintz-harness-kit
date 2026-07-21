@@ -32,8 +32,12 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TradingControllerV2 = void 0;
+const node_crypto_1 = __importDefault(require("node:crypto"));
 const database_1 = require("../../config/database");
 const errorHandlerV2_1 = require("../../middleware/errorHandlerV2");
 const queryParser_1 = require("../../middleware/queryParser");
@@ -44,7 +48,6 @@ const TradingRoute_1 = require("../../models/TradingRoute");
 const TradeAggregatorService_1 = require("../../services/aggregators/TradeAggregatorService");
 const TicketService_1 = require("../../services/communication/tickets/TicketService");
 const UEXPriceFeed_1 = require("../../services/trade/trading/UEXPriceFeed");
-const TradingRouteService_1 = require("../../services/trade/TradingRouteService");
 const api_1 = require("../../types/api");
 const errorHandler_1 = require("../../utils/errorHandler");
 const logger_1 = require("../../utils/logger");
@@ -54,7 +57,14 @@ class TradingControllerV2 {
     uexPriceFeed = new UEXPriceFeed_1.UEXPriceFeed();
     ticketService = TicketService_1.TicketService.getInstance();
     async findTradingRouteById(routeId, organizationId) {
-        return TradingRouteService_1.tradingRouteService.findById(routeId, organizationId);
+        const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
+        const queryBuilder = routeRepo
+            .createQueryBuilder('route')
+            .where('route.id = :routeId', { routeId });
+        if (organizationId) {
+            queryBuilder.andWhere('route.organizationId = :organizationId', { organizationId });
+        }
+        return queryBuilder.getOne();
     }
     async findOrganizationMembership(userId, organizationId) {
         const membershipRepo = database_1.AppDataSource.getRepository(OrganizationMembership_1.OrganizationMembership);
@@ -103,14 +113,26 @@ class TradingControllerV2 {
                 search: null,
                 fields: null,
             };
-            const { routes, total } = await TradingRouteService_1.tradingRouteService.listOrgRoutes(orgId, {
-                limit,
-                offset,
-                sort,
-                filters,
-                search,
-                fields,
-            });
+            const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
+            const queryBuilder = routeRepo
+                .createQueryBuilder('route')
+                .where('route.organizationId = :orgId', { orgId });
+            if (filters.status) {
+                queryBuilder.andWhere('route.status = :status', { status: filters.status });
+            }
+            if (search) {
+                queryBuilder.andWhere('(route.name ILIKE :search OR route.description ILIKE :search)', {
+                    search: `%${search}%`,
+                });
+            }
+            if (sort) {
+                queryBuilder.orderBy(`route.${sort.field}`, sort.order);
+            }
+            else {
+                queryBuilder.orderBy('route.createdAt', 'DESC');
+            }
+            const total = await queryBuilder.getCount();
+            const routes = await queryBuilder.skip(offset).take(limit).getMany();
             const filteredRoutes = (0, queryParser_1.selectFieldsFromArray)(routes, fields);
             const links = (0, queryParser_1.buildHateoasLinks)(`/api/v2/organizations/${orgId}/trading/routes`, offset, limit, total);
             res.paginated(filteredRoutes, {
@@ -121,9 +143,6 @@ class TradingControllerV2 {
             }, links);
         }
         catch (error) {
-            if (error instanceof errorHandlerV2_1.ApiError) {
-                throw error;
-            }
             logger_1.logger.error('[TradingControllerV2.listOrgRoutes] Error:', error);
             throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.INTERNAL_ERROR, 'Failed to fetch trading routes', 500);
         }
@@ -136,8 +155,45 @@ class TradingControllerV2 {
             if (!userOrgId || userOrgId !== orgId) {
                 throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Not authorized for this organization', 403);
             }
+            const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
+            const existing = await routeRepo
+                .createQueryBuilder('route')
+                .where('route.organizationId = :orgId', { orgId })
+                .andWhere('route.name = :name', { name: routeData.name })
+                .getOne();
+            if (existing) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_CONFLICT, 'A trading route with this name already exists', 409);
+            }
             const userId = req.user?.id ?? '';
-            const newRoute = await TradingRouteService_1.tradingRouteService.createRoute(orgId, userId, routeData);
+            let estimatedProfit = routeData.estimatedProfit;
+            const normalizedStops = Array.isArray(routeData.stops) ? routeData.stops : [];
+            if (!estimatedProfit && normalizedStops.length > 0) {
+                estimatedProfit = await this.uexPriceFeed.calculateRouteProfit(normalizedStops);
+            }
+            const normalizedTags = Array.isArray(routeData.tags)
+                ? routeData.tags.filter((tag) => typeof tag === 'string')
+                : [];
+            const newRoute = routeRepo.create({
+                id: `route_${Date.now()}_${node_crypto_1.default.randomUUID().substring(0, 9)}`,
+                creatorId: userId,
+                organizationId: orgId,
+                name: routeData.name,
+                description: routeData.description || '',
+                stops: normalizedStops,
+                estimatedProfit,
+                estimatedDuration: routeData.estimatedDuration,
+                minCargoCapacity: routeData.minCargoCapacity,
+                status: TradingRoute_1.RouteStatus.ACTIVE,
+                tags: normalizedTags,
+                notes: routeData.notes,
+                performance: {
+                    runCount: 0,
+                    avgProfit: 0,
+                    avgDuration: 0,
+                },
+            });
+            await routeRepo.save(newRoute);
+            (0, tradingWebSocketController_1.emitRouteCreated)(orgId, newRoute);
             res.success(newRoute);
         }
         catch (error) {
@@ -224,11 +280,11 @@ class TradingControllerV2 {
         try {
             const { id } = req.params;
             const userOrgId = req.user?.currentOrganizationId;
-            if (!userOrgId) {
-                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Not authorized for this organization', 403);
-            }
-            const route = await TradingRouteService_1.tradingRouteService.findById(id, userOrgId);
+            const route = await this.findTradingRouteById(id);
             if (!route) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
+            }
+            if (!userOrgId || route.organizationId !== userOrgId) {
                 throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
             }
             res.success(route);
@@ -246,10 +302,22 @@ class TradingControllerV2 {
             const { id } = req.params;
             const updates = req.body;
             const userOrgId = req.user?.currentOrganizationId;
-            if (!userOrgId) {
-                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Not authorized for this organization', 403);
+            const route = await this.findTradingRouteById(id);
+            if (!route) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
             }
-            const { route } = await TradingRouteService_1.tradingRouteService.updateRoute(id, userOrgId, updates);
+            if (!userOrgId || route.organizationId !== userOrgId) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
+            }
+            const oldStatus = route.status;
+            const statusChanged = updates.status !== undefined && updates.status !== oldStatus;
+            const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
+            this.applyRouteUpdates(route, updates);
+            await routeRepo.save(route);
+            (0, tradingWebSocketController_1.emitRouteUpdated)(route.organizationId || '', route);
+            if (statusChanged) {
+                (0, tradingWebSocketController_1.emitRouteStatusChanged)(route.organizationId || '', id, oldStatus, route.status);
+            }
             res.success(route);
         }
         catch (error) {
@@ -260,14 +328,50 @@ class TradingControllerV2 {
             throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.INTERNAL_ERROR, 'Failed to update trading route', 500);
         }
     }
+    applyRouteUpdates(route, updates) {
+        if (updates.name !== undefined) {
+            route.name = updates.name;
+        }
+        if (updates.description !== undefined) {
+            route.description = updates.description;
+        }
+        if (updates.stops !== undefined) {
+            route.stops = updates.stops;
+        }
+        if (updates.estimatedProfit !== undefined) {
+            route.estimatedProfit = updates.estimatedProfit;
+        }
+        if (updates.estimatedDuration !== undefined) {
+            route.estimatedDuration = updates.estimatedDuration;
+        }
+        if (updates.minCargoCapacity !== undefined) {
+            route.minCargoCapacity = updates.minCargoCapacity;
+        }
+        if (updates.status !== undefined) {
+            route.status = updates.status;
+        }
+        if (updates.tags !== undefined) {
+            route.tags = updates.tags;
+        }
+        if (updates.notes !== undefined) {
+            route.notes = updates.notes;
+        }
+    }
     async deleteRoute(req, res) {
         try {
             const { id } = req.params;
             const userOrgId = req.user?.currentOrganizationId;
-            if (!userOrgId) {
-                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Not authorized for this organization', 403);
+            const route = await this.findTradingRouteById(id);
+            if (!route) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
             }
-            await TradingRouteService_1.tradingRouteService.deleteRoute(id, userOrgId);
+            if (!userOrgId || route.organizationId !== userOrgId) {
+                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.RESOURCE_NOT_FOUND, 'Trading route not found', 404);
+            }
+            const orgId = route.organizationId || '';
+            const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
+            await routeRepo.remove(route);
+            (0, tradingWebSocketController_1.emitRouteDeleted)(orgId, id);
             res.success({ message: 'Trading route deleted successfully' });
         }
         catch (error) {
@@ -280,10 +384,6 @@ class TradingControllerV2 {
     }
     async getOpportunities(req, res) {
         try {
-            const userOrgId = req.user?.currentOrganizationId;
-            if (!userOrgId) {
-                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Organization context required to view trading opportunities', 403);
-            }
             const minProfit = Number.parseInt(req.query.minProfit, 10) || 0;
             const maxDistance = Number.parseInt(req.query.maxDistance, 10) || 1000;
             const cargoCapacity = Number.parseInt(req.query.cargoCapacity, 10) || 0;
@@ -291,8 +391,7 @@ class TradingControllerV2 {
             const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
             const queryBuilder = routeRepo
                 .createQueryBuilder('route')
-                .where('route.status = :status', { status: TradingRoute_1.RouteStatus.ACTIVE })
-                .andWhere('route.organizationId = :userOrgId', { userOrgId });
+                .where('route.status = :status', { status: TradingRoute_1.RouteStatus.ACTIVE });
             if (minProfit > 0) {
                 queryBuilder.andWhere('route.estimatedProfit >= :minProfit', { minProfit });
             }
@@ -312,7 +411,7 @@ class TradingControllerV2 {
                 return {
                     ...route,
                     profitPerHour: Math.round(profitPerHour),
-                    rating: TradingRouteService_1.tradingRouteService.calculateRouteRating(route),
+                    rating: this.calculateRouteRating(route),
                 };
             });
             res.success({
@@ -375,15 +474,11 @@ class TradingControllerV2 {
     }
     async getMarketAnalysis(req, res) {
         try {
-            const userOrgId = req.user?.currentOrganizationId;
-            if (!userOrgId) {
-                throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.FORBIDDEN, 'Organization context required to view market analysis', 403);
-            }
             const _commodity = req.query.commodity;
             const _location = req.query.location;
             const routeRepo = database_1.AppDataSource.getRepository(TradingRoute_1.TradingRoute);
             const routes = await routeRepo.find({
-                where: { status: TradingRoute_1.RouteStatus.ACTIVE, organizationId: userOrgId },
+                where: { status: TradingRoute_1.RouteStatus.ACTIVE },
             });
             const commodities = new Set();
             const locations = new Set();
@@ -650,6 +745,20 @@ class TradingControllerV2 {
             }
             throw new errorHandlerV2_1.ApiError(api_1.ApiErrorCode.INTERNAL_ERROR, 'Failed to delete price alert', 500);
         }
+    }
+    calculateRouteRating(route) {
+        let rating = 0;
+        const profitScore = Math.min((route.estimatedProfit || 0) / 20000, 5);
+        rating += profitScore;
+        if (route.performance) {
+            const performanceScore = Math.min(route.performance.runCount / 10, 3);
+            rating += performanceScore;
+        }
+        if (route.estimatedDuration) {
+            const durationScore = Math.max(2 - route.estimatedDuration / 120, 0);
+            rating += durationScore;
+        }
+        return Math.min(Math.round(rating * 10) / 10, 10);
     }
     async executeTradeRun(req, res) {
         try {

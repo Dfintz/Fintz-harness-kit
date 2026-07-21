@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertSafeCliCommand } from './command-validation.mjs';
+import { parseValidatedCliCommand } from './command-validation.mjs';
 import { generateText } from './llm-provider.mjs';
 import { wrapUntrusted } from './untrusted.mjs';
 
@@ -231,13 +231,12 @@ function modeInstruction(mode) {
 }
 
 function runMember(member, command, prompt, timeoutMs) {
-  assertSafeCliCommand(command, { label: `${member} command` });
+  const parsed = parseValidatedCliCommand(command, { label: `${member} command` });
 
   return new Promise((resolvePromise) => {
     const started = Date.now();
-    const child = spawn(command, {
+    const child = spawn(parsed.executable, parsed.args, {
       cwd: repoRoot,
-      shell: true,
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });

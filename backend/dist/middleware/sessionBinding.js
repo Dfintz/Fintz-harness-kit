@@ -24,7 +24,7 @@ const defaultConfig = {
     validateUserAgent: true,
     validateDeviceFingerprint: true,
     allowSubnetChange: false,
-    warnOnly: process.env.SESSION_BINDING_WARN_ONLY === 'true',
+    warnOnly: process.env.SESSION_BINDING_WARN_ONLY === 'true' || process.env.NODE_ENV !== 'production',
 };
 const validateSessionBinding = (stored, current, config = defaultConfig) => {
     const mismatches = [];
@@ -34,10 +34,11 @@ const validateSessionBinding = (stored, current, config = defaultConfig) => {
     if (config.validateUserAgent && stored.uaHash !== current.uaHash) {
         mismatches.push('User-Agent changed');
     }
-    if (config.validateDeviceFingerprint && stored.deviceHash) {
-        if (!current.deviceHash || stored.deviceHash !== current.deviceHash) {
-            mismatches.push('Device fingerprint changed');
-        }
+    if (config.validateDeviceFingerprint &&
+        stored.deviceHash &&
+        current.deviceHash &&
+        stored.deviceHash !== current.deviceHash) {
+        mismatches.push('Device fingerprint changed');
     }
     return {
         valid: mismatches.length === 0,

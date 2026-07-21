@@ -240,16 +240,63 @@ export interface PaginatedResponse<T> {
 class TicketService extends BaseService {
   protected basePath = '/api/v2/tickets';
 
+  private extractPayload<T>(response: unknown): T {
+    if (!response || typeof response !== 'object') {
+      return response as T;
+    }
+
+    const record = response as Record<string, unknown>;
+    if ('success' in record && 'data' in record) {
+      return record.data as T;
+    }
+
+    return response as T;
+  }
+
+  private extractPaginatedTickets(response: unknown): PaginatedResponse<Ticket> {
+    if (!response || typeof response !== 'object') {
+      return { data: [], total: 0, page: 1, limit: 20, totalPages: 1 };
+    }
+
+    const record = response as Record<string, unknown>;
+    if ('success' in record && 'data' in record) {
+      return this.extractPaginatedTickets(record.data);
+    }
+
+    if (Array.isArray(record.data)) {
+      return {
+        data: record.data as Ticket[],
+        total: Number(record.total ?? record.data.length ?? 0),
+        page: Number(record.page ?? 1),
+        limit: Number(record.limit ?? 20),
+        totalPages: Number(record.totalPages ?? 1),
+      };
+    }
+
+    if (Array.isArray(response)) {
+      const tickets = response as Ticket[];
+      return {
+        data: tickets,
+        total: tickets.length,
+        page: 1,
+        limit: tickets.length || 20,
+        totalPages: 1,
+      };
+    }
+
+    return { data: [], total: 0, page: 1, limit: 20, totalPages: 1 };
+  }
+
   /**
    * Get list of tickets with optional filters
    */
   async getTickets(filters?: TicketQueryFilters): Promise<PaginatedResponse<Ticket>> {
     try {
       this.log('getTickets', filters);
-      const response = await apiClient.get<PaginatedResponse<Ticket>>(this.basePath, {
+      const response = await apiClient.get<unknown>(this.basePath, {
         params: filters,
       });
-      return response.data;
+      return this.extractPaginatedTickets(response);
     } catch (error) {
       this.handleError(error, 'getTickets');
     }
@@ -261,8 +308,8 @@ class TicketService extends BaseService {
   async getTicket(id: string): Promise<Ticket> {
     try {
       this.log('getTicket', { id });
-      const response = await apiClient.get<Ticket>(`${this.basePath}/${id}`);
-      return response.data;
+      const response = await apiClient.get<unknown>(`${this.basePath}/${id}`);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'getTicket');
     }
@@ -274,8 +321,8 @@ class TicketService extends BaseService {
   async getTicketByNumber(ticketNumber: string): Promise<Ticket> {
     try {
       this.log('getTicketByNumber', { ticketNumber });
-      const response = await apiClient.get<Ticket>(`${this.basePath}/by-number/${ticketNumber}`);
-      return response.data;
+      const response = await apiClient.get<unknown>(`${this.basePath}/by-number/${ticketNumber}`);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'getTicketByNumber');
     }
@@ -287,8 +334,8 @@ class TicketService extends BaseService {
   async createTicket(data: CreateTicketRequest): Promise<Ticket> {
     try {
       this.log('createTicket', data);
-      const response = await apiClient.post<Ticket>(this.basePath, data);
-      return response.data;
+      const response = await apiClient.post<unknown>(this.basePath, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'createTicket');
     }
@@ -300,8 +347,8 @@ class TicketService extends BaseService {
   async updateTicket(id: string, data: UpdateTicketRequest): Promise<Ticket> {
     try {
       this.log('updateTicket', { id, data });
-      const response = await apiClient.put<Ticket>(`${this.basePath}/${id}`, data);
-      return response.data;
+      const response = await apiClient.put<unknown>(`${this.basePath}/${id}`, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'updateTicket');
     }
@@ -325,8 +372,8 @@ class TicketService extends BaseService {
   async addMessage(ticketId: string, data: AddMessageRequest): Promise<Ticket> {
     try {
       this.log('addMessage', { ticketId, data });
-      const response = await apiClient.post<Ticket>(`${this.basePath}/${ticketId}/messages`, data);
-      return response.data;
+      const response = await apiClient.post<unknown>(`${this.basePath}/${ticketId}/messages`, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'addMessage');
     }
@@ -338,8 +385,8 @@ class TicketService extends BaseService {
   async assignTicket(ticketId: string, data: AssignTicketRequest): Promise<Ticket> {
     try {
       this.log('assignTicket', { ticketId, data });
-      const response = await apiClient.put<Ticket>(`${this.basePath}/${ticketId}/assign`, data);
-      return response.data;
+      const response = await apiClient.put<unknown>(`${this.basePath}/${ticketId}/assign`, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'assignTicket');
     }
@@ -351,8 +398,8 @@ class TicketService extends BaseService {
   async resolveTicket(ticketId: string, data: ResolveTicketRequest): Promise<Ticket> {
     try {
       this.log('resolveTicket', { ticketId, data });
-      const response = await apiClient.put<Ticket>(`${this.basePath}/${ticketId}/resolve`, data);
-      return response.data;
+      const response = await apiClient.put<unknown>(`${this.basePath}/${ticketId}/resolve`, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'resolveTicket');
     }
@@ -364,8 +411,8 @@ class TicketService extends BaseService {
   async closeTicket(ticketId: string): Promise<Ticket> {
     try {
       this.log('closeTicket', { ticketId });
-      const response = await apiClient.put<Ticket>(`${this.basePath}/${ticketId}/close`);
-      return response.data;
+      const response = await apiClient.put<unknown>(`${this.basePath}/${ticketId}/close`);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'closeTicket');
     }
@@ -377,8 +424,8 @@ class TicketService extends BaseService {
   async reopenTicket(ticketId: string): Promise<Ticket> {
     try {
       this.log('reopenTicket', { ticketId });
-      const response = await apiClient.put<Ticket>(`${this.basePath}/${ticketId}/reopen`);
-      return response.data;
+      const response = await apiClient.put<unknown>(`${this.basePath}/${ticketId}/reopen`);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'reopenTicket');
     }
@@ -390,8 +437,8 @@ class TicketService extends BaseService {
   async addFeedback(ticketId: string, data: AddFeedbackRequest): Promise<Ticket> {
     try {
       this.log('addFeedback', { ticketId, data });
-      const response = await apiClient.post<Ticket>(`${this.basePath}/${ticketId}/feedback`, data);
-      return response.data;
+      const response = await apiClient.post<unknown>(`${this.basePath}/${ticketId}/feedback`, data);
+      return this.extractPayload<Ticket>(response);
     } catch (error) {
       this.handleError(error, 'addFeedback');
     }
@@ -403,8 +450,8 @@ class TicketService extends BaseService {
   async getStats(): Promise<TicketStats> {
     try {
       this.log('getStats');
-      const response = await apiClient.get<TicketStats>(`${this.basePath}/stats`);
-      return response.data;
+      const response = await apiClient.get<unknown>(`${this.basePath}/stats`);
+      return this.extractPayload<TicketStats>(response);
     } catch (error) {
       this.handleError(error, 'getStats');
     }

@@ -872,6 +872,22 @@ export function createRoutes(queryClient: QueryClient): RouteObject[] {
             </ProtectedRoute>
           ),
         },
+        {
+          path: '/tickets',
+          element: (
+            <ProtectedRoute>
+              <InboxPage />
+            </ProtectedRoute>
+          ),
+        },
+        {
+          path: '/tickets/:ticketNumber',
+          element: (
+            <ProtectedRoute>
+              <InboxPage />
+            </ProtectedRoute>
+          ),
+        },
 
         {
           path: '/bounty/profile',

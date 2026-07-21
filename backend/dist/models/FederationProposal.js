@@ -44,7 +44,7 @@ __decorate([
 ], FederationProposal.prototype, "federation", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 30 }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationProposal.prototype, "type", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 200 }),
@@ -68,7 +68,7 @@ __decorate([
 ], FederationProposal.prototype, "votes", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'open' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationProposal.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'int' }),

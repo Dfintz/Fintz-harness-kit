@@ -1,5 +1,6 @@
 import { ShipCatalogueItem, shipCatalogueService } from '@/services/shipCatalogueService';
 import { useNotification } from '@/store/uiStore';
+import { dedupeManufacturers, isSameManufacturer } from '@/utils/manufacturerMatching';
 import { logger } from '@/utils/logger';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
@@ -115,7 +116,7 @@ export const AddShipDialog: React.FC<AddShipDialogProps> = ({
   const loadManufacturers = async () => {
     try {
       const manufacturerList = await shipCatalogueService.getManufacturers();
-      setManufacturers(manufacturerList.sort((a, b) => a.localeCompare(b)));
+      setManufacturers(dedupeManufacturers(manufacturerList).sort((a, b) => a.localeCompare(b)));
     } catch (error) {
       logger.error(
         'Failed to load manufacturers:',
@@ -128,14 +129,34 @@ export const AddShipDialog: React.FC<AddShipDialogProps> = ({
     const requestId = ++shipRequestIdRef.current;
     setLoadingCatalogue(true);
     try {
-      const response = await shipCatalogueService.getShips({
-        manufacturer: selectedManufacturer || undefined,
+      const firstPage = await shipCatalogueService.getShips({
         search: searchQuery || undefined,
-        limit: 500,
+        page: 1,
+        limit: 100,
       });
       // Discard stale responses — only the latest request may update state.
       if (requestId !== shipRequestIdRef.current) return;
-      setShips(response?.items ?? []);
+
+      let items = firstPage?.items ?? [];
+      const totalPages = Math.max(1, firstPage?.totalPages ?? 1);
+
+      // Fetch remaining pages so manufacturer filtering has the full catalogue.
+      for (let page = 2; page <= totalPages; page += 1) {
+        const nextPage = await shipCatalogueService.getShips({
+          search: searchQuery || undefined,
+          page,
+          limit: 100,
+        });
+
+        if (requestId !== shipRequestIdRef.current) return;
+        items = items.concat(nextPage?.items ?? []);
+      }
+
+      const filteredItems = selectedManufacturer
+        ? items.filter(ship => isSameManufacturer(ship.manufacturer, selectedManufacturer))
+        : items;
+
+      setShips(filteredItems);
     } catch (error) {
       if (requestId !== shipRequestIdRef.current) return;
       logger.error(

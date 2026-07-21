@@ -7,11 +7,12 @@ exports.FleetViewController = void 0;
 const multer_1 = __importDefault(require("multer"));
 const database_1 = require("../config/database");
 const Organization_1 = require("../models/Organization");
+const OrganizationMembership_1 = require("../models/OrganizationMembership");
 const FleetViewService_1 = require("../services/fleet/FleetViewService");
-const OrganizationPermissionService_1 = require("../services/organization/OrganizationPermissionService");
 const apiErrors_1 = require("../utils/apiErrors");
 const logger_1 = require("../utils/logger");
 const queryUtils_1 = require("../utils/queryUtils");
+const roleUtils_1 = require("../utils/roleUtils");
 const BaseController_1 = require("./BaseController");
 const upload = (0, multer_1.default)({
     storage: multer_1.default.memoryStorage(),
@@ -29,8 +30,8 @@ const upload = (0, multer_1.default)({
 });
 class FleetViewController extends BaseController_1.BaseController {
     fleetViewService = new FleetViewService_1.FleetViewService();
-    organizationPermissionService = new OrganizationPermissionService_1.OrganizationPermissionService();
     organizationRepository = database_1.AppDataSource.getRepository(Organization_1.Organization);
+    userOrganizationRepository = database_1.AppDataSource.getRepository(OrganizationMembership_1.OrganizationMembership);
     static IMPORT_OPTION_FIELDS = new Set(['merge', 'skipDuplicates']);
     uploadMiddleware = upload.single('file');
     normalizeFleetViewSchema(rawSchema) {
@@ -113,8 +114,13 @@ class FleetViewController extends BaseController_1.BaseController {
                 throw new apiErrors_1.UnauthorizedError('User not authenticated');
             }
             const { organizationId } = req.params;
-            const canManageOrganization = await this.organizationPermissionService.isOwnerOrAdmin(userId, organizationId);
-            if (!canManageOrganization) {
+            const userOrg = await this.userOrganizationRepository.findOne({
+                where: { userId, organizationId, isActive: true },
+            });
+            if (!userOrg ||
+                ((0, roleUtils_1.getRoleName)(userOrg.role) !== 'admin' &&
+                    (0, roleUtils_1.getRoleName)(userOrg.role) !== 'owner' &&
+                    (0, roleUtils_1.getRoleName)(userOrg.role) !== 'founder')) {
                 throw new apiErrors_1.UnauthorizedError('Unauthorized: Only organization leaders can export organization fleets');
             }
             const includeStatistics = req.query.includeStatistics !== 'false';
@@ -162,8 +168,13 @@ class FleetViewController extends BaseController_1.BaseController {
                 throw new apiErrors_1.UnauthorizedError('User not authenticated');
             }
             const { organizationId } = req.params;
-            const canManageOrganization = await this.organizationPermissionService.isOwnerOrAdmin(userId, organizationId);
-            if (!canManageOrganization) {
+            const userOrg = await this.userOrganizationRepository.findOne({
+                where: { userId, organizationId, isActive: true },
+            });
+            if (!userOrg ||
+                ((0, roleUtils_1.getRoleName)(userOrg.role) !== 'admin' &&
+                    (0, roleUtils_1.getRoleName)(userOrg.role) !== 'owner' &&
+                    (0, roleUtils_1.getRoleName)(userOrg.role) !== 'founder')) {
                 throw new apiErrors_1.UnauthorizedError('Unauthorized: Only organization leaders can import to organization fleets');
             }
             const schema = this.parseFleetViewSchema(req);

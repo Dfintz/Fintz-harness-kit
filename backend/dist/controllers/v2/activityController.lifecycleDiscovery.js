@@ -50,7 +50,6 @@ const NotificationRouter_1 = require("../../services/communication/notifications
 const DomainEventBus_1 = require("../../services/shared/DomainEventBus");
 const api_1 = require("../../types/api");
 const crewCalculation_1 = require("../../utils/crewCalculation");
-const logger_1 = require("../../utils/logger");
 const activityWebSocketController_1 = require("../../websocket/controllers/activityWebSocketController");
 const activityController_avatars_1 = require("./activityController.avatars");
 async function listOrgActivitiesHandler(req, res) {
@@ -216,20 +215,13 @@ async function createActivityHandler(req, res, deps) {
     });
     await activityRepo.save(activity);
     if (userId) {
-        try {
-            await deps.participantService.joinActivity(activity.id, {
-                userId,
-                userName: username,
-                organizationId: orgId,
-                organizationName: orgName,
-                role: Activity_1.ParticipantRole.LEADER,
-            });
-        }
-        catch (joinError) {
-            logger_1.logger.error('[createActivity] joinActivity failed; deleting orphan activity to prevent inconsistency', { activityId: activity.id, error: joinError });
-            await activityRepo.delete(activity.id);
-            throw joinError;
-        }
+        await deps.participantService.joinActivity(activity.id, {
+            userId,
+            userName: username,
+            organizationId: orgId,
+            organizationName: orgName,
+            role: Activity_1.ParticipantRole.LEADER,
+        });
     }
     if (orgId && userId) {
         DomainEventBus_1.domainEvents.emit('activity:created', {

@@ -56,7 +56,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { assertSafeCliCommand } from "./command-validation.mjs";
+import { parseValidatedCliCommand } from "./command-validation.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -303,7 +303,9 @@ function parseArgs(argv) {
 
 function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds) {
   return (subjectContent, priorRounds, round) => {
-    assertSafeCliCommand(reviewerCmd, { label: "plan-review reviewer command" });
+    const parsed = parseValidatedCliCommand(reviewerCmd, {
+      label: "plan-review reviewer command",
+    });
     const before = hashContent(readFileSync(subjectPath, "utf8"));
     const prompt = composeReviewerPrompt(
       lens,
@@ -313,9 +315,8 @@ function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds)
       round,
       maxRounds,
     );
-    const result = spawnSync(reviewerCmd, {
+    const result = spawnSync(parsed.executable, parsed.args, {
       cwd: repoRoot,
-      shell: true,
       input: prompt,
       encoding: "utf8",
       // Reviewer is observe-only: it gets the subject path so it can read context, but writing is a
@@ -351,11 +352,12 @@ function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds)
 function makeCliRevise(lens, subjectPath, authorCmd) {
   if (!authorCmd) return null;
   return (subjectContent, critique, round) => {
-    assertSafeCliCommand(authorCmd, { label: "plan-review author command" });
+    const parsed = parseValidatedCliCommand(authorCmd, {
+      label: "plan-review author command",
+    });
     const prompt = composeAuthorPrompt(lens, subjectContent, critique, round);
-    spawnSync(authorCmd, {
+    spawnSync(parsed.executable, parsed.args, {
       cwd: repoRoot,
-      shell: true,
       input: prompt,
       stdio: ["pipe", "inherit", "inherit"],
       env: {

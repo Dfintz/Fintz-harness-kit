@@ -59,7 +59,7 @@ __decorate([
 ], FederationAmbassador.prototype, "userName", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'representative' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationAmbassador.prototype, "role", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'jsonb', default: '["view"]' }),

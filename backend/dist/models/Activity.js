@@ -419,7 +419,7 @@ __decorate([
 ], Activity.prototype, "ships", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, nullable: true, default: 'none' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], Activity.prototype, "shipRequirementType", void 0);
 __decorate([
     (0, typeorm_1.Column)('simple-json', { nullable: true }),

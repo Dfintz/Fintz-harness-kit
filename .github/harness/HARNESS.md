@@ -15,7 +15,7 @@ The harness answers three questions for any agent, on any task:
 2. **What sequence do I follow?** → [Workflow Stage Machine](#workflow-stage-machine)
 3. **How do I iterate until done?** → [Loops](#loops) (full protocol in [`LOOPS.md`](./LOOPS.md))
 
-For MCP (Model Context Protocol) tool integration, see [`MCP-INTEGRATION.md`](../MCP-INTEGRATION.md).
+For MCP (Model Context Protocol) tool integration, see [`MCP-INTEGRATION.md`](./MCP-INTEGRATION.md).
 
 A machine-readable index of everything below lives in [`registry.json`](./registry.json).
 

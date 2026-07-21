@@ -4,7 +4,6 @@ exports.TwoFactorController = void 0;
 const TwoFactorService_1 = require("../services/authentication/TwoFactorService");
 const UserService_1 = require("../services/user/UserService");
 const apiErrors_1 = require("../utils/apiErrors");
-const auditLogger_1 = require("../utils/auditLogger");
 const BaseController_1 = require("./BaseController");
 class TwoFactorController extends BaseController_1.BaseController {
     twoFactorService;
@@ -30,12 +29,12 @@ class TwoFactorController extends BaseController_1.BaseController {
             }
             const setup = await this.twoFactorService.generateSecret(username);
             await this.userService.updateUser(userId, {
-                twoFactorSecret: setup.secret,
+                twoFactorSecret: setup.secret
             });
             res.status(200).json({
                 secret: setup.secret,
                 qrCodeUrl: setup.qrCodeUrl,
-                backupCodes: setup.backupCodes,
+                backupCodes: setup.backupCodes
             });
         });
     };
@@ -57,30 +56,18 @@ class TwoFactorController extends BaseController_1.BaseController {
             if (!user.twoFactorSecret) {
                 throw new apiErrors_1.ValidationError('Please initiate 2FA setup first');
             }
-            const isValid = await this.twoFactorService.verifyToken(user.twoFactorSecret, token, userId);
+            const isValid = this.twoFactorService.verifyToken(user.twoFactorSecret, token);
             if (!isValid) {
                 throw new apiErrors_1.ValidationError('Invalid verification code');
             }
-            const hashedBackupCodes = await this.twoFactorService.hashBackupCodes(backupCodes);
+            const hashedBackupCodes = this.twoFactorService.hashBackupCodes(backupCodes);
             await this.userService.updateUser(userId, {
                 twoFactorEnabled: true,
-                backupCodes: hashedBackupCodes,
-            });
-            (0, auditLogger_1.logAuditEvent)({
-                eventType: auditLogger_1.AuditEventType.AUTH_SUCCESS,
-                userId,
-                resource: 'auth.2fa',
-                action: 'setup_backup_codes',
-                message: 'User enabled 2FA with backup codes',
-                metadata: {
-                    backupCodeCount: 10,
-                    hashAlgorithm: 'bcrypt',
-                    costFactor: process.env.BACKUP_CODE_BCRYPT_COST || '12',
-                },
+                backupCodes: hashedBackupCodes
             });
             res.status(200).json({
                 message: '2FA has been enabled successfully',
-                twoFactorEnabled: true,
+                twoFactorEnabled: true
             });
         });
     };
@@ -100,10 +87,10 @@ class TwoFactorController extends BaseController_1.BaseController {
             }
             let isValid = false;
             if (token && user.twoFactorSecret) {
-                isValid = await this.twoFactorService.verifyToken(user.twoFactorSecret, token, userId);
+                isValid = this.twoFactorService.verifyToken(user.twoFactorSecret, token);
             }
             else if (backupCode && user.backupCodes) {
-                isValid = await this.twoFactorService.verifyBackupCode(backupCode, user.backupCodes);
+                isValid = this.twoFactorService.verifyBackupCode(backupCode, user.backupCodes);
             }
             else {
                 throw new apiErrors_1.ValidationError('Token or backup code is required');
@@ -114,19 +101,11 @@ class TwoFactorController extends BaseController_1.BaseController {
             await this.userService.updateUser(userId, {
                 twoFactorEnabled: false,
                 twoFactorSecret: undefined,
-                backupCodes: undefined,
-            });
-            (0, auditLogger_1.logAuditEvent)({
-                eventType: auditLogger_1.AuditEventType.AUTH_SUCCESS,
-                userId,
-                resource: 'auth.2fa',
-                action: 'disable_2fa',
-                message: `User disabled 2FA`,
-                metadata: {},
+                backupCodes: undefined
             });
             res.status(200).json({
                 message: '2FA has been disabled successfully',
-                twoFactorEnabled: false,
+                twoFactorEnabled: false
             });
         });
     };
@@ -155,15 +134,15 @@ class TwoFactorController extends BaseController_1.BaseController {
             let isValid = false;
             let usedBackupCode = false;
             if (token && user.twoFactorSecret) {
-                isValid = await this.twoFactorService.verifyToken(user.twoFactorSecret, token, userId);
+                isValid = this.twoFactorService.verifyToken(user.twoFactorSecret, token);
             }
             else if (backupCode && user.backupCodes) {
-                isValid = await this.twoFactorService.verifyBackupCode(backupCode, user.backupCodes);
+                isValid = this.twoFactorService.verifyBackupCode(backupCode, user.backupCodes);
                 if (isValid) {
                     usedBackupCode = true;
-                    const updatedCodes = await this.twoFactorService.removeBackupCode(backupCode, user.backupCodes);
+                    const updatedCodes = this.twoFactorService.removeBackupCode(backupCode, user.backupCodes);
                     await this.userService.updateUser(userId, {
-                        backupCodes: updatedCodes,
+                        backupCodes: updatedCodes
                     });
                 }
             }
@@ -187,7 +166,7 @@ class TwoFactorController extends BaseController_1.BaseController {
                 message: '2FA verification successful',
                 verified: true,
                 usedBackupCode,
-                remainingBackupCodes: usedBackupCode && user.backupCodes ? user.backupCodes.length - 1 : undefined,
+                remainingBackupCodes: usedBackupCode && user.backupCodes ? user.backupCodes.length - 1 : undefined
             });
         });
     };
@@ -206,30 +185,18 @@ class TwoFactorController extends BaseController_1.BaseController {
             if (!user.twoFactorEnabled || !user.twoFactorSecret) {
                 throw new apiErrors_1.ValidationError('2FA is not enabled');
             }
-            const isValid = await this.twoFactorService.verifyToken(user.twoFactorSecret, token, userId);
+            const isValid = this.twoFactorService.verifyToken(user.twoFactorSecret, token);
             if (!isValid) {
                 throw new apiErrors_1.ValidationError('Invalid verification code');
             }
             const backupCodes = this.twoFactorService.generateBackupCodes(10);
-            const hashedBackupCodes = await this.twoFactorService.hashBackupCodes(backupCodes);
+            const hashedBackupCodes = this.twoFactorService.hashBackupCodes(backupCodes);
             await this.userService.updateUser(userId, {
-                backupCodes: hashedBackupCodes,
-            });
-            (0, auditLogger_1.logAuditEvent)({
-                eventType: auditLogger_1.AuditEventType.AUTH_SUCCESS,
-                userId,
-                resource: 'auth.2fa',
-                action: 'regenerate_backup_codes',
-                message: `User regenerated 2FA backup codes`,
-                metadata: {
-                    backupCodeCount: 10,
-                    hashAlgorithm: 'bcrypt',
-                    costFactor: process.env.BACKUP_CODE_BCRYPT_COST || '12',
-                },
+                backupCodes: hashedBackupCodes
             });
             res.status(200).json({
                 message: 'New backup codes generated successfully',
-                backupCodes,
+                backupCodes
             });
         });
     };
@@ -246,7 +213,7 @@ class TwoFactorController extends BaseController_1.BaseController {
             res.status(200).json({
                 twoFactorEnabled: user.twoFactorEnabled,
                 hasBackupCodes: user.backupCodes && user.backupCodes.length > 0,
-                backupCodesCount: user.backupCodes?.length || 0,
+                backupCodesCount: user.backupCodes?.length || 0
             });
         });
     };

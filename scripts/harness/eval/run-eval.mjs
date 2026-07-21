@@ -34,6 +34,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseValidatedCliCommand } from "../command-validation.mjs";
 
 import {
   applyOverlay,
@@ -248,9 +249,11 @@ function invokeAgent(agentCmd, task, sandbox, withHarness) {
     }
   }
   const prompt = `${task.prompt}${harnessNote}`;
-  const result = spawnSync(agentCmd, {
+  const parsed = parseValidatedCliCommand(agentCmd, {
+    label: "run-eval agent command",
+  });
+  const result = spawnSync(parsed.executable, parsed.args, {
     cwd: sandbox,
-    shell: true,
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
     env: { ...process.env, HARNESS_EVAL_SANDBOX: sandbox },

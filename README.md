@@ -44,19 +44,19 @@ entrypoint directly from that file.
 
 ## What's inside
 
-| Capability                                | Where                                                                                                                      | Notes                                                                                              |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| **Workflow stage machine**                | [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md), [`.github/instructions/`](.github/instructions/)               | Understand → Architect → Implement → Review (breadth+depth) → Feedback, with 5 architectural gates |
-| **GitHub Copilot app entrypoint**         | [`.github/copilot-instructions.md`](.github/copilot-instructions.md)                                                       | Repository-level bootstrap for Copilot that points it at the harness contract                      |
-| **Convergence loops**                     | [`.github/harness/loops/`](.github/harness/loops/), [`run-loop.mjs`](scripts/harness/run-loop.mjs)                         | Iterate until checks (lint/type/build/test) go green                                               |
-| **Workflow loops**                        | same                                                                                                                       | Rubric-graded passes (review-fix, feature-cycle, ci-green)                                         |
-| **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs)   | Hill-climb a numeric metric; keep-if-improved, else revert                                         |
-| **Local-LLM agents**                      | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`)                      |
-| **Memory**                                | [`.github/harness/memory/`](.github/harness/memory/)                                                                       | Committed lessons + Architecture Briefs (structure only — no lessons shipped)                      |
-| **Knowledge graph providers**             | [`graph-provider.mjs`](scripts/harness/graph-provider.mjs), [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs) | Provider abstraction (`understand-anything` default, optional `graphify`) with deterministic refresh backends (`understand-anything` and configurable `graphify`) |
-| **MCP server**                            | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs)                                                                         | Exposes graph/memory/vector + routing/catalog/discovery tools over MCP (`.vscode/mcp.json` registers it)      |
-| **Dashboard**                             | [`report-server.mjs`](scripts/harness/report-server.mjs)                                                                   | Always-on HTML metrics dashboard                                                                   |
-| **Capability catalog**                    | [`harness-catalog.mjs`](scripts/harness/harness-catalog.mjs), [`llms.txt`](llms.txt), [`.github/harness/catalog/`](.github/harness/catalog/) | Machine-readable taxonomy + intent profiles for external agent/tool recommendation |
+| Capability | Where | Notes |
+| --- | --- | --- |
+| **Workflow stage machine** | [`.github/harness/HARNESS.md`](.github/harness/HARNESS.md), [`.github/instructions/`](.github/instructions/) | Understand → Architect → Implement → Review (breadth+depth) → Feedback, with 5 architectural gates |
+| **GitHub Copilot app entrypoint** | [`.github/copilot-instructions.md`](.github/copilot-instructions.md) | Repository-level bootstrap for Copilot that points it at the harness contract |
+| **Convergence loops** | [`.github/harness/loops/`](.github/harness/loops/), [`run-loop.mjs`](scripts/harness/run-loop.mjs) | Iterate until checks (lint/type/build/test) go green |
+| **Workflow loops** | same | Rubric-graded passes (review-fix, feature-cycle, ci-green) |
+| **Experiment loops (autoresearch-style)** | [`run-experiment.mjs`](scripts/harness/run-experiment.mjs), [`experiment-loop.mjs`](scripts/harness/experiment-loop.mjs) | Hill-climb a numeric metric; keep-if-improved, else revert |
+| **Local-LLM agents** | [`ollama-agent.mjs`](scripts/harness/ollama-agent.mjs), [`ollama-apply-agent.mjs`](scripts/harness/ollama-apply-agent.mjs) | Drive loops with a local model via **Ollama** or **LM Studio** (`--provider`) |
+| **Memory** | [`.github/harness/memory/`](.github/harness/memory/) | Committed lessons + Architecture Briefs (structure only — no lessons shipped) |
+| **Knowledge graph providers** | [`graph-provider.mjs`](scripts/harness/graph-provider.mjs), [`graph-refresh-loop.mjs`](scripts/harness/graph-refresh-loop.mjs) | Provider abstraction (`understand-anything` default, optional `graphify`) with deterministic refresh backends (`understand-anything` and configurable `graphify`) |
+| **MCP server** | [`mcp-server.mjs`](scripts/harness/mcp-server.mjs) | Exposes graph/memory/vector + routing/catalog/discovery tools over MCP (`.vscode/mcp.json` registers it) |
+| **Dashboard** | [`report-server.mjs`](scripts/harness/report-server.mjs) | Always-on HTML metrics dashboard |
+| **Capability catalog** | [`harness-catalog.mjs`](scripts/harness/harness-catalog.mjs), [`llms.txt`](llms.txt), [`.github/harness/catalog/`](.github/harness/catalog/) | Machine-readable taxonomy + intent profiles for external agent/tool recommendation |
 
 ## The three loop kinds
 
@@ -157,7 +157,7 @@ By default the shipped environment policy separates execution and judgment using
 **three-tier capability model**:
 
 | Tier | Stages | Default | Pinned example |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto | `claude-opus-4.8` |
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Copilot Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` |
 | **fast-cheap-local** | Experiment loops, lint-debt, enrichment, triage | — | `qwen2.5-coder:14b` via Ollama/LM Studio |

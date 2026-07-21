@@ -1,0 +1,90 @@
+/**
+ * Central export file for all Joi validation schemas
+ */
+
+export * from './achievementSchemas';
+export * from './activityExtendedQuerySchemas';
+export * from './activityQuerySchemas';
+export * from './activitySchemas';
+export * from './activityTemplateSchemas';
+export * from './additionalSchemas';
+export * from './adminSearchSchemas';
+export * from './aiGenerationSchemas';
+export * from './announcementSchemas';
+export * from './approvalSchemas';
+export * from './archiveSchemas';
+export * from './attendanceSchemas';
+export * from './authSchemas';
+export * from './backupSchemas';
+export * from './bountySchemas';
+export * from './briefingQuerySchemas';
+export * from './briefingSchemas';
+export * from './common';
+export * from './contactRequestSchemas';
+export * from './dashboardSchemas';
+export * from './directoryV2QuerySchemas';
+export * from './documentSchemas';
+export * from './eventConflictSchemas';
+export * from './eventConflictV2QuerySchemas';
+export * from './eventSchemas';
+export * from './exportSchemas';
+export * from './federationSchemas';
+export * from './fleetQuerySchemas';
+export * from './fleetSchemas';
+export * from './fleetViewSchemas';
+export * from './importSchemas';
+export * from './intelSchemas';
+export * from './invitationSchemas';
+export * from './jobApplicationSchemas';
+export * from './jumpPointSchemas';
+export * from './logisticsSchemas';
+export * from './matchmakingQuerySchemas';
+export * from './memberAuditSchemas';
+export * from './miningOperationQuerySchemas';
+export * from './miningSchemas';
+export * from './missionSchemas';
+export * from './organizationQuerySchemas';
+export * from './organizationSchemas';
+export * from './organizationShipQuerySchemas';
+export * from './organizationShipSchemas';
+export * from './orgApplicationSchemas';
+export * from './pollSchemas';
+export * from './publicDirectorySchemas';
+export * from './publicJobListingSchemas';
+export * from './rateLimitSchemas';
+export * from './recruitmentSchemas';
+export * from './relationshipV2QuerySchemas';
+export * from './rsiVerificationSchemas';
+export * from './sharedAccountSchemas';
+export * from './shipComparisonSchemas';
+export * from './shipControllerV2QuerySchemas';
+export * from './shipDataSchemas';
+export * from './shipSchemas';
+export * from './squadronQuerySchemas';
+export * from './squadronSchemas';
+export * from './ticketSchemas';
+export * from './tournamentQuerySchemas';
+export * from './tradingRouteQuerySchemas';
+export * from './tradingSchemas';
+export * from './treasurySchemas';
+export * from './twoFactorSchemas';
+export * from './userSchemas';
+export * from './userShipQuerySchemas';
+export * from './userShipSchemas';
+export * from './webhookSchemas';
+export * from './wikiSchemas';
+
+// Domain schemas added for runtime validation coverage
+export * from './communicationSchemas';
+export * from './complianceSchemas';
+export * from './configSchemas';
+export * from './equipmentSchemas';
+export * from './externalIntegrationSchemas';
+export * from './integrationSchemas';
+export * from './monitoringSchemas';
+export * from './reportSchemas';
+export * from './socialSchemas';
+export * from './workflowSchemas';
+
+// Re-export the validateSchema middleware for convenience
+export { validateSchema } from '../middleware/schemaValidation';

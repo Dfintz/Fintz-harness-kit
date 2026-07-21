@@ -3,8 +3,8 @@ import { AuthRequest } from '../middleware/auth';
 import { BaseController } from './BaseController';
 export declare class FleetViewController extends BaseController {
     private readonly fleetViewService;
-    private readonly organizationPermissionService;
     private readonly organizationRepository;
+    private readonly userOrganizationRepository;
     private static readonly IMPORT_OPTION_FIELDS;
     uploadMiddleware: import("express").RequestHandler<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>;
     private normalizeFleetViewSchema;

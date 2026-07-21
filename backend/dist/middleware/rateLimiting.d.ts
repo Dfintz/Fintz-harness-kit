@@ -76,7 +76,6 @@ export declare const userWriteOperationsRateLimiter: RateLimitRequestHandler;
 export declare const userSensitiveOperationsRateLimiter: RateLimitRequestHandler;
 export declare const adminReadRateLimiter: RateLimitRequestHandler;
 export declare const adminWriteRateLimiter: RateLimitRequestHandler;
-export declare const adminRateLimiter: RateLimitRequestHandler;
 export declare const criticalOperationsRateLimiter: RateLimitRequestHandler;
 export declare const sensitiveDataAccessRateLimiter: RateLimitRequestHandler;
 export declare const createCustomRateLimiter: typeof createLimiter;

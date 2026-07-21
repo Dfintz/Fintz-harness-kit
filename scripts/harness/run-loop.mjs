@@ -20,7 +20,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSafeCliCommand } from "./command-validation.mjs";
+import { parseValidatedCliCommand } from "./command-validation.mjs";
 import { resolveTokens } from "./config.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
@@ -240,11 +240,12 @@ function composeFixPrompt(loop, failures, iteration, journal) {
 }
 
 function invokeAgent(agentCmd, prompt) {
-  assertSafeCliCommand(agentCmd, { label: "run-loop agent command" });
-  console.log(`[run-loop]   invoking agent: ${agentCmd}`);
-  const result = spawnSync(agentCmd, {
+  const parsed = parseValidatedCliCommand(agentCmd, {
+    label: "run-loop agent command",
+  });
+  console.log(`[run-loop]   invoking agent: ${parsed.command}`);
+  const result = spawnSync(parsed.executable, parsed.args, {
     cwd: repoRoot,
-    shell: true,
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
   });

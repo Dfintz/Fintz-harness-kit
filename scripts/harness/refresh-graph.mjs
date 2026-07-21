@@ -16,6 +16,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseValidatedCliCommand } from './command-validation.mjs';
 import {
   buildGraphStatusCore,
   emitGraphEvent,
@@ -307,9 +308,12 @@ function runGraphifyRefreshBackend(projectRoot, backend) {
     throw new Error('Graphify refresh backend is missing refreshCommand.');
   }
 
-  const result = spawnSync(command, {
+  const parsed = parseValidatedCliCommand(command, {
+    label: 'refresh-graph graphify refreshCommand',
+  });
+
+  const result = spawnSync(parsed.executable, parsed.args, {
     cwd: backend.refreshCwd || projectRoot,
-    shell: true,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,

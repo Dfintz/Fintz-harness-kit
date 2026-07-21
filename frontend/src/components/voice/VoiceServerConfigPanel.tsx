@@ -55,14 +55,14 @@ const SERVER_TYPE_OPTIONS: Array<{ value: VoiceServerType; label: string }> = [
   { value: 'mumble', label: 'Mumble' },
   { value: 'teamspeak', label: 'TeamSpeak' },
   { value: 'ventrilo', label: 'Ventrilo' },
-  { value: 'stoat', label: 'Stoat' },
+  { value: 'starcomms', label: 'StarComms' },
   { value: 'custom', label: 'Custom' },
 ];
 const TEAMSPEAK_DEFAULT_QUERY_PORT = 10011;
 
 const getConnectProtocol = (type: VoiceServerType): string => {
   if (type === 'teamspeak') return 'ts3server';
-  if (type === 'stoat') return 'https';
+  if (type === 'starcomms') return 'https';
   return type;
 };
 
@@ -70,7 +70,7 @@ const getDefaultPort = (type: VoiceServerType): number => {
   if (type === 'mumble') return 64738;
   if (type === 'teamspeak') return 9987;
   if (type === 'ventrilo') return 3784;
-  if (type === 'stoat') return 443;
+  if (type === 'starcomms') return 443;
   return 64738;
 };
 

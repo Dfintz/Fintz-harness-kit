@@ -4,7 +4,6 @@ exports.securitySettings2faChallenge = exports.gdprDeletion2faChallenge = export
 const TwoFactorService_1 = require("../services/authentication/TwoFactorService");
 const user_1 = require("../services/user");
 const logger_1 = require("../utils/logger");
-const redis_1 = require("../utils/redis");
 const defaultConfig = {
     codeHeader: 'X-2FA-Code',
     requireEnabled: false,
@@ -20,38 +19,6 @@ const defaultConfig = {
     codeReuseWindow: 30,
 };
 const validatedCodes = new Map();
-const cacheKeyForValidatedCode = (userId, action) => `2fa:validated:${userId}:${action}`;
-async function getValidatedCodeFromCache(key) {
-    try {
-        const cached = await redis_1.cache.get(key);
-        if (cached) {
-            return cached;
-        }
-    }
-    catch (error) {
-        logger_1.logger.debug('2FA Redis cache get failed; using in-memory fallback', {
-            key,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
-    const localCached = validatedCodes.get(key);
-    return localCached ?? null;
-}
-async function setValidatedCodeInCache(key, value, ttlSeconds) {
-    try {
-        const stored = await redis_1.cache.set(key, value, ttlSeconds);
-        if (stored) {
-            return;
-        }
-    }
-    catch (error) {
-        logger_1.logger.debug('2FA Redis cache set failed; using in-memory fallback', {
-            key,
-            error: error instanceof Error ? error.message : String(error),
-        });
-    }
-    validatedCodes.set(key, value);
-}
 setInterval(() => {
     const now = Date.now();
     const window = defaultConfig.codeReuseWindow * 1000;
@@ -109,8 +76,8 @@ const twoFactorChallengeMiddleware = (action, config = {}) => {
                 });
                 return;
             }
-            const cacheKey = cacheKeyForValidatedCode(req.user.id, action);
-            const cached = await getValidatedCodeFromCache(cacheKey);
+            const cacheKey = `${req.user.id}:${action}`;
+            const cached = validatedCodes.get(cacheKey);
             const now = Date.now();
             if (cached?.code === twoFactorCode &&
                 now - cached.timestamp < finalConfig.codeReuseWindow * 1000) {
@@ -128,7 +95,7 @@ const twoFactorChallengeMiddleware = (action, config = {}) => {
                 });
                 return;
             }
-            const isValid = await Promise.resolve(twoFactorService.verifyToken(user.twoFactorSecret, twoFactorCode, req.user.id));
+            const isValid = twoFactorService.verifyToken(user.twoFactorSecret, twoFactorCode);
             if (!isValid) {
                 logger_1.logger.warn(`Invalid 2FA code for ${action}`, {
                     userId: req.user.id,
@@ -142,7 +109,7 @@ const twoFactorChallengeMiddleware = (action, config = {}) => {
                 });
                 return;
             }
-            await setValidatedCodeInCache(cacheKey, { code: twoFactorCode, timestamp: now }, finalConfig.codeReuseWindow);
+            validatedCodes.set(cacheKey, { code: twoFactorCode, timestamp: now });
             logger_1.logger.info(`2FA challenge passed for ${action}`, {
                 userId: req.user.id,
                 action,

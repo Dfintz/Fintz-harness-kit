@@ -13,6 +13,7 @@ export declare class TradingControllerV2 {
     getUexCommodities(req: Request, res: Response): Promise<void>;
     getRouteById(req: Request, res: Response): Promise<void>;
     updateRoute(req: Request, res: Response): Promise<void>;
+    private applyRouteUpdates;
     deleteRoute(req: Request, res: Response): Promise<void>;
     getOpportunities(req: Request, res: Response): Promise<void>;
     getOrgAnalytics(req: Request, res: Response): Promise<void>;
@@ -27,6 +28,7 @@ export declare class TradingControllerV2 {
     createPriceAlert(req: Request, res: Response): Promise<void>;
     updatePriceAlert(req: Request, res: Response): Promise<void>;
     deletePriceAlert(req: Request, res: Response): Promise<void>;
+    private calculateRouteRating;
     executeTradeRun(req: Request, res: Response): Promise<void>;
     createTradeOperation(req: Request, res: Response): Promise<void>;
     getPriceFeedStatus(_req: Request, res: Response): Promise<void>;

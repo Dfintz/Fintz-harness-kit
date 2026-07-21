@@ -8,7 +8,6 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
-var _a, _b;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrgWatchlistEntry = void 0;
 const shared_types_1 = require("@sc-fleet-manager/shared-types");
@@ -55,14 +54,14 @@ __decorate([
         type: 'varchar',
         length: 30,
     }),
-    __metadata("design:type", typeof (_a = typeof shared_types_1.WatchlistReason !== "undefined" && shared_types_1.WatchlistReason) === "function" ? _a : Object)
+    __metadata("design:type", String)
 ], OrgWatchlistEntry.prototype, "reason", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'varchar',
         length: 12,
     }),
-    __metadata("design:type", typeof (_b = typeof shared_types_1.WatchlistThreatLevel !== "undefined" && shared_types_1.WatchlistThreatLevel) === "function" ? _b : Object)
+    __metadata("design:type", String)
 ], OrgWatchlistEntry.prototype, "threatLevel", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'text', nullable: true }),

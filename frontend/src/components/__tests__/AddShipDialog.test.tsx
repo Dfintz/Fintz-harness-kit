@@ -137,4 +137,5 @@ describe('AddShipDialog', () => {
     const addButton = screen.getByRole('button', { name: /Add Ship to Hangar/i });
     expect(addButton).toBeInTheDocument();
   });
+
 });

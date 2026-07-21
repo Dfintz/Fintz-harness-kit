@@ -49,15 +49,15 @@ __decorate([
 ], FederationMember.prototype, "organizationName", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'member' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationMember.prototype, "role", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'pending' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationMember.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'full_member' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], FederationMember.prototype, "associationType", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'int', default: 1 }),

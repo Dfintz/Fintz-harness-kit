@@ -20,13 +20,56 @@ const DEFAULT_ALLOWED_EXECUTABLES = [
 const BLOCKED_SHELL_PATTERNS = [
   { pattern: /;/, reason: 'command chaining via semicolon is not allowed' },
   { pattern: /\|\|?|&&/, reason: 'command chaining/piping operators are not allowed' },
+  { pattern: /&/, reason: 'command chaining via ampersand is not allowed' },
+  { pattern: /[\r\n]/, reason: 'multi-line commands are not allowed' },
   { pattern: /`/, reason: 'backtick command substitution is not allowed' },
   { pattern: /\$\(/, reason: 'subshell command substitution is not allowed' },
   { pattern: /[<>]/, reason: 'shell redirection operators are not allowed' },
 ];
 
 function shellSplit(command) {
-  return String(command).trim().split(/\s+/).filter(Boolean);
+  const text = String(command ?? '').trim();
+  if (!text) return [];
+
+  const tokens = [];
+  let current = '';
+  let quote = null;
+
+  for (const ch of text) {
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (quote) {
+    throw new Error('unterminated quote in command');
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
 }
 
 function resolveExecutable(token) {
@@ -49,7 +92,21 @@ export function validateAgentCommand(command, options = {}) {
     }
   }
 
-  const firstToken = shellSplit(cmd)[0];
+  let tokens;
+  try {
+    tokens = shellSplit(cmd);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : 'could not parse command',
+    };
+  }
+
+  const firstToken = tokens[0];
+  if (!firstToken) {
+    return { ok: false, reason: 'agent command is empty' };
+  }
+
   const executable = resolveExecutable(firstToken);
   const allowList = new Set(
     (Array.isArray(options.allowedExecutables)
@@ -65,7 +122,22 @@ export function validateAgentCommand(command, options = {}) {
     };
   }
 
-  return { ok: true, executable };
+  return { ok: true, executable, tokens };
+}
+
+export function parseValidatedCliCommand(command, options = {}) {
+  const verdict = validateAgentCommand(command, options);
+  if (!verdict.ok) {
+    const label = options?.label || 'CLI command';
+    throw new Error(`${label} rejected: ${verdict.reason}`);
+  }
+
+  return {
+    command: String(command || '').trim(),
+    executable: verdict.tokens[0],
+    args: verdict.tokens.slice(1),
+    normalizedExecutable: verdict.executable,
+  };
 }
 
 export function assertValidAgentCommand(command, context = 'agent command') {

@@ -29,13 +29,13 @@ analysis and dependency tracing.
 **Invocation:**
 
 ```bash
-npm run harness:mcp:find -- <component-name-or-pattern>
+npm run harness:mcp:find -- --query "<component-name-or-pattern>"
 ```
 
 **Inputs:**
 
-- `component`: String pattern (e.g., `SkillRegistry`, `registry.json`, `optimize-skills`)
-- `context`: Optional file path for scope (default: workspace root)
+- `query`: String pattern (e.g., `SkillRegistry`, `registry.json`, `optimize-skills`)
+- `scope`: Optional scope selector (`all`, `memory`, `lessons`, `briefs`, `graph`; default: `all`)
 
 **Output:**
 
@@ -84,13 +84,12 @@ npm run harness:mcp:find -- <component-name-or-pattern>
 **Invocation:**
 
 ```bash
-npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
+npm run harness:mcp:impact -- --file "<path>" [--depth 1-3]
 ```
 
 **Inputs:**
 
-- `files`: Comma-separated paths (e.g.,
-  `.github/harness/registry.json, scripts/harness/dspy-bridge.mjs`)
+- `file`: Single workspace-relative path (e.g., `.github/harness/registry.json`)
 - `depth`: Traversal depth (1 = direct dependents, 2 = transitive, 3 = full closure; default: 2)
 
 **Output:**
@@ -99,7 +98,7 @@ npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
 {
   "tool": "harness:mcp:impact",
   "input": {
-    "files": [".github/harness/registry.json"],
+    "file": ".github/harness/registry.json",
     "depth": 2
   },
   "impactAnalysis": {
@@ -173,7 +172,7 @@ All graph status surfaces now share core contract fields:
 
 ### Understand Stage
 
-```
+```text
 ┌──────────────────────────────────────────┐
 │ Stage: UNDERSTAND                        │
 │ Model: Claude Opus 4.8                   │
@@ -248,12 +247,12 @@ All graph status surfaces now share core contract fields:
 
 ```bash
 # 1. Find registry consumers
-npm run harness:mcp:find -- "registry.json"
+npm run harness:mcp:find -- --query "registry.json"
 
 # Output: prompt-router, optimize-skills, AGENTS.md, HARNESS.md
 
 # 2. Analyze impact of registry changes
-npm run harness:mcp:impact -- --files ".github/harness/registry.json" --depth 2
+npm run harness:mcp:impact -- --file ".github/harness/registry.json" --depth 2
 
 # Output: routing, skill discovery, CLI entry points all affected
 # Risk: Medium (registry change cascades to routing decisions)
@@ -272,12 +271,12 @@ fields ignored by v1 clients.
 
 ```bash
 # 1. Find who calls dspy-bridge
-npm run harness:mcp:find -- "dspy-bridge.mjs"
+npm run harness:mcp:find -- --query "dspy-bridge.mjs"
 
 # Output: optimize-all-skills.mjs, dspy-optimize-ollama.py, dspy-optimize.py
 
 # 2. Analyze impact on optimization pipeline
-npm run harness:mcp:impact -- --files "scripts/harness/dspy-bridge.mjs" --depth 2
+npm run harness:mcp:impact -- --file "scripts/harness/dspy-bridge.mjs" --depth 2
 
 # Output: Optimizer orchestration, eval-set loading, report generation affected
 # Risk: Medium (optimizer is critical path for skill optimization workflow)

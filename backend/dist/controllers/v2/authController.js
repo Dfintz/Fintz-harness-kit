@@ -280,7 +280,7 @@ class AuthControllerV2 {
                 return res.error(api_1.ApiErrorCode.RESOURCE_CONFLICT, '2FA is already enabled. Disable it first to re-enable.', undefined, 409);
             }
             const setup = await this.twoFactorService.generateSecret(user.username || userRecord.email, 'SC Fleet Manager');
-            const hashedBackupCodes = await this.twoFactorService.hashBackupCodes(setup.backupCodes);
+            const hashedBackupCodes = this.twoFactorService.hashBackupCodes(setup.backupCodes);
             await this.userService.updateUser(user.id, {
                 twoFactorSecret: setup.secret,
                 backupCodes: hashedBackupCodes,
@@ -323,9 +323,9 @@ class AuthControllerV2 {
             }
             let verified = false;
             if (isBackupCode) {
-                verified = await this.twoFactorService.verifyBackupCode(normalizedCode, userRecord.backupCodes || []);
+                verified = this.twoFactorService.verifyBackupCode(normalizedCode, userRecord.backupCodes || []);
                 if (verified) {
-                    const updatedBackupCodes = await this.twoFactorService.removeBackupCode(normalizedCode, userRecord.backupCodes || []);
+                    const updatedBackupCodes = this.twoFactorService.removeBackupCode(normalizedCode, userRecord.backupCodes || []);
                     await this.userService.updateUser(user.id, {
                         backupCodes: updatedBackupCodes,
                     });
@@ -333,7 +333,7 @@ class AuthControllerV2 {
                 }
             }
             else {
-                verified = await this.twoFactorService.verifyToken(userRecord.twoFactorSecret, normalizedCode, user.id);
+                verified = this.twoFactorService.verifyToken(userRecord.twoFactorSecret, normalizedCode);
             }
             if (verified) {
                 await this.twoFactorService.resetFailedAttempts(user.id);
@@ -397,7 +397,7 @@ class AuthControllerV2 {
                 : String(code ?? '')
                     .trim()
                     .toUpperCase();
-            const verified = await this.twoFactorService.verifyToken(userRecord.twoFactorSecret || '', normalizedCode, user.id);
+            const verified = this.twoFactorService.verifyToken(userRecord.twoFactorSecret || '', normalizedCode);
             if (!verified) {
                 logger_1.logger.warn('Failed 2FA disable attempt - invalid code', { userId: user.id });
                 return res.error(api_1.ApiErrorCode.INVALID_CREDENTIALS, 'Invalid 2FA code', undefined, 401);

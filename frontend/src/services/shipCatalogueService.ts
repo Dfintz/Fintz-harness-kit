@@ -45,9 +45,27 @@ class ShipCatalogueService extends BaseService {
       const response = await apiClient.get<Record<string, unknown>>(this.basePath, { params });
       // apiClient.get() returns the response body directly
       const body = response as unknown as Record<string, unknown>;
-      const inner = (body.data ?? body) as Record<string, unknown>;
 
-      // Backend returns { data: [...], pagination: {...} } — map to expected format
+      // Preferred shape from backend: { success, data: [...], meta: { pagination: {...} } }
+      if (Array.isArray(body.data)) {
+        const meta = (body.meta ?? {}) as Record<string, unknown>;
+        const pagination = (meta.pagination ?? body.pagination ?? {}) as Record<string, unknown>;
+        const total = Number(pagination.total ?? body.data.length) || body.data.length;
+        const page = Number(pagination.page ?? 1) || 1;
+        const limit = Number(pagination.limit ?? body.data.length) || body.data.length;
+        const totalPages = Number(pagination.totalPages ?? 1) || 1;
+        return {
+          items: body.data as ShipCatalogueItem[],
+          total,
+          page,
+          limit,
+          totalPages,
+        };
+      }
+
+      const inner = body as Record<string, unknown>;
+
+      // Legacy shape: { data: [...], pagination: {...} }
       if (inner && 'data' in inner && 'pagination' in inner) {
         const pagination = inner.pagination as {
           total: number;

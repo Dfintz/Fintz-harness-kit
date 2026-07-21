@@ -4,9 +4,9 @@ exports.MigrateBackupCodesToBcrypt20260719000000 = void 0;
 class MigrateBackupCodesToBcrypt20260719000000 {
     name = 'MigrateBackupCodesToBcrypt20260719000000';
     async up(queryRunner) {
-        console.log('[CRIT-S-3] Starting backup code migration (Phase 0 - non-blocking)');
-        console.log('[CRIT-S-3] Migration complete. Old SHA-256 codes remain valid during Phase 0.');
-        console.log('[CRIT-S-3] Phase 1 enforcement: Set BACKUP_CODE_HASH_PHASE=enforce to reject SHA-256');
+        console.log('[CRIT-S-3] Starting backup code migration contract alignment');
+        console.log('[CRIT-S-3] Migration complete. Legacy SHA-256 codes remain runtime-compatible.');
+        console.log('[CRIT-S-3] Runtime phase enforcement: Set BACKUP_CODE_HASH_PHASE=enforce to require bcrypt.');
     }
     async down(queryRunner) {
         console.log('[CRIT-S-3] Rollback: Skipped (bcrypt codes cannot be de-hashed)');

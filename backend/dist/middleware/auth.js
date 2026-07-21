@@ -5,7 +5,6 @@ const cookies_1 = require("../config/cookies");
 const data_source_1 = require("../data-source");
 const User_1 = require("../models/User");
 const authentication_1 = require("../services/authentication");
-const SessionBindingMetricsService_1 = require("../services/security/SessionBindingMetricsService");
 const UserApiKeyService_1 = require("../services/security/UserApiKeyService");
 const auditLogger_1 = require("../utils/auditLogger");
 const logger_1 = require("../utils/logger");
@@ -92,26 +91,10 @@ function handleSessionBindingValidation(req, res, decoded, ipAddress) {
     }
     const currentBinding = (0, sessionBinding_1.createSessionBinding)(req);
     const validation = (0, sessionBinding_1.validateSessionBinding)(decoded.sessionBinding, currentBinding);
-    const metricsService = SessionBindingMetricsService_1.SessionBindingMetricsService.getInstance();
     if (validation.valid) {
-        metricsService.recordSuccess({
-            userId: decoded.id,
-            success: true,
-            path: req.path,
-            enforced: true,
-            timestamp: new Date(),
-        });
         return true;
     }
-    const warnOnly = process.env.SESSION_BINDING_WARN_ONLY === 'true';
-    metricsService.recordMismatch({
-        userId: decoded.id,
-        success: false,
-        mismatches: validation.mismatches,
-        path: req.path,
-        enforced: !warnOnly,
-        timestamp: new Date(),
-    });
+    const warnOnly = process.env.SESSION_BINDING_ENFORCE !== 'true';
     if (!warnOnly) {
         logger_1.logger.warn('Session binding mismatch', {
             userId: decoded.id,
@@ -138,9 +121,8 @@ function handleSessionBindingValidation(req, res, decoded, ipAddress) {
     }
     if (!warnOnly) {
         res.status(403).json({
-            message: 'We detected an unusual login location or device. Please log out and log back in to continue.',
+            message: 'Session binding validation failed. Please log in again.',
             code: 'SESSION_BINDING_MISMATCH',
-            documentationUrl: 'https://docs.example.com/help/session-binding',
         });
         return false;
     }

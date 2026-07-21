@@ -11,6 +11,7 @@ import { shipServiceV2 as shipService } from '@/services/shipServiceV2';
 import { useAuthStore } from '@/store/authStore';
 import type { CreateShipInput } from '@/types/apiV2';
 import { ParsedShip, parseShipCSV } from '@/utils/csvParser';
+import { dedupeManufacturers, isSameManufacturer } from '@/utils/manufacturerMatching';
 import { logger } from '@/utils/logger';
 import { CheckCircle as CheckmarkCircle } from '@mui/icons-material';
 import AddIcon from '@mui/icons-material/Add';
@@ -129,7 +130,7 @@ export const ShipImportDialog: React.FC<ShipImportDialogProps> = ({
   const loadManufacturers = async () => {
     try {
       const manufacturerList = await shipCatalogueService.getManufacturers();
-      setManufacturers(manufacturerList.sort((a, b) => a.localeCompare(b)));
+      setManufacturers(dedupeManufacturers(manufacturerList).sort((a, b) => a.localeCompare(b)));
     } catch (err) {
       logger.error(
         'Failed to load manufacturers:',
@@ -142,11 +143,16 @@ export const ShipImportDialog: React.FC<ShipImportDialogProps> = ({
     setLoadingCatalogue(true);
     try {
       const response = await shipCatalogueService.getShips({
-        manufacturer: selectedManufacturer || undefined,
         search: searchQuery || undefined,
-        limit: 100,
+        limit: 500,
       });
-      setCatalogueShips(response.items);
+
+      const items = response.items;
+      const filteredItems = selectedManufacturer
+        ? items.filter(ship => isSameManufacturer(ship.manufacturer, selectedManufacturer))
+        : items;
+
+      setCatalogueShips(filteredItems);
     } catch (err) {
       logger.error('Failed to load ships:', err instanceof Error ? err : new Error(String(err)));
       setCatalogueShips([]);

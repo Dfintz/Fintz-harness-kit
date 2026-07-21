@@ -18,7 +18,7 @@ class SessionBindingMetricsService {
     lastResetTime = Date.now();
     rollupInterval = 60000;
     constructor() {
-        if (applicationinsights_1.default.defaultClient) {
+        if (applicationinsights_1.default?.defaultClient) {
             this.startPeriodicRollup();
         }
     }
@@ -108,7 +108,7 @@ class SessionBindingMetricsService {
                 const rate = this.getMismatchRate();
                 const counts = this.getEventCounts();
                 const reasons = this.getMismatchByReason();
-                if (applicationinsights_1.default.defaultClient && counts.total > 0) {
+                if (applicationinsights_1.default?.defaultClient && counts.total > 0) {
                     applicationinsights_1.default.defaultClient.trackEvent({
                         name: 'SessionBindingMetricsRollup',
                         properties: {
@@ -138,7 +138,7 @@ class SessionBindingMetricsService {
     }
     emitCustomMetric(metricType, event) {
         try {
-            if (!applicationinsights_1.default.defaultClient) {
+            if (!applicationinsights_1.default?.defaultClient) {
                 return;
             }
             applicationinsights_1.default.defaultClient.trackEvent({

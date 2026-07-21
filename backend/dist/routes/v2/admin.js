@@ -41,7 +41,6 @@ const adminController_1 = require("../../controllers/v2/adminController");
 const integrationStatusController_1 = require("../../controllers/v2/integrationStatusController");
 const adminAuth_1 = require("../../middleware/adminAuth");
 const auth_1 = require("../../middleware/auth");
-const rateLimiting_1 = require("../../middleware/rateLimiting");
 const schemaValidation_1 = require("../../middleware/schemaValidation");
 const twoFactorChallenge_1 = require("../../middleware/twoFactorChallenge");
 const schemas_1 = require("../../schemas");
@@ -83,7 +82,7 @@ const getIntegrationStatusController = () => {
 };
 router.use(auth_1.authenticate);
 router.use(adminAuth_1.requireAdmin);
-router.use(rateLimiting_1.adminRateLimiter);
+router.use((0, adminAuth_1.adminRateLimit)(200, 60000));
 router.use('/incidents', incidentRoutes_1.router);
 router.use('/role-sync', deadLetterRoutes_1.router);
 router.get('/compliance/licenses', (0, schemaValidation_1.validateSchema)(schemas_1.complianceSchemas.licenseExport, 'query'), (req, res) => getComplianceController().exportLicenses(req, res));

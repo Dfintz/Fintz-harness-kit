@@ -73,7 +73,7 @@ __decorate([
 ], Federation.prototype, "treaties", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'forming' }),
-    __metadata("design:type", Object)
+    __metadata("design:type", String)
 ], Federation.prototype, "status", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'boolean', default: false }),

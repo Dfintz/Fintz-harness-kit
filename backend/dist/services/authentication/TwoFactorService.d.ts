@@ -11,23 +11,13 @@ export interface LockoutStatus {
 }
 export declare class TwoFactorService {
     private readonly userService;
-    private readonly bcryptCost;
-    private static readonly usedTotpTokens;
-    private static readonly tokenReuseCleanupTimer;
-    private static readonly tokenValidityWindow;
     constructor();
-    private getBcryptCost;
-    private isBcryptHash;
-    private getReplayTtlSeconds;
-    private getTokenReplayKey;
-    private isTokenReplayed;
-    private markTokenAsUsed;
     generateSecret(username: string, issuer?: string): Promise<TwoFactorSetup>;
-    verifyToken(secret: string, token: string, userId?: string): Promise<boolean>;
+    verifyToken(secret: string, token: string): boolean;
     generateBackupCodes(count?: number): string[];
-    hashBackupCodes(codes: string[]): Promise<string[]>;
-    verifyBackupCode(code: string, hashedCodes: string[]): Promise<boolean>;
-    removeBackupCode(code: string, hashedCodes: string[]): Promise<string[]>;
+    hashBackupCodes(codes: string[]): string[];
+    verifyBackupCode(code: string, hashedCodes: string[]): boolean;
+    removeBackupCode(code: string, hashedCodes: string[]): string[];
     trackFailedAttempt(userId: string): Promise<void>;
     checkLockout(userId: string): Promise<LockoutStatus>;
     resetFailedAttempts(userId: string): Promise<void>;

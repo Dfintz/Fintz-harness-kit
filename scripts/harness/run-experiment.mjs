@@ -33,7 +33,7 @@ import { execSync, execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertSafeCliCommand } from './command-validation.mjs';
+import { parseValidatedCliCommand } from './command-validation.mjs';
 import { resolveTokens } from './config.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -260,11 +260,12 @@ function composeImprovementPrompt(loop, iteration, best, current, journal) {
 }
 
 function invokeAgent(agentCmd, prompt, targetFiles) {
-  assertSafeCliCommand(agentCmd, { label: 'run-experiment agent command' });
-  console.log(`[run-experiment]   invoking agent: ${agentCmd}`);
-  const result = spawnSync(agentCmd, {
+  const parsed = parseValidatedCliCommand(agentCmd, {
+    label: 'run-experiment agent command',
+  });
+  console.log(`[run-experiment]   invoking agent: ${parsed.command}`);
+  const result = spawnSync(parsed.executable, parsed.args, {
     cwd: repoRoot,
-    shell: true,
     input: prompt,
     stdio: ['pipe', 'inherit', 'inherit'],
     // Expose the declared target(s) so file-editing adapters (e.g. ollama-apply-agent.mjs)
@@ -280,17 +281,20 @@ function invokeAgent(agentCmd, prompt, targetFiles) {
 // (e.g. overnight) run leaves a reviewable trail without sweeping in unrelated work.
 function commitTargets(targetFiles, loop, iteration, metricName, value) {
   try {
-    execSync(`git add -- ${targetFiles.map(f => `"${f}"`).join(' ')}`, {
+    execFileSync('git', ['add', '--', ...targetFiles], {
       cwd: repoRoot,
       stdio: 'ignore',
     });
-    const staged = execSync('git diff --cached --name-only', {
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], {
       cwd: repoRoot,
       encoding: 'utf8',
     }).trim();
     if (!staged) return;
     const message = `chore(harness): ${loop.name} iter ${iteration} — ${metricName}=${value}`;
-    execSync(`git commit -m "${message}" --no-verify`, { cwd: repoRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', message, '--no-verify'], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
     console.log(`[run-experiment]   committed target(s): ${message}`);
   } catch (err) {
     console.warn(`[run-experiment]   auto-commit failed: ${err.message}`);

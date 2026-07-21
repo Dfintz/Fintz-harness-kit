@@ -34,7 +34,7 @@ MCP tools available to the harness are listed in [`harness/registry.json`](./har
 To list available MCP tools programmatically:
 
 ```bash
-node scripts/harness/harness-catalog.mjs --mcp
+node scripts/harness/mcp-tools.mjs list-tools
 ```
 
 ## Integration Points
@@ -73,14 +73,16 @@ MCP tools may be invoked during any workflow stage:
 
 1. Ensure the MCP server is operational (see [MCP spec](https://modelcontextprotocol.io/))
 2. Add an entry to `harness/registry.json`:
-   ```json
-   {
-     "name": "my_tool",
-     "description": "Brief description",
-     "mcp": "server_name",
-     "url": "https://github.com/owner/mcp-server"
-   }
-   ```
+
+    ```json
+    {
+      "name": "my_tool",
+      "description": "Brief description",
+      "mcp": "server_name",
+      "url": "https://github.com/owner/mcp-server"
+    }
+    ```
+
 3. Update `harness/registry.json`'s `mcpTools` array or create it if missing
 4. Run `npm run harness:catalog:sync` to regenerate capability artifacts
 
@@ -104,7 +106,7 @@ Tools can be disabled per-environment via `harness.config.json` (if implemented)
 
 If an MCP tool fails:
 
-- **Timeout:** Tool call exceeds `mcp.timeout` → return error, continue
+- **Timeout:** Tool call exceeds configured wrapper timeout → return error, continue
 - **Server offline:** Attempt reconnect; if repeated failures, disable tool for session
 - **Invalid response:** Log error, return structured failure to skill
 
@@ -115,7 +117,7 @@ Skills must handle MCP tool failures gracefully (never abort the entire run).
 MCP tools are subject to:
 
 1. **Allowlist validation** — only tools in `registry.json` may be invoked
-2. **Timeout bounds** — no call may exceed `mcp.timeout` (default 5s)
+2. **Timeout bounds** — each tool wrapper is expected to enforce a bounded runtime where available
 3. **Output sanitization** — tool responses are defanged before feeding to agents (see `scripts/harness/untrusted.mjs`)
 4. **Audit logging** — all MCP tool invocations are recorded in `.github/harness/runs/` journals
 
@@ -126,7 +128,7 @@ MCP tools are subject to:
 Check `harness/registry.json`:
 
 ```bash
-node scripts/harness/harness-catalog.mjs --mcp --json | jq '.tools | map(.name)'
+node scripts/harness/harness-catalog.mjs json | jq '.capabilities.mcp.tools | map(.name)'
 ```
 
 If your tool is not listed, add it to `registry.json` and run `npm run harness:catalog:sync`.
@@ -143,7 +145,7 @@ If the server is unreachable, disable it in `harness.config.json` (if implemente
 
 ### Tool timeout
 
-Increase `mcp.timeout` in `harness.config.json` or optimize the tool's response time.
+Tune the relevant wrapper timeout or optimize the tool's response time.
 
 ## References
 
