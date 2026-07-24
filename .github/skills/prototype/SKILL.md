@@ -13,6 +13,18 @@ and [mattpocock/skills `prototype/LOGIC.md`](https://github.com/mattpocock/skill
 
 ---
 
+## Recommended Models (Phase 5)
+
+**Tier:** Balanced-Coding  
+**Primary:** `claude-sonnet-5` (Fast Iteration + State Logic)  
+**Fallback 1:** `gpt-5.3-codex` (Code Generation Specialist)  
+**Fallback 2:** `gpt-5.4` (Balanced Reasoning/Coding)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Phase 5 shift: Throwaway prototypes benefit from fast turnaround + acceptable quality. Claude Sonnet 5 balances code generation + reasoning better than specialized Codex. Maintains Phase 4 +219% improvement while improving speed. Phase 5 validation: rapid iteration validated.
+
+---
+
 ## When this is the right shape
 
 - "I'm not sure if this state machine handles the edge case where X then Y."
@@ -30,6 +42,10 @@ If the question is "what should this look like visually" → use a UI prototype 
 
 Before writing code, write one paragraph: what state model and what question is this prototype
 answering? A prototype that answers the wrong question is pure waste — make the question explicit.
+
+**Design validation philosophy**: Throwaway prototypes serve one purpose — validate logic and state
+transitions before formal commitment to the Architecture Brief. Once the question is answered, the
+prototype is discarded; only the validated decision persists.
 
 ### 2. Pick the language
 

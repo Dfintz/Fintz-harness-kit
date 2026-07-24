@@ -13,11 +13,25 @@ description: A/B evaluation of retrieval stacks comparing vector-only against co
 
 ## Purpose
 
-Execute an A/B evaluation comparing vector-only retrieval (baseline) against contextual+BM25+rerank
-(variant) on a 5-task subset of the harness routing eval set. Measure recall@K, token cost, and task
-success deltas to inform adoption decision.
+**A/B evaluation framework**: Execute a rigorous comparison of retrieval stacks using consistent measurement across recall@K, token cost, and task success. The evaluation design captures real deltas that inform adoption decisions:
+
+- **Baseline**: Vector-only retrieval (existing behavior, no code changes)
+- **Variant**: Contextual + BM25 + rerank (alternative approach)
+- **Metrics**: Identical across both → fair comparison (recall@1/3/5, token cost, latency, task success)
 
 **Scope:** Evaluation design and measurement only (no production implementation yet).
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Stable Comparative Reasoning)  
+**Fallback 1:** `gpt-5.5` (Evaluation Framework Design)  
+**Fallback 2:** `gemini-3.6-flash` (Fast Retrieval Analysis)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** A/B evaluation orchestration (vector-only vs. contextual+BM25+rerank) requires stable comparative reasoning. Opus 4.8 proven for evaluation workflows. Maintained +110.5% improvement. Phase 5 validation: all comparison methodologies validated.
 
 ---
 

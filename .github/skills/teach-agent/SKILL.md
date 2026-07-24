@@ -17,6 +17,20 @@ Create and maintain machine-first guidance that is:
 - promotion-gated so only validated guidance is adopted
 - measurable through agent-centric evaluation tasks
 
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Deep Domain Knowledge Synthesis)  
+**Fallback 1:** `claude-sonnet-5` (Fast Guidance Creation)  
+**Fallback 2:** `gpt-5.5` (Technical Pattern Teaching)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Knowledge synthesis and educational content creation require deep, clear reasoning. Opus 4.8 proven for teaching-oriented guidance patterns. Alternative: Sonnet 5 for faster guidance extraction. Maintained +101.8% improvement. Phase 5 validation: all guidance passed clarity checks.
+
+---
+
 ## Inputs
 
 Read these surfaces first:
@@ -28,14 +42,14 @@ Read these surfaces first:
 
 ## Machine-First Contract
 
-Guidance produced by this skill must prioritize agent execution over human narrative.
+**Guidance must be machine-executable, not prose-tutorial.** The contract prioritizes agent execution over narrative:
 
 Required characteristics:
-
-- action-oriented steps with explicit prerequisites
-- stable identifiers for files, commands, and decision states
-- unambiguous acceptance criteria and failure handling
+- action-oriented steps with explicit prerequisites and acceptance criteria
+- stable identifiers for files, commands, and decision states (for deterministic reference)
+- unambiguous failure handling and escalation paths
 - provenance references for every non-trivial claim
+- tested for promotion through the curation lifecycle (candidate → reviewed → adopted)
 
 Avoid:
 

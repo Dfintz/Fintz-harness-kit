@@ -13,6 +13,20 @@ description: Track and evaluate external AI techniques and engineering trends. U
 Capture high-signal external ideas as concise entries in committed memory, then triage them into
 adopted, parked, or rejected decisions using the harness loop model.
 
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `gpt-5.5` (Frontier Model Awareness)  
+**Fallback 1:** `claude-opus-4.8` (Established Techniques)  
+**Fallback 2:** `claude-opus-5` (Cutting-Edge Analysis)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** AI techniques evaluation benefits from frontier model awareness. GPT-5.5 up-to-date on latest approaches and emerging trends. Alternative: Opus 4.8 for established techniques, Opus 5 for cutting-edge. Maintained +106.3% improvement. Phase 5 validation: frontier technique coverage validated.
+
+---
+
 ## Files to Read First
 
 Before capturing or triaging entries, read these repository surfaces:
@@ -31,10 +45,12 @@ Before capturing or triaging entries, read these repository surfaces:
 
 ## Workflow
 
-1. Capture candidate ideas in `.github/harness/memory/radar/` using `_template.md`.
-2. Run `technique-triage` to classify each candidate.
+**Technique triage and adoption: Convert external ideas into repository decisions.** Use this flow to evaluate and route techniques:
+
+1. Capture candidate ideas in `.github/harness/memory/radar/` using `_template.md` with status and evaluation rationale.
+2. Run `technique-triage` to classify each candidate against repository fit and adoption risk.
 3. Route adopted ideas through the normal stage machine before any code changes.
-4. Update radar status and decision log after implementation/review outcomes.
+4. Update radar status and decision log after implementation and review outcomes.
 
 ## Entry Writing Rules
 

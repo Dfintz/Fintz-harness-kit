@@ -24,6 +24,17 @@ Use the local Understand graph as a first-class input to coding decisions so age
 
 ---
 
+## Recommended Models
+
+**Primary:** `claude-opus-4.8` (High-Reasoning)  
+**Fallback:** `gpt-5.3-codex` (Code-Dependency Analysis)
+
+**Why?** Graph-first dependency discovery requires multi-hop reasoning and blast-radius estimation. Deep understanding of cross-cutting dependencies is essential. Phase 4 benchmark: +199.5%.
+
+---
+
+## Phase 1: Graph-First Understand
+
 ## Standard Flow
 
 ### Phase 1: Graph Readiness
@@ -33,14 +44,15 @@ Use the local Understand graph as a first-class input to coding decisions so age
 3. Check freshness against `git rev-parse HEAD`.
 4. Refresh with `/understand` (or `/understand --full` for larger shifts) when stale.
 
-### Phase 2: Task Discovery
+### Phase 2: Task Discovery — Graph-First Dependency Understanding
 
-1. Run `/understand-chat <task statement>`.
-2. Extract:
+1. Run `/understand-chat <task statement>` to query the graph.
+2. **Identify change impact through graph-first analysis**:
    - Primary files/components to edit
-   - 1-hop dependent/affected components
+   - 1-hop dependent/affected components (blast radius)
    - Relevant architecture layers
-3. For key modules, run `/understand-explain <file-or-symbol>`.
+   - Dependency chains that may amplify changes
+3. For key modules, run `/understand-explain <file-or-symbol>` to understand ownership and constraints.
 
 ### Phase 3: Change Execution
 

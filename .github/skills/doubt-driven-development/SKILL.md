@@ -17,9 +17,10 @@ cross-model review protocol.
 
 ## Objective
 
-Apply adversarial fresh-context review to every non-trivial decision in-flight before committing it
-to code or an Architecture Brief — catching confident-but-wrong outputs before they cost effort to
-unwind.
+**Apply security skepticism and correctness discipline**: Maintain skepticism on high-stakes changes
+(security operations, irreversible actions, production changes) and on code in unfamiliar domains.
+Catch confident-but-wrong outputs before they cost effort to unwind. Use disciplined diagnosis for
+complex failures — a fresh, skeptical review often finds what incremental debugging misses.
 
 ---
 

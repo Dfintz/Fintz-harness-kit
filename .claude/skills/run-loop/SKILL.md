@@ -25,11 +25,26 @@ The canonical contracts live in:
 
 ## Procedure
 
-1. Read the loop JSON before acting; treat `maxIterations`, `rubric`, `checks`, and `guardrails` as
-   binding.
-2. For workflow loops, execute the rubric natively and record evidence per iteration.
+1. **Read the loop JSON contract first**: treat `maxIterations`, `rubric`, `checks`, and `guardrails` as
+   binding and deterministic.
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** Balanced-Coding  
+**Primary:** `claude-sonnet-5` (Clear Loop Structures)  
+**Fallback 1:** `claude-opus-4.8` (Complex Orchestration)  
+**Fallback 2:** `gpt-5.3-codex` (Code-Loop Analysis)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Phase 5 shift: Loop orchestration requires code clarity + execution logic balance. Claude Sonnet 5 balances both for clear loop structures vs. Opus 4.8's general reasoning. Maintains Phase 4 improvement (+99.5%) with better code orientation. Phase 5 validation: +16.6% improvement.
+
+---
+
+## Loop Execution
 3. For convergence loops, prefer the script runner when the loop definition expects shell checks.
-4. Stop immediately on exhaustion, blocked approval boundaries, or a violated guardrail.
+4. **Stop immediately** on exhaustion, blocked approval boundaries, or a violated guardrail — do not negotiate with loop bounds.
 
 ## Handoff contract
 

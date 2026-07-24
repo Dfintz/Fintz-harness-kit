@@ -23,13 +23,28 @@ The canonical contract lives in [`06-REVIEW-DEPTH.md`](../../../.github/instruct
 
 ## Procedure
 
-1. Stop if structural evidence is missing; depth review has a higher context bar than breadth.
+1. Stop if structural evidence is missing; depth review has a higher context bar than breadth — this stage
+   validates ownership, boundaries, and reuse pattern conformance.
 2. Run gates 1-5 and gate 4b where relevant.
 3. Trace significant paths end-to-end, including harness contract paths when the task touches
    registry, loops, MCP, prompt routing, or docs contracts.
-4. Check specialization boundaries: only justify new skills, agents, or branches when tools, policy,
-   or outputs materially differ.
-5. Compare implementation against the Architecture Brief and record any divergence explicitly.
+4. Check specialization boundaries: justify new skills, agents, or branches only when tools, policy,
+   or outputs materially differ from existing patterns.
+5. Compare implementation against the Architecture Brief and record divergence explicitly.
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Structural Consistency)  
+**Fallback 1:** `claude-opus-5` (Ultra-Complex Structures)  
+**Fallback 2:** `gpt-5.5` (Pattern Recognition)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Structural review (ownership, boundaries, reuse, Brief conformance) requires consistent deep analysis. Opus 4.8 excels at structural consistency. Note: Phase 4 lowest performer (+83.2%) but still strong improvement. Opus 5 for ultra-complex structures. Phase 5 validation: all structural patterns validated.
+
+---
 
 ## Handoff contract
 

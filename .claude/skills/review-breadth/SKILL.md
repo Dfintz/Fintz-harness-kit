@@ -24,11 +24,26 @@ The canonical contract lives in [`05-REVIEW-BREADTH.md`](../../../.github/instru
 ## Procedure
 
 1. Run the context sufficiency check before judging the diff.
-2. Review by lanes: requirement coverage, standards/policy, correctness/safety, operational
-   soundness, proof quality, and semantic clarity.
+2. **Cover breadth requirements**: Review by lanes — requirement coverage, standards/policy,
+   correctness/safety, operational soundness, proof quality, and semantic clarity. Breadth review
+   catches gaps across dimensions; depth review (next stage) focuses on ownership and structure.
 3. Check prose claims against shipped repo surfaces when the task touches harness docs, skills,
    loops, registry, or MCP wrappers.
-4. Report failures only, with evidence and confidence.
+4. Report findings by severity: Blocker / Major / Minor, with evidence and confidence.
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Multi-Dimensional Analysis)  
+**Fallback 1:** `claude-opus-5` (Ultra-Complex Cross-Cutting)  
+**Fallback 2:** `gpt-5.5` (Fast Breadth Coverage)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Wide-pass review across correctness, standards, safety, completeness requires comprehensive multi-dimensional reasoning. Opus 4.8 proven strength. Alternative: Opus 5 for ultra-complex cross-cutting changes. Maintained +113.2% improvement. Phase 5 validation: consistent breadth coverage.
+
+---
 
 ## Handoff contract
 

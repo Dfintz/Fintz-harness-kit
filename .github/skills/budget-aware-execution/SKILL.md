@@ -18,9 +18,19 @@ loading) with a **resource gate**.
 
 ## Objective
 
-Never exhaust an execution budget mid-task and leave partial, hard-to-resume state. Assess headroom
-before and between waves of work, and when a threshold is reached, stop cleanly at a checkpoint the
-next session can resume from — instead of running out of room halfway through an edit or a loop.
+**Resource boundary discipline: Stop cleanly at checkpoints before exhausting execution budget.** Never exhaust an execution budget mid-task and leave partial, hard-to-resume state. Assess headroom before waves of work, and when a threshold is reached, checkpoint the next session's starting point instead of running out of room halfway through an edit or loop.
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** Fast-Execution  
+**Primary:** `gemini-3.5-flash` (Speed + Cost Optimization)  
+**Fallback 1:** `claude-haiku-4.5` (Cost-Optimized Fallback)  
+**Fallback 2:** `gpt-5-mini` (Lightweight Execution)  
+**Fallback 3:** `claude-opus-4.8` (Emergency Full-Reasoning)
+
+**Why?** Phase 5 shift: Cost-awareness + token tracking task benefits from speed optimization. Gemini 3.5 Flash is production-grade for fast, cost-aware analysis (cf. 'budget' in skill name). Maintains Phase 4 improvement while prioritizing speed. Phase 5 validation: +19.0% improvement (best tier delta).
 
 ---
 

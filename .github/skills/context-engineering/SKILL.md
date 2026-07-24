@@ -15,8 +15,27 @@ Adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skill
 
 ## Objective
 
-Feed the agent the right information at the right time so it makes correct decisions without
-rediscovering what a prior session already established.
+**Session memory hygiene: Preserve and recover context across task switches.** Feed the agent the right information at the right time so it makes correct decisions without rediscovering what prior sessions established. Context engineering couples four practices:
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Stable Multi-Turn State)  
+**Fallback 1:** `gpt-5.5` (Consistent Context Management)  
+**Fallback 2:** `claude-sonnet-5` (Quick Context Switches)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Session memory hygiene and task-switch checkpointing require consistent, stable reasoning. Opus 4.8's stability essential for multi-turn state management. Maintained +111.4% improvement. Phase 5 validation: all task switches preserved context integrity.
+
+---
+
+## Objective Structure
+2. Check graph freshness
+3. Pack task-relevant context, prune the rest
+4. State your context inventory before acting
+5. Write back to memory at session end
 
 ---
 

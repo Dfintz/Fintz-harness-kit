@@ -28,9 +28,21 @@ The canonical contract lives in [`07-FEEDBACK.md`](../../../.github/instructions
 2. Restate the competing positions clearly.
 3. Use the Brief, breadth findings, depth findings, standards, and any cited capability surface as
    the governing evidence.
-4. Produce one verdict per point: challenge upheld, current decision holds, third option, or
-   insufficient evidence.
-5. Update the persisted Brief if any settled decision changes.
+4. **Deliver a verdict on each challenge**: challenge upheld, current decision holds, third option, or
+   insufficient evidence. A verdict is a clear, defensible outcome — not a summary of positions.
+5. **Update the Brief with possible enhancements**: if a settled decision changes, refine the Brief.
+   If a new insight emerges, document it for future reference.
+
+---
+
+## Recommended Models
+
+**Primary:** `claude-opus-4.8` (High-Reasoning)  
+**Fallback:** `gpt-5.3-codex` (Code-Context Verdict)
+
+**Why?** Challenge resolution requires structured decision logic and evidence reconciliation. Verdicts must be clear and defensible. Phase 4 benchmark: +219.0%.
+
+---
 
 ## Handoff contract
 

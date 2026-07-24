@@ -10,8 +10,24 @@ description: Adopt the harness in a new repository. Use when initializing stage 
 
 ## Objective
 
-Create or refresh the repository bootstrap docs consumed by workflow and governance skills so agent
-behavior remains deterministic across sessions and operators.
+**Bootstrap harness adoption**: Initialize and configure the stage workflow, registry, and validation
+gates so agent behavior is deterministic and repeatable. Adoption requires establishing the complete
+stage structure, documentation, and monitoring — not just a partial setup. Success means new operators
+can follow the same harness workflow without special knowledge.
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Methodical Procedural Logic)  
+**Fallback 1:** `gemini-3.6-flash` (Prototyping Bootstrap)  
+**Fallback 2:** `gpt-5.5` (Procedural Guidance)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Bootstrap requires methodical step-by-step logic and detailed procedural guidance. Opus 4.8 excels at procedural workflows. Alternative: Gemini 3.6 Flash for prototyping bootstrap faster. Maintained +145.0% improvement. Phase 5 validation: stable structured initialization.
+
+---
 
 ## Process
 
