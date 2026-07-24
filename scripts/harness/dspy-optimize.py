@@ -15,7 +15,7 @@ How it works
 
 Requirements
 ------------
-Python 3.10+, dspy>=2.4,<3 (see requirements-dspy.txt)
+Python 3.10+, dspy>=2.4 (see requirements-dspy.txt)
 
 Usage
 -----
@@ -42,7 +42,7 @@ from pathlib import Path
 # ---- version guard (before importing dspy) --------------------------------
 
 MIN_DSPY = (2, 4)
-MAX_DSPY_MAJOR = 3
+MAX_DSPY_MAJOR = 99  # allow 3.x and beyond
 
 
 def _check_dspy_version() -> tuple[bool, str]:
@@ -53,9 +53,9 @@ def _check_dspy_version() -> tuple[bool, str]:
         parts = raw.split(".")
         major, minor = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
         if major >= MAX_DSPY_MAJOR:
-            return False, f"dspy {raw} is >=3 — this script targets dspy>=2.4,<3"
+            return False, f"dspy {raw} is too new — maximum supported major is {MAX_DSPY_MAJOR - 1}"
         if (major, minor) < MIN_DSPY:
-            return False, f"dspy {raw} is below minimum 2.4 — run: pip install 'dspy>=2.4,<3'"
+            return False, f"dspy {raw} is below minimum 2.4 — run: pip install 'dspy>=2.4'"
         return True, f"dspy {raw} OK"
     except Exception as e:  # noqa: BLE001
         return False, f"dspy not importable: {e}"
@@ -86,7 +86,14 @@ def _build_program(seed_instruction: str):
             super().__init__()
             self.plan = dspy.Predict(SkillGuidedPlanning)
             # Seed the instruction from the target skill file
-            self.plan.extended_signature.instructions = seed_instruction
+            # dspy 3.x uses predict.signature; 2.x uses predict.extended_signature
+            if hasattr(self.plan, 'extended_signature'):
+                self.plan.extended_signature.instructions = seed_instruction
+            elif hasattr(self.plan, 'signature'):
+                try:
+                    self.plan.signature = self.plan.signature.with_instructions(seed_instruction)
+                except Exception:
+                    pass  # best-effort; optimizer will still run
 
         def forward(self, skill_instruction: str, task: str):
             return self.plan(skill_instruction=skill_instruction, task=task)
@@ -193,11 +200,17 @@ def run_optimization(
         return 1
 
     # Extract the optimized instruction text
-    optimized_instruction: str = (
-        optimized.plan.extended_signature.instructions
-        if hasattr(optimized, "plan")
-        else seed_instruction
-    )
+    # dspy 3.x: predict.signature.instructions; 2.x: predict.extended_signature.instructions
+    plan = getattr(optimized, 'plan', None)
+    if plan is not None:
+        if hasattr(plan, 'extended_signature'):
+            optimized_instruction = plan.extended_signature.instructions
+        elif hasattr(plan, 'signature'):
+            optimized_instruction = getattr(plan.signature, 'instructions', seed_instruction)
+        else:
+            optimized_instruction = seed_instruction
+    else:
+        optimized_instruction = seed_instruction
 
     if optimized_instruction == seed_instruction:
         print("[dspy-optimize] WARNING: optimized instruction is identical to seed — no improvement found")

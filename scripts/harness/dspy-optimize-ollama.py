@@ -72,12 +72,15 @@ def save_file(path: str, content: str) -> None:
 
 
 def load_eval_set(path: str) -> dict[str, Any]:
-    """Load eval set JSON."""
+    """Load eval set JSON. Accepts both 'tasks' and 'tests' array keys."""
     try:
         with open(path, 'r', encoding='utf-8') as f:
             data = json.load(f)
+        # Normalise: accept 'tests' as an alias for 'tasks' (harness eval-sets use 'tests')
+        if 'tests' in data and 'tasks' not in data:
+            data['tasks'] = data['tests']
         if not isinstance(data.get('tasks'), list) or len(data['tasks']) == 0:
-            raise ValueError("eval set must have 'tasks' array with at least 1 task")
+            raise ValueError("eval set must have 'tasks' or 'tests' array with at least 1 task")
         return data
     except json.JSONDecodeError as e:
         print(f"ERROR: Failed to parse eval set JSON: {e}", file=sys.stderr)
@@ -117,12 +120,15 @@ def evaluate_instruction(
     results = []
     for task in tasks[:5]:  # Limit to first 5 tasks for speed
         try:
+            # Accept both 'input'/'prompt' field names (harness eval-sets use 'prompt')
+            task_input = task.get('input', '') or task.get('prompt', '')
+            task_expected = task.get('expectedOutput', '') or task.get('expected', '')
             # Generate plan using instruction
             prompt = f"""Instruction: {instruction}
 
-Task: {task.get('input', '')}
+Task: {task_input}
 
-Expected output: {task.get('expectedOutput', '')}
+Expected output: {task_expected}
 
 Based on the instruction and task, generate the correct output:"""
             
