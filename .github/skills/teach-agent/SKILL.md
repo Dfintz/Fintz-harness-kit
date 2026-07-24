@@ -80,6 +80,44 @@ Use .github/harness/eval-sets/teach-agent.json to measure:
 - stale guidance rate
 - execution-success correlation from traced tasks
 
+---
+
+## Match the Form to the Failure
+
+Adapted from [obra/superpowers `writing-skills`](https://github.com/obra/superpowers/blob/main/skills/writing-skills/SKILL.md).
+
+Before writing guidance, classify the failure mode you are addressing. The wrong form for the wrong failure actively makes things worse.
+
+| Baseline failure | Right form | Wrong form |
+|---|---|---|
+| Agent skips/violates a rule under pressure (knows better, does it anyway) | Prohibition + rationalization table + Red Flags list | Soft guidance ("prefer...", "consider...") |
+| Agent complies but output has the wrong shape | Positive recipe/contract: state what the output IS — its parts, in order | Prohibition list ("don't restate", "never narrate") |
+| Agent omits a required element | Structural: REQUIRED field or slot in the template | Prose reminders near the template |
+| Behavior should depend on a condition | Conditional keyed to an observable predicate | Unconditional rule + exemption clauses |
+
+**Why prohibitions backfire on shaping problems:** under a competing incentive, agents negotiate with "don't X." A recipe leaves nothing to negotiate — the output matches the stated shape or it doesn't.
+
+**No nuance clauses.** "Don't X unless it matters" reopens the negotiation. Express a real exception as its own conditional on an observable predicate, not an appended clause to a prohibition.
+
+---
+
+## Skill Discovery Optimization (SDO)
+
+Adapted from [obra/superpowers `writing-skills`](https://github.com/obra/superpowers/blob/main/skills/writing-skills/SKILL.md).
+
+**The description field determines whether an agent loads the skill.** Write it as "when to use," not "what it does."
+
+- ✅ Good: `description: Use when [specific triggering conditions and symptoms]`
+- ❌ Bad: `description: Helps you do X by running Y and producing Z`
+
+**Why this matters:** if the description summarizes the skill's workflow, agents follow the description instead of reading the full skill body. The skill becomes dead weight — present but skipped. A description that only names triggering conditions forces the agent to actually read the skill to get the procedure.
+
+**Additional SDO rules:**
+- Write in third person (injected into system prompt)
+- Include error messages, symptoms, and tool names agents would search for
+- Keep under 500 characters for frequently-loaded skills
+- Use active gerund names: `diagnosing-bugs`, not `bug-diagnosis`
+
 ## Exit Checklist
 
 Before closing a teach-agent run:

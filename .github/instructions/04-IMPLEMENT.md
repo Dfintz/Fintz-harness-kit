@@ -93,6 +93,19 @@ Before writing the change, verify the current patterns you intend to reuse.
 - confirm it is the current pattern, not legacy drift
 - reuse before creating a new helper, structure, or workflow step
 
+### 1a. Re-read before editing
+
+Adapted from [oh-my-openagent Hashline](https://github.com/code-yeongyu/oh-my-openagent) and
+[The Harness Problem](https://blog.can.ac/2026/02/12/the-harness-problem/) (Can Bölük).
+
+Before editing any file, verify it reflects the current on-disk state:
+
+- If you last read the file several tool calls ago, **re-read it first**.
+- If another tool or agent may have modified the file since your last read, **re-read it first**.
+- Never edit from memory or from a stale read — the content hash will not match and the edit will fail.
+
+The failure mode is silent: the edit tool reports a mismatch and the agent wastes an iteration re-reading what it should have re-read before editing.
+
 ### 2. Contract discovery
 
 - identify the interfaces, templates, schemas, expectations, or downstream consumers you must

@@ -19,6 +19,46 @@ but completion is earned by evidence from the environment.
 
 ---
 
+## Verification Gate Function
+
+Adapted from [obra/superpowers `verification-before-completion`](https://github.com/obra/superpowers/blob/main/skills/verification-before-completion/SKILL.md).
+
+Before claiming any status or expressing satisfaction about completion:
+
+```
+1. IDENTIFY — What exact command proves this claim?
+2. RUN      — Execute the full command fresh, in this message
+3. READ     — Read the full output; check exit code; count failures
+4. VERIFY   — Does the output actually confirm the claim?
+             → If NO:  State the actual status with evidence
+             → If YES: State the claim WITH the evidence attached
+5. CLAIM    — Only now make the completion claim
+```
+
+**Skip any step = asserting without verifying.**
+
+### Common verification failures
+
+| Claim | What proves it | What does NOT prove it |
+|---|---|---|
+| Tests pass | Test command: 0 failures shown | Previous run, "should pass" |
+| Build succeeds | Build command: exit 0 | Linter passing |
+| Bug fixed | Original symptom: test passes | Code changed |
+| Regression test works | Red → Green cycle verified | Test passes once |
+| Requirements met | Line-by-line checklist | Tests passing alone |
+
+### Rationalization table
+
+| Excuse | Reality |
+|---|---|
+| "Should work now" | RUN the verification |
+| "I'm confident" | Confidence ≠ evidence |
+| "Linter passed" | Linter ≠ compiler ≠ tests |
+| "Agent said success" | Verify independently |
+| "Partial check is enough" | Partial proves nothing |
+
+---
+
 ## Principles
 
 - **No progress without proof**: a phase is incomplete until its exit check passes.

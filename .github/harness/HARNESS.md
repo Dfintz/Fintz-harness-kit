@@ -190,7 +190,10 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
    Rediscovering what a previous session already recorded is wasted budget.
 2. **Context Sufficiency Check first.** Every stage instruction begins with one. Inventory what you
    have, identify what you need, and request missing context before producing output. Never guess at
-   an Architecture Brief, reviewer intent, or file contents you were not given.
+   an Architecture Brief, reviewer intent, or file contents you were not given. When asking the
+   user for missing context, **ask one question at a time** — a wall of questions is harder to answer
+   and produces lower-quality responses than a focused single question.
+   (Adopted from [davis7dotsh/my-pi-setup `AGENTS.md`](https://github.com/davis7dotsh/my-pi-setup))
 3. **Carry artifacts forward — and persist them.** Stage 1 produces the Architecture Brief; stage 2
    adds a proof summary; stage 3 produces a findings ledger; stage 4 produces a gate ledger and
    structural findings; stage 5 resolves them into a verdict record. Pass these compact artifacts

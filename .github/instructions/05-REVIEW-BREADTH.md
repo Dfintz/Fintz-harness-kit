@@ -101,8 +101,20 @@ Run all lanes that apply to the change. Report failures only.
   - Are authorization checks present on every protected path?
   - **LLM output is untrusted input.** Never pass model output straight into `eval`, SQL, a shell, `innerHTML`, or a file path. Treat it exactly as you would raw user input. (OWASP LLM05)
   - Check the three-tier boundary: what in this change is Always Do / requires Ask First / is Never Do?
+  - **AI-agent-specific risks** — for harness or agent code changes, consider running
+    [Lurkr](https://github.com/agentveil-protocol/lurkr) to catch: shadow capabilities, credentials
+    flowing into LLM context, eval/subprocess in tool handlers, direct prompt interpolation, and
+    unverified MCP endpoints.
 
-### Lane 4 - Resource, lifecycle, and operational soundness
+### Lane 3b - Spec conformance
+
+Adapted from [mattpocock/skills `code-review`](https://github.com/mattpocock/skills/tree/main/skills/engineering/code-review) — Standards and Spec are separate axes; one can pass while the other fails.
+
+- Are there requirements from the originating task, Brief, or spec that are **missing or only partially implemented**?
+- Does the diff contain behaviour that **was not asked for** (scope creep)?
+- Are there requirements that appear implemented but where the implementation looks **wrong relative to the spec**?
+
+If no originating Brief or spec exists for this change, note the absence and skip this lane.
 
 - Are cleanup, retries, sequencing, and state transitions handled correctly?
 - Could the change leave the system, workflow, or operator in a half-complete state?

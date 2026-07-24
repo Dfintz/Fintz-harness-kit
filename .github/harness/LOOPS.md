@@ -92,6 +92,11 @@ re-examination — not a confirmation that the old findings are gone.
 9. **Pass compact state forward.** Workflow loops should carry the smallest useful artifact between
    phases (Brief, findings ledger, gate ledger, verdict record, attempt journal) instead of replaying
    full transcripts when a structured artifact already exists.
+10. **Push right.** Defer the human checkpoint as far as it will go. Do maximal work before involving
+    the human, so they are asked once, late, with everything prepared. When a checkpoint is unavoidable,
+    present a decision-ready **brief** — what was produced, why, and a link to the asset — not raw
+    output. Speed of review is imperative. (Adapted from
+    [mattpocock/skills `loop-me`](https://github.com/mattpocock/skills/tree/main/skills/in-progress/loop-me))
 
 ### Wave Boundaries (workflow loops only)
 
@@ -106,7 +111,34 @@ A workflow loop may define optional `waveBoundary` to inject synthetic checkpoin
 }
 ```
 
-**Wave boundary rule:** A wave boundary fires at iteration $k \times \text{iterationsPerWave} + 1$ for $k \geq 1$. 
+**Wave boundary rule:** A wave boundary fires at iteration $k \times \text{iterationsPerWave} + 1$ for $k \geq 1$.
+
+### Reflexion (convergence loops, opt-in)
+
+Set `"reflexionEnabled": true` in a convergence loop JSON to activate per-iteration verbal episodic
+memory. Inspired by [Shinn et al. (2023) arxiv 2303.11366](https://arxiv.org/abs/2303.11366).
+
+**How it works:**
+
+After each failing iteration the fix prompt includes a request: the agent must write a three-line
+self-diagnosis to a scratchpad file (`runs/<journal-stem>-reflexion-<N>.md`) before finishing:
+
+```
+TRIED: <one sentence — what approach was taken>
+OUTCOME: <one sentence — what still failed and the apparent reason>
+HYPOTHESIS: <one sentence — what to try differently next time>
+```
+
+On the **next iteration** the runner reads that file, wraps it with `untrusted.mjs` (prompt-injection
+safe), and injects it as "Agent diagnosis from the previous iteration" before the failing checks
+block. This gives the agent a hypothesis to test rather than re-deriving the same wrong fix.
+
+**Invariants for reflexion:**
+
+- Scratchpad files are scoped to the run journal (ephemeral, not committed).
+- If the agent does not write the file, the loop continues normally — no error.
+- Reflexion text is always wrapped with `wrapUntrusted` before injection.
+- `reflexionEnabled` defaults to `false`; no existing loop is affected. 
 
 **Example:** If `iterationsPerWave: 2`, boundaries fire at iterations **3, 5, 7, …** (2×1+1, 2×2+1, 2×3+1, …).
 

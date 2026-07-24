@@ -74,7 +74,66 @@ Never proceed with an unresolved doubt that maps to a high-impact assumption.
 
 ---
 
-## When to Invoke Cross-Model Review
+## Hard Bug Diagnosis: Feedback-Loop-First
+
+Adapted from [mattpocock/skills `diagnosing-bugs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs).
+
+When debugging a hard bug, the failure mode is jumping straight to a hypothesis. Apply this discipline before anything else:
+
+**Build a tight red-capable feedback loop FIRST.**
+
+One command — a test invocation, a curl, a CLI call — that:
+- Drives the actual bug code path
+- Can go **red** on this specific bug (not "doesn't crash" — it must catch this specific failure)
+- Is deterministic (same verdict every run)
+- Is fast (seconds, not minutes)
+- Is agent-runnable (no human click required)
+
+If you catch yourself reading code to build a theory before this command exists, **stop**. No hypothesis until you have the command.
+
+Once the loop is red and tight:
+1. **Minimize** — strip to the smallest input/code surface that still goes red
+2. **Hypothesize** — 3–5 ranked falsifiable predictions before testing any
+3. **Instrument** — one variable at a time, probe the leading hypothesis
+4. **Fix** — only after a hypothesis is confirmed by evidence
+5. **Regression test** — write it before the fix, watch it fail, then pass
+
+### When 3+ Fixes Have Failed: Question the Architecture
+
+Adapted from [obra/superpowers `systematic-debugging`](https://github.com/obra/superpowers/blob/main/skills/systematic-debugging/SKILL.md).
+
+If you have attempted three or more fixes without resolving the root cause, **stop attempting more fixes**. Three failed fix attempts is a signal about the architecture, not the symptom.
+
+The pattern that indicates an architectural problem:
+- Each fix reveals new shared state, coupling, or problem in a different place
+- Fixes require "massive refactoring" to implement
+- Each fix creates new symptoms elsewhere
+
+At this point: **discuss with the user before attempting any more fixes.** Ask whether the pattern is fundamentally sound or whether you are "sticking with it through sheer inertia." The question is whether to refactor the architecture vs. continue fixing symptoms.
+
+### Red Flags — STOP and Follow the Process
+
+If you catch yourself thinking any of these, **stop and return to Phase 1** (reproduce + evidence):
+
+- "Quick fix for now, investigate later"
+- "Just try changing X and see if it works"
+- "Add multiple changes, run tests"
+- "It's probably X, let me fix that"
+- "I don't fully understand but this might work"
+- "One more fix attempt" (when already tried 2+)
+- Proposing solutions before tracing data flow
+- **Each fix reveals a new problem in a different place**
+
+### Rationalization Table
+
+| Excuse | Reality |
+|---|---|
+| "Issue is simple, don't need process" | Simple issues have root causes too. Process is fast for simple bugs. |
+| "Emergency, no time" | Systematic debugging is FASTER than guess-and-check thrashing. |
+| "Just try this first, then investigate" | First fix sets the pattern. Do it right from the start. |
+| "Multiple fixes at once saves time" | Can't isolate what worked. Causes new bugs. |
+| "I see the problem, let me fix it" | Seeing symptoms ≠ understanding root cause. |
+| "One more fix attempt" (after 2+ failures) | 3+ failures = architectural problem. Question the pattern. |
 
 This repo's harness assigns a **high-reasoning** model to Review Breadth/Depth (see `harness.config.json §
 models.reviewer`). Invoke a cross-model pass when:

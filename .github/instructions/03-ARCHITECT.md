@@ -153,6 +153,32 @@ separation, destructive actions, or approval boundaries.
 - Is reuse already present, or clearly imminent from nearby structure?
 - If the pattern is duplicated or predictably repeated, extract now instead of after drift sets in.
 
+**Optional: DESIGN-IT-TWICE** — adapted from
+[mattpocock/skills `codebase-design`](https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design):
+When the right interface shape is genuinely uncertain (two plausible approaches, unclear which is
+deeper or better-placed), spin up two parallel sub-agents to design the same interface radically
+differently, then compare on: (a) depth — how much behaviour behind how small an interface?
+(b) locality — does change concentrate or spread? (c) seam placement — where does the caller/test
+cross? Pick the winner explicitly; record the rejected alternative and why in the Brief.
+Do this only when the choice would materially affect Gate 1–4 decisions — not as a default.
+
+**Multi-agent topology reference** — adapted from
+[revfactory/harness](https://github.com/revfactory/harness) (Apache-2.0):
+When the task involves multiple agents, name the topology before designing interactions.
+Six canonical patterns:
+
+| Pattern | Shape | Use when |
+|---|---|---|
+| **Pipeline** | A → B → C | Each stage transforms output for the next |
+| **Fan-out / Fan-in** | 1 → N → 1 | Parallel collection then aggregated consensus |
+| **Expert Pool** | Router → specialist | Task type determines which specialist handles it |
+| **Producer-Reviewer** | Generator → Validator | One agent produces, a separate agent validates |
+| **Supervisor** | Orchestrator → workers | Orchestrator dispatches, monitors, and retries workers |
+| **Hierarchical Delegation** | L1 → L2 → L3 | Nested orchestrators with layered delegation |
+
+Pick one pattern explicitly; record the choice in the Brief's Key Decisions. When the harness's
+own `plan-review.mjs` is involved, that is a Producer-Reviewer pattern.
+
 ### Step 3 - Design the change set
 
 State the intended shape of the solution.

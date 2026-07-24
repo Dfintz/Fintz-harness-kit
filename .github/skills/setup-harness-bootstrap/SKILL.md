@@ -52,6 +52,29 @@ Update or create:
 
 Keep each file concise and operational (what to do, where to read/write, guardrails).
 
+#### Hierarchical AGENTS.md (large projects)
+
+Adapted from [oh-my-openagent `/init-deep`](https://github.com/code-yeongyu/oh-my-openagent).
+
+For projects with multiple modules or significant domain boundaries, supplement the root `AGENTS.md`
+with directory-level and component-level files:
+
+```
+project/
+├── AGENTS.md              ← project-wide harness entry point
+├── src/
+│   ├── AGENTS.md          ← src-specific constraints and conventions
+│   └── payments/
+│       └── AGENTS.md      ← domain-specific rules (owns payment schema)
+```
+
+Each file should contain only what is specific to that scope — no duplication of parent content.
+Agents automatically load the AGENTS.md closest to their current working files. This reduces
+context bloat: a component-level agent loads component constraints, not the full project context.
+
+Create hierarchical AGENTS.md files only when a directory has genuinely different constraints
+from its parent (different domain ownership, different coding conventions, different tools).
+
 ### 4. Keep Harness Registry Aligned
 
 Ensure `.github/harness/registry.json` includes this skill with triggers for:
