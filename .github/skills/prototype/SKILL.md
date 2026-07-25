@@ -19,7 +19,7 @@ and [mattpocock/skills `prototype/LOGIC.md`](https://github.com/mattpocock/skill
 **Primary:** `claude-sonnet-5` (Fast Iteration + State Logic)  
 **Fallback 1:** `gpt-5.3-codex` (Code Generation Specialist)  
 **Fallback 2:** `gpt-5.4` (Balanced Reasoning/Coding)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 shift: Throwaway prototypes benefit from fast turnaround + acceptable quality. Claude Sonnet 5 balances code generation + reasoning better than specialized Codex. Maintains Phase 4 +219% improvement while improving speed. Phase 5 validation: rapid iteration validated.
 
@@ -110,3 +110,4 @@ Once the question is answered:
 - Don't generalise — one question per prototype
 - Don't blur the logic and the TUI — the reducer must be pure
 - Don't ship the TUI shell into production
+

@@ -6,7 +6,7 @@ applyTo: '**'
 
 # Understand Workflow
 
-> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — this stage
 > requires sustained multi-hop context-holding across the component graph.
 > **Purpose:** Require architecture-aware context using Understand before planning, implementation, and review.
 
@@ -101,3 +101,4 @@ For non-trivial tasks, include an Understand status line in your completion summ
 - Graph status: up-to-date or stale
 - Understand tools used: chat, explain, diff, domain, onboard (as applicable)
 - Residual risk: low, medium, or high with one-line reason
+

@@ -276,7 +276,7 @@ function loadPipelineIntegration(config) {
     reviewerModel:
       models.reviewer && typeof models.reviewer.model === "string"
         ? models.reviewer.model
-        : "claude-opus-4.8",
+        : "claude-opus-4-8",
     routingProfiles:
       routing.profiles && typeof routing.profiles === "object"
         ? Object.keys(routing.profiles)
@@ -1182,3 +1182,4 @@ if (args.html) {
     fail(`could not write HTML report: ${err.message}`);
   }
 }
+

@@ -36,10 +36,10 @@ The canonical contract lives in [`05-REVIEW-BREADTH.md`](../../../.github/instru
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Multi-Dimensional Analysis)  
+**Primary:** `claude-opus-4-8` (Multi-Dimensional Analysis)  
 **Fallback 1:** `claude-opus-5` (Ultra-Complex Cross-Cutting)  
 **Fallback 2:** `gpt-5.5` (Fast Breadth Coverage)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Wide-pass review across correctness, standards, safety, completeness requires comprehensive multi-dimensional reasoning. Opus 4.8 proven strength. Alternative: Opus 5 for ultra-complex cross-cutting changes. Maintained +113.2% improvement. Phase 5 validation: consistent breadth coverage.
 
@@ -54,3 +54,4 @@ The canonical contract lives in [`05-REVIEW-BREADTH.md`](../../../.github/instru
 
 Do not treat a missing approval step, weakened guardrail, or unsupported capability claim as a minor
 issue; escalate it in the findings ledger.
+

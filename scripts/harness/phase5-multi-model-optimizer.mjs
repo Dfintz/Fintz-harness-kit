@@ -50,35 +50,35 @@ const modelMatrix = {
   'ultra-reasoning': {
     'architect': {
       primary: 'gpt-5.6-luna',
-      alternates: ['claude-opus-5', 'claude-opus-4.8']
+      alternates: ['claude-opus-5', 'claude-opus-4-8']
     },
     'feedback': {
       primary: 'claude-opus-5',
-      alternates: ['gpt-5.6-luna', 'claude-opus-4.8']
+      alternates: ['gpt-5.6-luna', 'claude-opus-4-8']
     }
   },
   'high-reasoning': {
-    'pr': { primary: 'claude-opus-4.8', alternates: ['claude-opus-5', 'gpt-5.5', 'gpt-5.3-codex'] },
-    'evaluate-first-tuning': { primary: 'gpt-5.5', alternates: ['claude-opus-4.8', 'gemini-3.6-flash'] },
-    'remember': { primary: 'claude-opus-4.8', alternates: ['claude-opus-5', 'claude-sonnet-5'] },
-    'understand-process': { primary: 'claude-opus-4.8', alternates: ['claude-opus-5', 'gpt-5.5'] },
-    'doubt-driven-development': { primary: 'claude-opus-4.8', alternates: ['gpt-5.5', 'claude-opus-5'] },
-    'setup-harness-bootstrap': { primary: 'claude-opus-4.8', alternates: ['gemini-3.6-flash', 'gpt-5.5'] },
-    'review-breadth': { primary: 'claude-opus-4.8', alternates: ['claude-opus-5', 'gpt-5.5'] },
-    'deterministic-validation': { primary: 'claude-opus-4.8', alternates: ['gpt-5.5', 'claude-opus-5'] },
-    'context-engineering': { primary: 'claude-opus-4.8', alternates: ['gpt-5.5', 'claude-sonnet-5'] },
-    'retrieval-quality-ops': { primary: 'claude-opus-4.8', alternates: ['gpt-5.5', 'gemini-3.6-flash'] },
-    'ai-techniques-radar': { primary: 'gpt-5.5', alternates: ['claude-opus-4.8', 'claude-opus-5'] },
-    'teach-agent': { primary: 'claude-opus-4.8', alternates: ['claude-sonnet-5', 'gpt-5.5'] },
-    'review-depth': { primary: 'claude-opus-4.8', alternates: ['claude-opus-5', 'gpt-5.5'] }
+    'pr': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5', 'gpt-5.3-codex'] },
+    'evaluate-first-tuning': { primary: 'gpt-5.5', alternates: ['claude-opus-4-8', 'gemini-3.6-flash'] },
+    'remember': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'claude-sonnet-5'] },
+    'understand-process': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5'] },
+    'doubt-driven-development': { primary: 'claude-opus-4-8', alternates: ['gpt-5.5', 'claude-opus-5'] },
+    'setup-harness-bootstrap': { primary: 'claude-opus-4-8', alternates: ['gemini-3.6-flash', 'gpt-5.5'] },
+    'review-breadth': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5'] },
+    'deterministic-validation': { primary: 'claude-opus-4-8', alternates: ['gpt-5.5', 'claude-opus-5'] },
+    'context-engineering': { primary: 'claude-opus-4-8', alternates: ['gpt-5.5', 'claude-sonnet-5'] },
+    'retrieval-quality-ops': { primary: 'claude-opus-4-8', alternates: ['gpt-5.5', 'gemini-3.6-flash'] },
+    'ai-techniques-radar': { primary: 'gpt-5.5', alternates: ['claude-opus-4-8', 'claude-opus-5'] },
+    'teach-agent': { primary: 'claude-opus-4-8', alternates: ['claude-sonnet-5', 'gpt-5.5'] },
+    'review-depth': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5'] }
   },
   'balanced-coding': {
     'prototype': { primary: 'claude-sonnet-5', alternates: ['gpt-5.3-codex', 'gpt-5.4'] },
     'implement': { primary: 'gpt-5.4', alternates: ['gpt-5.3-codex', 'claude-sonnet-5'] },
-    'run-loop': { primary: 'claude-sonnet-5', alternates: ['claude-opus-4.8', 'gpt-5.3-codex'] }
+    'run-loop': { primary: 'claude-sonnet-5', alternates: ['claude-opus-4-8', 'gpt-5.3-codex'] }
   },
   'fast-execution': {
-    'budget-aware-execution': { primary: 'gemini-3.5-flash', alternates: ['claude-haiku-4.5', 'gpt-5-mini'] }
+    'budget-aware-execution': { primary: 'gemini-3.5-flash', alternates: ['claude-haiku-4-5', 'gpt-5-mini'] }
   }
 };
 
@@ -87,9 +87,9 @@ const testTasks = ['basic_execution', 'complex_reasoning', 'code_generation'];
 
 // Cost model (normalized pricing)
 const costPerMTok = {
-  'claude-haiku-4.5': 0.00000080,
+  'claude-haiku-4-5': 0.00000080,
   'claude-sonnet-5': 0.00000300,
-  'claude-opus-4.8': 0.00000450,
+  'claude-opus-4-8': 0.00000450,
   'claude-opus-5': 0.00000450,
   'gpt-5.3-codex': 0.00000350,
   'gpt-5.4': 0.00000400,
@@ -102,9 +102,9 @@ const costPerMTok = {
 
 // Latency model (typical response times in ms)
 const baseLatency = {
-  'claude-haiku-4.5': 800,
+  'claude-haiku-4-5': 800,
   'claude-sonnet-5': 1200,
-  'claude-opus-4.8': 1800,
+  'claude-opus-4-8': 1800,
   'claude-opus-5': 2000,
   'gpt-5.3-codex': 1500,
   'gpt-5.4': 1600,
@@ -133,14 +133,14 @@ function getQualityScore(skill, model, task) {
     'gpt-5.6-luna': 1.05,
     'claude-opus-5': 1.03,
     'gpt-5.5': 1.02,
-    'claude-opus-4.8': 1.00,
+    'claude-opus-4-8': 1.00,
     'gpt-5.4': 0.98,
     'claude-sonnet-5': 0.97,
     'gemini-3.6-flash': 0.95,
     'gemini-3.5-flash': 0.93,
     'gpt-5.3-codex': 0.92,
     'gpt-5-mini': 0.85,
-    'claude-haiku-4.5': 0.80
+    'claude-haiku-4-5': 0.80
   };
 
   const adjusted = baseQuality * (modelMultiplier[model] || 1.0);
@@ -383,3 +383,4 @@ ${Object.entries(recommendations).map(([skill, rec]) => {
 }
 
 console.log('\n✨ Done.');
+

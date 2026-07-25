@@ -158,7 +158,7 @@ By default the shipped environment policy separates execution and judgment using
 
 | Tier | Stages | Default | Pinned example |
 |---|---|---|---|
-| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto | `claude-opus-4.8` |
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto | `claude-opus-4-8` |
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Copilot Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` |
 | **fast-cheap-local** | Experiment loops, lint-debt, enrichment, triage | — | `qwen2.5-coder:14b` via Ollama/LM Studio |
 
@@ -258,3 +258,4 @@ Graph provider selection lives in `harness.config.json`:
 ## License
 
 MIT — see [`LICENSE`](LICENSE) and [`CREDITS.md`](CREDITS.md).
+

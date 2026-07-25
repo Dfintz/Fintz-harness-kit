@@ -37,10 +37,10 @@ The canonical contract lives in [`06-REVIEW-DEPTH.md`](../../../.github/instruct
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Structural Consistency)  
+**Primary:** `claude-opus-4-8` (Structural Consistency)  
 **Fallback 1:** `claude-opus-5` (Ultra-Complex Structures)  
 **Fallback 2:** `gpt-5.5` (Pattern Recognition)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Structural review (ownership, boundaries, reuse, Brief conformance) requires consistent deep analysis. Opus 4.8 excels at structural consistency. Note: Phase 4 lowest performer (+83.2%) but still strong improvement. Opus 5 for ultra-complex structures. Phase 5 validation: all structural patterns validated.
 
@@ -55,3 +55,4 @@ The canonical contract lives in [`06-REVIEW-DEPTH.md`](../../../.github/instruct
 
 If the only way to accept the structure is to blur a human approval boundary or reduce a safety
 guardrail, mark the issue as blocked pending human approval.
+

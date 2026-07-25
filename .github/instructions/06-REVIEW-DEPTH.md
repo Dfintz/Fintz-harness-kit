@@ -6,7 +6,7 @@ applyTo: '**'
 
 # Review Depth Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — depth
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — depth
 > review requires reasoning about multi-hop ownership boundaries and multi-tenant isolation that
 > weaker models consistently miss.
 > **Purpose:** Challenge the structure of the implemented change: ownership, boundaries, reuse,
@@ -240,3 +240,4 @@ Also include a **Brief divergence** section when implementation differs from the
 
 - Blocker or Major depth findings route the work back through Implement.
 - Feedback decides whether challenged Brief decisions stand, change, or split into a third option.
+

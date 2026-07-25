@@ -22,10 +22,10 @@ Adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skill
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Stable Multi-Turn State)  
+**Primary:** `claude-opus-4-8` (Stable Multi-Turn State)  
 **Fallback 1:** `gpt-5.5` (Consistent Context Management)  
 **Fallback 2:** `claude-sonnet-5` (Quick Context Switches)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Session memory hygiene and task-switch checkpointing require consistent, stable reasoning. Opus 4.8's stability essential for multi-turn state management. Maintained +111.4% improvement. Phase 5 validation: all task switches preserved context integrity.
 
@@ -113,3 +113,4 @@ Session is context-ready when:
 ### Scenario 2: My output quality is declining. Is it a context issue?
 
 **What this demonstrates:** Demonstrates context inventory analysis and refresh patterns
+

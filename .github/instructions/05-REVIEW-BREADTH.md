@@ -6,7 +6,7 @@ applyTo: '**'
 
 # Review Breadth Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — breadth
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — breadth
 > review requires sustained coverage across many categories without losing track of prior findings.
 > **Purpose:** Find concrete, actionable issues across the changed scope: correctness, completeness,
 > standards compliance, safety, and proof quality.
@@ -200,3 +200,4 @@ Also include:
 - Review Depth receives this ledger and should not duplicate it unless a breadth finding exposes a
   deeper structural problem.
 - Feedback uses accepted / rejected breadth findings as part of the final verdict record.
+

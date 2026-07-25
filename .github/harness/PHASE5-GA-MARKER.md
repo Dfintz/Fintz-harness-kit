@@ -199,8 +199,8 @@ architect (Ultra-Reasoning):
 **Tier:** Ultra-Reasoning
 **Primary:** `gpt-5.6-luna` (Novel Problem-Solving)
 **Fallback 1:** `claude-opus-5` (Analytical Depth)
-**Fallback 2:** `claude-opus-4.8` (Proven Reliability)
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 2:** `claude-opus-4-8` (Proven Reliability)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 upgrade: Complex architecture decisions 
 need frontier reasoning. GPT-5.6 Luna offers creative 
@@ -338,3 +338,4 @@ Shows real-time success rates, model usage, fallback activation, latency.
 **Version:** 1.0  
 **Last Updated:** 2026-07-25  
 **Next Review:** Post-deployment (Week 1)
+

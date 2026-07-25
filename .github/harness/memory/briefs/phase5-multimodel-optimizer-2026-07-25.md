@@ -34,17 +34,17 @@
 
 | Skill | Current → Recommended | Quality Gain | Rationale |
 |-------|----------------------|-------------|-----------|
-| setup-harness-bootstrap | claude-opus-4.8 → gpt-5.5 | +9.0% | GPT-5.5 excels at procedural step-by-step guidance; 9% is highest upside |
-| doubt-driven-development | claude-opus-4.8 → claude-opus-5 | +6.4% | Opus 5 better for security skepticism + rigorous multi-stage analysis |
-| deterministic-validation | claude-opus-4.8 → claude-opus-5 | +6.4% | Opus 5 stronger at proof selection and deterministic exit criteria |
-| context-engineering | claude-opus-4.8 → gpt-5.5 | +5.4% | GPT-5.5 superior for session state management and task-switch checkpoints |
-| retrieval-quality-ops | claude-opus-4.8 → gpt-5.5 | +5.4% | GPT-5.5 better for evaluation orchestration (A/B comparative reasoning) |
+| setup-harness-bootstrap | claude-opus-4-8 → gpt-5.5 | +9.0% | GPT-5.5 excels at procedural step-by-step guidance; 9% is highest upside |
+| doubt-driven-development | claude-opus-4-8 → claude-opus-5 | +6.4% | Opus 5 better for security skepticism + rigorous multi-stage analysis |
+| deterministic-validation | claude-opus-4-8 → claude-opus-5 | +6.4% | Opus 5 stronger at proof selection and deterministic exit criteria |
+| context-engineering | claude-opus-4-8 → gpt-5.5 | +5.4% | GPT-5.5 superior for session state management and task-switch checkpoints |
+| retrieval-quality-ops | claude-opus-4-8 → gpt-5.5 | +5.4% | GPT-5.5 better for evaluation orchestration (A/B comparative reasoning) |
 | feedback | claude-opus-5 → gpt-5.6-luna | +5.7% | GPT-5.6-Luna's frontier reasoning ideal for conflict resolution + adjudication |
 | prototype | claude-sonnet-5 → gpt-5.4 | +5.0% | GPT-5.4 balances reasoning + code generation better for throwaway prototypes |
-| pr | claude-opus-4.8 → claude-opus-5 | +3.0% | Opus 5 brings multi-PR reasoning depth; established by Phase 5b (+252% over Phase 4) |
-| remember | claude-opus-4.8 → claude-opus-5 | +3.0% | Opus 5 deeper knowledge synthesis from architecture briefs (200K context) |
-| understand-process | claude-opus-4.8 → claude-opus-5 | +3.0% | Opus 5 excels at dependency tracing over large graph contexts |
-| review-breadth | claude-opus-4.8 → claude-opus-5 | +3.0% | Opus 5 stronger multi-dimensional reasoning (correctness, standards, safety) |
+| pr | claude-opus-4-8 → claude-opus-5 | +3.0% | Opus 5 brings multi-PR reasoning depth; established by Phase 5b (+252% over Phase 4) |
+| remember | claude-opus-4-8 → claude-opus-5 | +3.0% | Opus 5 deeper knowledge synthesis from architecture briefs (200K context) |
+| understand-process | claude-opus-4-8 → claude-opus-5 | +3.0% | Opus 5 excels at dependency tracing over large graph contexts |
+| review-breadth | claude-opus-4-8 → claude-opus-5 | +3.0% | Opus 5 stronger multi-dimensional reasoning (correctness, standards, safety) |
 | ai-techniques-radar | gpt-5.5 → claude-opus-5 | +2.8% | Marginal; Opus 5 for cutting-edge + frontier (keep gpt-5.5 as fallback) |
 
 ### Maintain (Phase 5 Primaries Optimal)
@@ -63,52 +63,52 @@
 ```json
 {
   "pr": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["gpt-5.5", "claude-opus-4.8", "gpt-5.3-codex"]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["gpt-5.5", "claude-opus-4-8", "gpt-5.3-codex"]
   },
   "remember": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["claude-opus-4.8", "claude-sonnet-5"]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["claude-opus-4-8", "claude-sonnet-5"]
   },
   "feedback": {
     "primary": "gpt-5.6-luna",  // was claude-opus-5 (SWAP)
-    "fallback": ["claude-opus-5", "claude-opus-4.8"]
+    "fallback": ["claude-opus-5", "claude-opus-4-8"]
   },
   "prototype": {
     "primary": "gpt-5.4",  // was claude-sonnet-5
     "fallback": ["claude-sonnet-5", "gpt-5.3-codex"]
   },
   "understand-process": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["gpt-5.5", "claude-opus-4.8"]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["gpt-5.5", "claude-opus-4-8"]
   },
   "doubt-driven-development": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["gpt-5.5", "claude-opus-4.8"]  // moved gpt-5.5 to fallback[0]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["gpt-5.5", "claude-opus-4-8"]  // moved gpt-5.5 to fallback[0]
   },
   "setup-harness-bootstrap": {
-    "primary": "gpt-5.5",  // was claude-opus-4.8 (BIGGEST WIN +9%)
-    "fallback": ["claude-opus-4.8", "gemini-3.6-flash"]
+    "primary": "gpt-5.5",  // was claude-opus-4-8 (BIGGEST WIN +9%)
+    "fallback": ["claude-opus-4-8", "gemini-3.6-flash"]
   },
   "review-breadth": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["gpt-5.5", "claude-opus-4.8"]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["gpt-5.5", "claude-opus-4-8"]
   },
   "deterministic-validation": {
-    "primary": "claude-opus-5",  // was claude-opus-4.8
-    "fallback": ["gpt-5.5", "claude-opus-4.8"]
+    "primary": "claude-opus-5",  // was claude-opus-4-8
+    "fallback": ["gpt-5.5", "claude-opus-4-8"]
   },
   "context-engineering": {
-    "primary": "gpt-5.5",  // was claude-opus-4.8
-    "fallback": ["claude-opus-4.8", "claude-sonnet-5"]
+    "primary": "gpt-5.5",  // was claude-opus-4-8
+    "fallback": ["claude-opus-4-8", "claude-sonnet-5"]
   },
   "retrieval-quality-ops": {
-    "primary": "gpt-5.5",  // was claude-opus-4.8
-    "fallback": ["claude-opus-4.8", "gemini-3.6-flash"]
+    "primary": "gpt-5.5",  // was claude-opus-4-8
+    "fallback": ["claude-opus-4-8", "gemini-3.6-flash"]
   },
   "ai-techniques-radar": {
     "primary": "claude-opus-5",  // was gpt-5.5 (marginal +2.8%, keep gpt-5.5 as fallback[0])
-    "fallback": ["gpt-5.5", "claude-opus-4.8"]
+    "fallback": ["gpt-5.5", "claude-opus-4-8"]
   }
 }
 ```
@@ -178,3 +178,4 @@ See `.github/harness/phase5/optimization-results/`:
 - `phase5-multimodel-20260725.json` — Complete test runs (360 runs)
 - `recommendations.json` — Per-skill recommendations
 - `phase5-multimodel-summary-20260725.md` — Detailed summary
+

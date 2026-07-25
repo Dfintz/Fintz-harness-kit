@@ -15,7 +15,7 @@ The pi-setup's subagents skill documents explicit thinking-token budgets mapped 
 
 ## Repository Relevance
 
-The harness-kit's HARNESS.md model tier table documents tier names (high-reasoning, balanced-coding, fast-cheap-local) and recommended models but does not document thinking-token budgets. When the harness is used with Claude models that support extended thinking (claude-opus-4.8, claude-sonnet-4.x), operators have no guidance on what budget to set per tier. This information would enrich the model routing table.
+The harness-kit's HARNESS.md model tier table documents tier names (high-reasoning, balanced-coding, fast-cheap-local) and recommended models but does not document thinking-token budgets. When the harness is used with Claude models that support extended thinking (claude-opus-4-8, claude-sonnet-4.x), operators have no guidance on what budget to set per tier. This information would enrich the model routing table.
 
 ## Adoption Notes
 
@@ -31,3 +31,4 @@ The harness-kit's HARNESS.md model tier table documents tier names (high-reasoni
 |---|---|---|---|
 | 2026-07-24 | candidate | Initial capture from my-pi-setup cherry-pick pass | radar-pass |
 | 2026-07-24 | parked | No tooling hook in the current harness runner. Informative but not actionable until extended thinking becomes a first-class harness feature. | architect-pass |
+

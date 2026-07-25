@@ -10,7 +10,7 @@ description: Graph-first impact analysis and dependency discovery for any non-tr
 
 > **Model tier:** high-reasoning — this skill is used at the Understand stage, which requires
 > sustained multi-hop reasoning across the component graph. Any capable frontier model works; the
-> harness default is Copilot Auto or `claude-opus-4.8` for the reviewer role.
+> harness default is Copilot Auto or `claude-opus-4-8` for the reviewer role.
 
 ---
 
@@ -93,3 +93,4 @@ Use this concise template in final summaries for non-trivial tasks:
 ### Scenario 2: What files are affected if I rename a core service?
 
 **What this demonstrates:** Shows how to trace cross-domain dependencies and usage patterns
+

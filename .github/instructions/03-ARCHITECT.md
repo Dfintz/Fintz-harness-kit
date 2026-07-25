@@ -6,7 +6,7 @@ applyTo: '**'
 
 # Architect Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — this stage
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — this stage
 > requires deep architectural judgment across ownership, abstraction layers, and domain alignment.
 > **Purpose:** Decide where the change should live and what shape it should take before work begins.
 > Produce an Architecture Brief that downstream stages can follow, review, and challenge.
@@ -311,3 +311,4 @@ compares implementation against it, and Feedback updates it if challenged decisi
 - Review Breadth checks execution quality without re-litigating architecture prematurely.
 - Review Depth challenges the structure against the gates and the Brief.
 - Feedback is the only stage that formally overturns a settled Brief decision.
+

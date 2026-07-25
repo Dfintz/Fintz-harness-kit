@@ -22,10 +22,10 @@ Create and maintain machine-first guidance that is:
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Deep Domain Knowledge Synthesis)  
+**Primary:** `claude-opus-4-8` (Deep Domain Knowledge Synthesis)  
 **Fallback 1:** `claude-sonnet-5` (Fast Guidance Creation)  
 **Fallback 2:** `gpt-5.5` (Technical Pattern Teaching)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Knowledge synthesis and educational content creation require deep, clear reasoning. Opus 4.8 proven for teaching-oriented guidance patterns. Alternative: Sonnet 5 for faster guidance extraction. Maintained +101.8% improvement. Phase 5 validation: all guidance passed clarity checks.
 
@@ -150,3 +150,4 @@ What this demonstrates: Promoting architecture decisions into agent-ready execut
 ### Scenario 2: Triage external standards for agent adoption
 
 What this demonstrates: Candidate intake, trust checks, contradiction checks, and gated promotion.
+

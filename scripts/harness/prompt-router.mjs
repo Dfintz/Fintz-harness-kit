@@ -126,7 +126,7 @@ const SIDECAR_PROMPT_METADATA = {
     title: "Scout",
     promptFile: "optional-scout.md",
     outputFile: "scout-notes.md",
-    recommendedModel: "claude-opus-4.8",
+    recommendedModel: "claude-opus-4-8",
     purpose:
       "Parallel research sidecar for reuse opportunities, missing context, and adjacent risks.",
     timing:
@@ -142,7 +142,7 @@ const SIDECAR_PROMPT_METADATA = {
     title: "Challenger",
     promptFile: "optional-challenger.md",
     outputFile: "challenger-findings.md",
-    recommendedModel: "claude-opus-4.8",
+    recommendedModel: "claude-opus-4-8",
     purpose:
       "Independent challenge sidecar that pressure-tests assumptions, risks, and review blind spots.",
     timing:
@@ -209,7 +209,7 @@ function normalize(text) {
 function getModelAssignments(config) {
   return {
     implementer: config.models?.implementer?.model ?? "gpt-5.3-codex",
-    reviewer: config.models?.reviewer?.model ?? "claude-opus-4.8",
+    reviewer: config.models?.reviewer?.model ?? "claude-opus-4-8",
   };
 }
 
@@ -827,3 +827,4 @@ if (
     fail(error instanceof Error ? error.message : String(error), 1);
   }
 }
+

@@ -6,7 +6,7 @@ applyTo: '**'
 
 # Feedback Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4.8`; Copilot Auto is a safe default) — feedback
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — feedback
 > evaluation requires fresh-eyes judgment on architectural challenges without anchoring on prior
 > decisions.
 > **Purpose:** Resolve challenged decisions after implementation and review. Decide which findings or
@@ -208,3 +208,4 @@ only source of truth.
   as the new source of truth.
 - If Feedback confirms the current decision, the verdict record becomes the reusable rationale for
   future review cycles.
+

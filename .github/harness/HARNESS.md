@@ -45,7 +45,7 @@ class works.
 
 | Tier | Stages | Copilot default | Pinned examples | Rationale |
 |---|---|---|---|---|
-| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4.8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4-8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
 | **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
 
@@ -431,3 +431,4 @@ on their own. As models improve, some scaffolding becomes unnecessary — prune 
 it ossify. The `Model:` lines at the top of each `.github/instructions/0*.md` and the stage skills
 are **advisory provenance, not a runtime requirement**: any capable agent runs these stages. Treat a
 component that no longer earns its context cost as debt to remove.
+

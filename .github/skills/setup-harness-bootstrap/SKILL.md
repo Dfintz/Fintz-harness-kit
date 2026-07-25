@@ -20,10 +20,10 @@ can follow the same harness workflow without special knowledge.
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Methodical Procedural Logic)  
+**Primary:** `claude-opus-4-8` (Methodical Procedural Logic)  
 **Fallback 1:** `gemini-3.6-flash` (Prototyping Bootstrap)  
 **Fallback 2:** `gpt-5.5` (Procedural Guidance)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Bootstrap requires methodical step-by-step logic and detailed procedural guidance. Opus 4.8 excels at procedural workflows. Alternative: Gemini 3.6 Flash for prototyping bootstrap faster. Maintained +145.0% improvement. Phase 5 validation: stable structured initialization.
 
@@ -123,3 +123,4 @@ If docs were changed, run markdown diagnostics and fix broken links or malformed
 ### Scenario 2: What documentation should I set up for issue-tracking mode?
 
 **What this demonstrates:** Demonstrates issue template setup, label configuration, and routing
+

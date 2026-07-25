@@ -26,9 +26,9 @@ loading) with a **resource gate**.
 
 **Tier:** Fast-Execution  
 **Primary:** `gemini-3.5-flash` (Speed + Cost Optimization)  
-**Fallback 1:** `claude-haiku-4.5` (Cost-Optimized Fallback)  
+**Fallback 1:** `claude-haiku-4-5` (Cost-Optimized Fallback)  
 **Fallback 2:** `gpt-5-mini` (Lightweight Execution)  
-**Fallback 3:** `claude-opus-4.8` (Emergency Full-Reasoning)
+**Fallback 3:** `claude-opus-4-8` (Emergency Full-Reasoning)
 
 **Why?** Phase 5 shift: Cost-awareness + token tracking task benefits from speed optimization. Gemini 3.5 Flash is production-grade for fast, cost-aware analysis (cf. 'budget' in skill name). Maintains Phase 4 improvement while prioritizing speed. Phase 5 validation: +19.0% improvement (best tier delta).
 
@@ -119,3 +119,4 @@ resumes without re-deriving state:
 ### Scenario 2: I am running out of tokens. What should I prioritize?
 
 **What this demonstrates:** Demonstrates budget triage and essential-only task sequencing
+

@@ -24,10 +24,10 @@ feature should emit enough signal to answer: "Is this working? Is this slow? Is 
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Methodical Technical Guidance)  
+**Primary:** `claude-opus-4-8` (Methodical Technical Guidance)  
 **Fallback 1:** `gpt-5.5` (Fast Telemetry Patterns)  
 **Fallback 2:** `claude-sonnet-5` (Structured Logging Design)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Telemetry patterns, RED metrics, and structured logging require methodical guidance. Opus 4.8 strong for procedural documentation and instrumentation best practices. Maintained +108.4% improvement. Phase 5 validation: all telemetry patterns validated.
 
@@ -128,3 +128,4 @@ metrics
 ### Scenario 2: I need to debug a production issue. What telemetry should I check?
 
 **What this demonstrates:** Demonstrates correlation IDs, structured logging, and trace analysis
+

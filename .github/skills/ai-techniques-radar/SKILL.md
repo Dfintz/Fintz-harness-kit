@@ -19,9 +19,9 @@ adopted, parked, or rejected decisions using the harness loop model.
 
 **Tier:** High-Reasoning  
 **Primary:** `gpt-5.5` (Frontier Model Awareness)  
-**Fallback 1:** `claude-opus-4.8` (Established Techniques)  
+**Fallback 1:** `claude-opus-4-8` (Established Techniques)  
 **Fallback 2:** `claude-opus-5` (Cutting-Edge Analysis)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** AI techniques evaluation benefits from frontier model awareness. GPT-5.5 up-to-date on latest approaches and emerging trends. Alternative: Opus 4.8 for established techniques, Opus 5 for cutting-edge. Maintained +106.3% improvement. Phase 5 validation: frontier technique coverage validated.
 
@@ -178,3 +178,4 @@ triaging
 ### Scenario 2: Should we adopt this new vector search approach?
 
 **What this demonstrates:** Demonstrates technique evaluation and integration decisions
+

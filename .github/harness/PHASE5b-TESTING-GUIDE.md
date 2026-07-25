@@ -118,7 +118,7 @@ Quality Scoring Factors:
 ## 🤖 Models Being Tested (All 20 Skills)
 
 ### **Primary Models** (High-Reasoning focused):
-- `claude-opus-4.8` — 11 skills (workhorse)
+- `claude-opus-4-8` — 11 skills (workhorse)
 - `gpt-5.6-luna` — 1 skill (architect, ultra-reasoning)
 - `claude-opus-5` — 1 skill (feedback, ultra-reasoning)
 - `claude-sonnet-5` — 2 skills (prototype, run-loop)
@@ -127,11 +127,11 @@ Quality Scoring Factors:
 - `gemini-3.5-flash` — 1 skill (budget-aware-execution)
 
 ### **Fallback1 Models** (Cascade safety):
-- `claude-opus-5` — fallback for claude-opus-4.8 skills
-- `claude-opus-4.8` — fallback for frontier models
+- `claude-opus-5` — fallback for claude-opus-4-8 skills
+- `claude-opus-4-8` — fallback for frontier models
 - `gpt-5.3-codex` — fallback for balanced-coding
 - `gpt-5.5` — fallback for specialized models
-- `claude-haiku-4.5` — fallback for budget tasks
+- `claude-haiku-4-5` — fallback for budget tasks
 
 ---
 
@@ -142,15 +142,15 @@ Quality Scoring Factors:
 ```
 RUN LOOP (20 iterations, one per skill):
 ├─ SKILL: pr
-│  ├─ Task 1 (basic): pr + claude-opus-4.8
-│  ├─ Task 2 (reasoning): pr + claude-opus-4.8
-│  ├─ Task 3 (code): pr + claude-opus-4.8
+│  ├─ Task 1 (basic): pr + claude-opus-4-8
+│  ├─ Task 2 (reasoning): pr + claude-opus-4-8
+│  ├─ Task 3 (code): pr + claude-opus-4-8
 │  ├─ Task 1 (basic): pr + claude-opus-5 [FALLBACK]
 │  ├─ Task 2 (reasoning): pr + claude-opus-5 [FALLBACK]
 │  └─ Task 3 (code): pr + claude-opus-5 [FALLBACK]
 │
 ├─ SKILL: remember
-│  ├─ Task 1-3: remember + claude-opus-4.8
+│  ├─ Task 1-3: remember + claude-opus-4-8
 │  └─ Task 1-3: remember + claude-opus-5 [FALLBACK]
 │
 ├─ SKILL: architect [PHASE 5 SHIFT ⭐]
@@ -160,7 +160,7 @@ RUN LOOP (20 iterations, one per skill):
 ... (20 skills total)
 │
 └─ SKILL: review-depth
-   ├─ Task 1-3: review-depth + claude-opus-4.8
+   ├─ Task 1-3: review-depth + claude-opus-4-8
    └─ Task 1-3: review-depth + claude-opus-5 [FALLBACK]
 
 TOTAL: 120 test runs (20 skills × 3 tasks × 2 models)
@@ -408,4 +408,5 @@ Results stored in: `.github/harness/phase5/validation-results/phase5b-validation
 
 **Framework Status**: ✅ Ready to Execute  
 **Next Action**: Run `node scripts/harness/phase5/validate-skills.mjs --dry-run` to see test plan
+
 

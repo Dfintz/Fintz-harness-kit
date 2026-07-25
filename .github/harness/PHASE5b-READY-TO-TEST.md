@@ -70,11 +70,11 @@ Breakdown:
 • 6 Shifted Skills (Phase 5 new assignments): 36 tests ⭐
 
 Models Tested (15 unique):
-• Primary: claude-opus-4.8 (11), gpt-5.5 (2), claude-sonnet-5 (2), 
+• Primary: claude-opus-4-8 (11), gpt-5.5 (2), claude-sonnet-5 (2), 
            gpt-5.6-luna (1), claude-opus-5 (1), gpt-5.4 (1), 
            gemini-3.5-flash (1)
 • Fallback: claude-opus-5, gpt-5.3-codex, gemini-3.6-flash, 
-            claude-haiku-4.5 (universal)
+            claude-haiku-4-5 (universal)
 ```
 
 ---
@@ -254,4 +254,5 @@ You have everything needed to test Phase 5:
 **Phase 5 Status**: ✅ Strategy Complete | ✅ Tests Ready | ⏳ Execution Pending  
 **Confidence Level**: HIGH (All 20 skills analyzed, 6 shifts validated, gap analysis resolved)  
 **Ready to Execute**: YES
+
 

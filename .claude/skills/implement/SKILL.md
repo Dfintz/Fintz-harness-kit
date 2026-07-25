@@ -46,7 +46,7 @@ change where blast radius matters more than cleanup.
 **Primary:** `gpt-5.4` (Superior Reasoning + Code Balance)  
 **Fallback 1:** `gpt-5.3-codex` (Pure Code Generation)  
 **Fallback 2:** `claude-sonnet-5` (Balanced Alternative)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 shift: GPT-5.4 provides superior reasoning + code balance vs. Codex's pure specialization. Better for architectural implementation guidance with Phase 4 baseline (+130%). Fallback: Codex if pure code generation needed. Phase 5 validation: +16.6% improvement over Phase 4.
 
@@ -61,3 +61,4 @@ change where blast radius matters more than cleanup.
 
 Stop and get explicit human approval before widening `allowed-tools`, removing an approval step,
 weakening a guardrail, or changing a destructive workflow default.
+

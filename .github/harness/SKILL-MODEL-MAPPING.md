@@ -2,7 +2,7 @@
 
 **Effective Date:** 2026-07-24  
 **Methodology:** Phase 4 semantic evaluation results + skill purpose analysis  
-**Models:** GitHub Copilot (claude-opus-4.8, gpt-5.3-codex, claude-haiku-4.5)
+**Models:** GitHub Copilot (claude-opus-4-8, gpt-5.3-codex, claude-haiku-4-5)
 
 ---
 
@@ -14,10 +14,10 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 3. **Bidirectional alignment** — skill requirements ↔ model strengths
 
 **Key Findings:**
-- **Reasoning-heavy skills** (architect, understand-process, deterministic-validation) → `claude-opus-4.8`
-- **Code-implementation skills** (implement, review-breadth, review-depth) → `gpt-5.3-codex` (primary) + `claude-opus-4.8` (fallback)
-- **Workflow/procedural skills** (pr, eval-first-tuning, remember, feedback) → `claude-opus-4.8` (structured guidance)
-- **Lightweight/documentation** (teach-agent, ai-techniques-radar, prototype) → `claude-opus-4.8` (primary) or `claude-haiku-4.5` (cost-optimized)
+- **Reasoning-heavy skills** (architect, understand-process, deterministic-validation) → `claude-opus-4-8`
+- **Code-implementation skills** (implement, review-breadth, review-depth) → `gpt-5.3-codex` (primary) + `claude-opus-4-8` (fallback)
+- **Workflow/procedural skills** (pr, eval-first-tuning, remember, feedback) → `claude-opus-4-8` (structured guidance)
+- **Lightweight/documentation** (teach-agent, ai-techniques-radar, prototype) → `claude-opus-4-8` (primary) or `claude-haiku-4-5` (cost-optimized)
 
 ---
 
@@ -25,32 +25,32 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 | Skill | Category | Primary Model | Reason | Phase 4 Score | Fallback | Why Fallback |
 |-------|----------|---|---------|--------|----------|---|
-| **pr** | Workflow | claude-opus-4.8 | PR discipline requires structured reasoning + review gates | +252.3% | gpt-5.3-codex | Code-review focus |
-| **eval-first-tuning** | Workflow | claude-opus-4.8 | Baseline + comparison logic = multi-step reasoning | +251.5% | claude-haiku-4.5 | Simpler eval patterns |
-| **remember** | Workflow | claude-opus-4.8 | Persistence + reuse requires architectural judgment | +219.8% | gpt-5.3-codex | Cross-file context |
-| **feedback** | Workflow | claude-opus-4.8 | Challenge resolution = structured verdict logic | +219.0% | gpt-5.3-codex | Code context fallback |
-| **prototype** | Implementation | gpt-5.3-codex | Throwaway logic validation = code-focused | +219.0% | claude-opus-4.8 | Complex state reasoning |
-| **architect** | Reasoning | claude-opus-4.8 | Architecture Brief = sustained reasoning + boundaries | +201.6% | claude-haiku-4.5 | Simpler architectures |
-| **understand-process** | Reasoning | claude-opus-4.8 | Graph-first dependency mapping = multi-hop reasoning | +199.5% | gpt-5.3-codex | Code dependency analysis |
-| **doubt-driven-development** | Reasoning | claude-opus-4.8 | Security skepticism + correctness = deep analysis | +149.4% | gpt-5.3-codex | Code security focus |
-| **setup-harness-bootstrap** | System | claude-opus-4.8 | Complete stage structure = comprehensive orchestration | +145.0% | claude-haiku-4.5 | Simple bootstraps |
-| **implement** | Implementation | gpt-5.3-codex | Code generation + deliverables = coding specialist | +130.0% | claude-opus-4.8 | Complex logic flows |
-| **review-breadth** | Review | claude-opus-4.8 | Coverage dimension = broad scope reasoning | +113.2% | gpt-5.3-codex | Code patterns review |
-| **budget-aware-execution** | System | claude-opus-4.8 | Resource boundary discipline = constraint reasoning | +111.8% | claude-haiku-4.5 | Simple budget tracking |
-| **context-engineering** | System | claude-opus-4.8 | Memory hygiene + task switching = context preservation | +111.4% | claude-haiku-4.5 | Simpler sessions |
-| **retrieval-quality-ops** | Evaluation | claude-opus-4.8 | A/B evaluation framework = rigorous comparison logic | +110.5% | gpt-5.3-codex | Metric computation |
-| **observability-and-instrumentation** | System | claude-opus-4.8 | Telemetry + RED metrics = comprehensive guidance | +108.4% | claude-haiku-4.5 | Basic telemetry |
-| **teach-agent** | Teaching | claude-opus-4.8 | Machine-executable guidance = procedural clarity | +101.8% | claude-haiku-4.5 | Tutorial documentation |
-| **ai-techniques-radar** | Teaching | claude-opus-4.8 | Technique triage + adoption = decision reasoning | +106.3% | claude-haiku-4.5 | Simple evaluations |
-| **deterministic-validation** | Verification | claude-opus-4.8 | Proof gates (CLAIM→EXTRACT→DOUBT→RECONCILE) = strict logic | +111.8% | gpt-5.3-codex | Code assertions |
-| **run-loop** | Verification | claude-opus-4.8 | Loop contracts + guardrails = deterministic enforcement | +99.5% | gpt-5.3-codex | Code loop analysis |
-| **review-depth** | Review | claude-opus-4.8 | Ownership + boundaries + reuse = structural depth | +83.2% | gpt-5.3-codex | Code structure focus |
+| **pr** | Workflow | claude-opus-4-8 | PR discipline requires structured reasoning + review gates | +252.3% | gpt-5.3-codex | Code-review focus |
+| **eval-first-tuning** | Workflow | claude-opus-4-8 | Baseline + comparison logic = multi-step reasoning | +251.5% | claude-haiku-4-5 | Simpler eval patterns |
+| **remember** | Workflow | claude-opus-4-8 | Persistence + reuse requires architectural judgment | +219.8% | gpt-5.3-codex | Cross-file context |
+| **feedback** | Workflow | claude-opus-4-8 | Challenge resolution = structured verdict logic | +219.0% | gpt-5.3-codex | Code context fallback |
+| **prototype** | Implementation | gpt-5.3-codex | Throwaway logic validation = code-focused | +219.0% | claude-opus-4-8 | Complex state reasoning |
+| **architect** | Reasoning | claude-opus-4-8 | Architecture Brief = sustained reasoning + boundaries | +201.6% | claude-haiku-4-5 | Simpler architectures |
+| **understand-process** | Reasoning | claude-opus-4-8 | Graph-first dependency mapping = multi-hop reasoning | +199.5% | gpt-5.3-codex | Code dependency analysis |
+| **doubt-driven-development** | Reasoning | claude-opus-4-8 | Security skepticism + correctness = deep analysis | +149.4% | gpt-5.3-codex | Code security focus |
+| **setup-harness-bootstrap** | System | claude-opus-4-8 | Complete stage structure = comprehensive orchestration | +145.0% | claude-haiku-4-5 | Simple bootstraps |
+| **implement** | Implementation | gpt-5.3-codex | Code generation + deliverables = coding specialist | +130.0% | claude-opus-4-8 | Complex logic flows |
+| **review-breadth** | Review | claude-opus-4-8 | Coverage dimension = broad scope reasoning | +113.2% | gpt-5.3-codex | Code patterns review |
+| **budget-aware-execution** | System | claude-opus-4-8 | Resource boundary discipline = constraint reasoning | +111.8% | claude-haiku-4-5 | Simple budget tracking |
+| **context-engineering** | System | claude-opus-4-8 | Memory hygiene + task switching = context preservation | +111.4% | claude-haiku-4-5 | Simpler sessions |
+| **retrieval-quality-ops** | Evaluation | claude-opus-4-8 | A/B evaluation framework = rigorous comparison logic | +110.5% | gpt-5.3-codex | Metric computation |
+| **observability-and-instrumentation** | System | claude-opus-4-8 | Telemetry + RED metrics = comprehensive guidance | +108.4% | claude-haiku-4-5 | Basic telemetry |
+| **teach-agent** | Teaching | claude-opus-4-8 | Machine-executable guidance = procedural clarity | +101.8% | claude-haiku-4-5 | Tutorial documentation |
+| **ai-techniques-radar** | Teaching | claude-opus-4-8 | Technique triage + adoption = decision reasoning | +106.3% | claude-haiku-4-5 | Simple evaluations |
+| **deterministic-validation** | Verification | claude-opus-4-8 | Proof gates (CLAIM→EXTRACT→DOUBT→RECONCILE) = strict logic | +111.8% | gpt-5.3-codex | Code assertions |
+| **run-loop** | Verification | claude-opus-4-8 | Loop contracts + guardrails = deterministic enforcement | +99.5% | gpt-5.3-codex | Code loop analysis |
+| **review-depth** | Review | claude-opus-4-8 | Ownership + boundaries + reuse = structural depth | +83.2% | gpt-5.3-codex | Code structure focus |
 
 ---
 
 ## Model Capability Profile
 
-### claude-opus-4.8
+### claude-opus-4-8
 **Tier:** High-Reasoning  
 **Strengths:**
 - Sustained multi-hop reasoning over large contexts
@@ -90,7 +90,7 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 ---
 
-### claude-haiku-4.5
+### claude-haiku-4-5
 **Tier:** Lightweight  
 **Strengths:**
 - Fast, low-cost guidance
@@ -110,7 +110,7 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 ## Skill-Model Justification (Detailed)
 
-### Workflow Skills (claude-opus-4.8)
+### Workflow Skills (claude-opus-4-8)
 
 **pr (+252.3%)**
 - **Need:** PR discipline requires understanding review gates, verification flow, release process
@@ -120,7 +120,7 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 **eval-first-tuning (+251.5%)**
 - **Need:** Baseline establishment + rigorous variant comparison + decision gates
 - **Why Opus:** Comparison logic and metric-driven reasoning
-- **Fallback:** claude-haiku-4.5 for simpler A/B patterns
+- **Fallback:** claude-haiku-4-5 for simpler A/B patterns
 
 **remember (+219.8%)**
 - **Need:** Determine what's reusable, when to persist, how to integrate with harness memory surfaces
@@ -139,21 +139,21 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 **implement (+130.0%)**
 - **Need:** Code generation, deliverables, proof artifacts
 - **Why Codex:** Coding specialist, fast turnaround
-- **Fallback:** claude-opus-4.8 for complex state transitions or multi-module logic
+- **Fallback:** claude-opus-4-8 for complex state transitions or multi-module logic
 
 **prototype (+219.0%)**
 - **Need:** Throwaway logic validation (state models, data shapes)
 - **Why Codex:** Code-focused prototyping, rapid iteration
-- **Fallback:** claude-opus-4.8 for intricate state logic or cross-domain design
+- **Fallback:** claude-opus-4-8 for intricate state logic or cross-domain design
 
 ---
 
-### Reasoning-Heavy Skills (claude-opus-4.8)
+### Reasoning-Heavy Skills (claude-opus-4-8)
 
 **architect (+201.6%)**
 - **Need:** Architecture Brief with explicit boundary specifications and reuse patterns
 - **Why Opus:** Sustained architectural reasoning across design trade-offs
-- **Fallback:** claude-haiku-4.5 for simpler, straightforward designs
+- **Fallback:** claude-haiku-4-5 for simpler, straightforward designs
 
 **understand-process (+199.5%)**
 - **Need:** Graph-first dependency discovery and blast-radius analysis
@@ -182,27 +182,27 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 ---
 
-### System & Operations Skills (claude-opus-4.8)
+### System & Operations Skills (claude-opus-4-8)
 
 **observability-and-instrumentation (+108.4%)**
 - **Need:** Telemetry patterns, RED metrics, structured logging guidance
 - **Why Opus:** Comprehensive system reasoning
-- **Fallback:** claude-haiku-4.5 for basic telemetry setup
+- **Fallback:** claude-haiku-4-5 for basic telemetry setup
 
 **budget-aware-execution (+111.8%)**
 - **Need:** Resource boundary discipline, checkpoint reasoning, budget preservation
 - **Why Opus:** Constraint reasoning and guardrail enforcement
-- **Fallback:** claude-haiku-4.5 for simple budget tracking
+- **Fallback:** claude-haiku-4-5 for simple budget tracking
 
 **context-engineering (+111.4%)**
 - **Need:** Session memory hygiene, task-switch checkpointing
 - **Why Opus:** Context preservation and recovery reasoning
-- **Fallback:** claude-haiku-4.5 for simpler sessions
+- **Fallback:** claude-haiku-4-5 for simpler sessions
 
 **setup-harness-bootstrap (+145.0%)**
 - **Need:** Complete stage structure initialization, deterministic workflow setup
 - **Why Opus:** Comprehensive orchestration reasoning
-- **Fallback:** claude-haiku-4.5 for simpler bootstrap scenarios
+- **Fallback:** claude-haiku-4-5 for simpler bootstrap scenarios
 
 **run-loop (+99.5%)**
 - **Need:** Loop JSON contract enforcement, bounds adherence, guardrail non-negotiability
@@ -211,7 +211,7 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 ---
 
-### Evaluation & Ops Skills (claude-opus-4.8)
+### Evaluation & Ops Skills (claude-opus-4-8)
 
 **eval-first-tuning** → See Workflow Skills above
 
@@ -222,17 +222,17 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 
 ---
 
-### Teaching Skills (claude-opus-4.8 primary, haiku fallback)
+### Teaching Skills (claude-opus-4-8 primary, haiku fallback)
 
 **teach-agent (+101.8%)**
 - **Need:** Machine-executable guidance (not prose), procedural clarity
 - **Why Opus:** Structured procedural reasoning, agent-first mindset
-- **Fallback:** claude-haiku-4.5 for simpler tutorial documentation
+- **Fallback:** claude-haiku-4-5 for simpler tutorial documentation
 
 **ai-techniques-radar (+106.3%)**
 - **Need:** Technique triage, adoption decisions, repository-specific routing
 - **Why Opus:** Decision reasoning and comparative analysis
-- **Fallback:** claude-haiku-4.5 for simple evaluation tasks
+- **Fallback:** claude-haiku-4-5 for simple evaluation tasks
 
 ---
 
@@ -241,8 +241,8 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 **Rule:** Implementer model ≠ Reviewer model
 
 **Recommended Pairings:**
-- Implement (gpt-5.3-codex) → Review (claude-opus-4.8) ✓
-- Implement (claude-opus-4.8) → Review (gpt-5.3-codex) ✓ (code-heavy changes)
+- Implement (gpt-5.3-codex) → Review (claude-opus-4-8) ✓
+- Implement (claude-opus-4-8) → Review (gpt-5.3-codex) ✓ (code-heavy changes)
 - Both on Copilot Auto → Explicitly select distinct models for review-fix pass
 
 ---
@@ -252,13 +252,13 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 ```json
 "skillModelMapping": {
   "pr": {
-    "primary": "claude-opus-4.8",
+    "primary": "claude-opus-4-8",
     "fallback": "gpt-5.3-codex",
     "reason": "PR discipline requires structured workflow reasoning"
   },
   "eval-first-tuning": {
-    "primary": "claude-opus-4.8",
-    "fallback": "claude-haiku-4.5",
+    "primary": "claude-opus-4-8",
+    "fallback": "claude-haiku-4-5",
     "reason": "Baseline + comparison logic requires multi-step reasoning"
   },
   ... (one entry per skill)
@@ -289,3 +289,4 @@ Each harness skill has been mapped to optimal GitHub Copilot models based on:
 - **Update Frequency:** Quarterly or when new models become available
 - **Trigger:** New benchmark data, model updates, or cost analysis
 - **Process:** Re-run Phase 4 evaluator on subset of skills with new model candidates
+

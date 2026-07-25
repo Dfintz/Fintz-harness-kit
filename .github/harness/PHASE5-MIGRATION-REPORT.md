@@ -30,19 +30,19 @@ These skills remain on Phase 4 optimal assignments, validated by comprehensive r
 
 | # | Skill | Phase 4 Primary | Stays as | Benchmark | Notes |
 |----|-------|-----------------|----------|-----------|-------|
-| 1 | **pr** | claude-opus-4.8 | Tier 2 High-Reasoning | +252.3% | Highest performer, unique keyword signature |
-| 2 | **remember** | claude-opus-4.8 | Tier 2 High-Reasoning | +219.8% | Knowledge synthesis, context window ideal |
-| 3 | **doubt-driven-development** | claude-opus-4.8 | Tier 2 High-Reasoning | +149.4% | Security skepticism requires consistent reasoning |
-| 4 | **setup-harness-bootstrap** | claude-opus-4.8 | Tier 2 High-Reasoning | +145.0% | Procedural bootstrap steps |
-| 5 | **review-breadth** | claude-opus-4.8 | Tier 2 High-Reasoning | +113.2% | Multi-dimensional reasoning |
-| 6 | **deterministic-validation** | claude-opus-4.8 | Tier 2 High-Reasoning | +111.8% | Logical consistency validation |
-| 7 | **context-engineering** | claude-opus-4.8 | Tier 2 High-Reasoning | +111.4% | Session memory stability |
-| 8 | **retrieval-quality-ops** | claude-opus-4.8 | Tier 2 High-Reasoning | +110.5% | A/B evaluation orchestration |
-| 9 | **observability-and-instrumentation** | claude-opus-4.8 | Tier 2 High-Reasoning | +108.4% | Procedural telemetry guidance |
-| 10 | **ai-techniques-radar** | claude-opus-4.8 | Tier 2 High-Reasoning | +106.3% | Trend tracking, now alt: GPT-5.5 |
-| 11 | **teach-agent** | claude-opus-4.8 | Tier 2 High-Reasoning | +101.8% | Educational content synthesis |
-| 12 | **review-depth** | claude-opus-4.8 | Tier 2 High-Reasoning | +83.2% | Structural consistency analysis |
-| 13 | **understand-process** | claude-opus-4.8 | Tier 2 High-Reasoning | +199.5% | Graph-first dependency tracing |
+| 1 | **pr** | claude-opus-4-8 | Tier 2 High-Reasoning | +252.3% | Highest performer, unique keyword signature |
+| 2 | **remember** | claude-opus-4-8 | Tier 2 High-Reasoning | +219.8% | Knowledge synthesis, context window ideal |
+| 3 | **doubt-driven-development** | claude-opus-4-8 | Tier 2 High-Reasoning | +149.4% | Security skepticism requires consistent reasoning |
+| 4 | **setup-harness-bootstrap** | claude-opus-4-8 | Tier 2 High-Reasoning | +145.0% | Procedural bootstrap steps |
+| 5 | **review-breadth** | claude-opus-4-8 | Tier 2 High-Reasoning | +113.2% | Multi-dimensional reasoning |
+| 6 | **deterministic-validation** | claude-opus-4-8 | Tier 2 High-Reasoning | +111.8% | Logical consistency validation |
+| 7 | **context-engineering** | claude-opus-4-8 | Tier 2 High-Reasoning | +111.4% | Session memory stability |
+| 8 | **retrieval-quality-ops** | claude-opus-4-8 | Tier 2 High-Reasoning | +110.5% | A/B evaluation orchestration |
+| 9 | **observability-and-instrumentation** | claude-opus-4-8 | Tier 2 High-Reasoning | +108.4% | Procedural telemetry guidance |
+| 10 | **ai-techniques-radar** | claude-opus-4-8 | Tier 2 High-Reasoning | +106.3% | Trend tracking, now alt: GPT-5.5 |
+| 11 | **teach-agent** | claude-opus-4-8 | Tier 2 High-Reasoning | +101.8% | Educational content synthesis |
+| 12 | **review-depth** | claude-opus-4-8 | Tier 2 High-Reasoning | +83.2% | Structural consistency analysis |
+| 13 | **understand-process** | claude-opus-4-8 | Tier 2 High-Reasoning | +199.5% | Graph-first dependency tracing |
 | 14 | **gpt-5.3-codex** (fallback) | For implement, prototype | Tier 3 Balanced-Coding fallback | +130% (impl) | Retained as specialized fallback |
 
 **Validation**: 70% of harness skills remain on Phase 4 proven model assignments. Strong validation that Phase 4 baseline is optimal. Reinforces stability over churn.
@@ -55,7 +55,7 @@ These skills move to new primary models based on Phase 5 frontier capability ana
 
 #### **Shift 1: architect** (Ultra-Reasoning Upgrade)
 ```
-Phase 4: claude-opus-4.8 (High-Reasoning) [+201.6%]
+Phase 4: claude-opus-4-8 (High-Reasoning) [+201.6%]
       ↓
 Phase 5: gpt-5.6-luna (Ultra-Reasoning) [+201.6% baseline]
 ```
@@ -66,7 +66,7 @@ Phase 5: gpt-5.6-luna (Ultra-Reasoning) [+201.6% baseline]
 
 #### **Shift 2: feedback** (Ultra-Reasoning Upgrade)
 ```
-Phase 4: claude-opus-4.8 (High-Reasoning) [+219.0%]
+Phase 4: claude-opus-4-8 (High-Reasoning) [+219.0%]
       ↓
 Phase 5: claude-opus-5 (Ultra-Reasoning) [+219.0% baseline]
 ```
@@ -77,7 +77,7 @@ Phase 5: claude-opus-5 (Ultra-Reasoning) [+219.0% baseline]
 
 #### **Shift 3: evaluate-first-tuning** (High-Reasoning Specialization)
 ```
-Phase 4: claude-opus-4.8 (High-Reasoning) [+251.5%]
+Phase 4: claude-opus-4-8 (High-Reasoning) [+251.5%]
       ↓
 Phase 5: gpt-5.5 (High-Reasoning Procedural) [+251.5% baseline]
 ```
@@ -88,7 +88,7 @@ Phase 5: gpt-5.5 (High-Reasoning Procedural) [+251.5% baseline]
 
 #### **Shift 4: budget-aware-execution** (Fast-Execution Tier)
 ```
-Phase 4: claude-opus-4.8 (High-Reasoning) [+111.8%]
+Phase 4: claude-opus-4-8 (High-Reasoning) [+111.8%]
       ↓
 Phase 5: gemini-3.5-flash (Fast-Execution) [+111.8% baseline]
 ```
@@ -110,7 +110,7 @@ Phase 5: gpt-5.4 (Balanced-Coding Enhanced) [+130.0% baseline]
 
 #### **Shift 6: run-loop** (Balanced-Coding Shift)
 ```
-Phase 4: claude-opus-4.8 (High-Reasoning) [+99.5%]
+Phase 4: claude-opus-4-8 (High-Reasoning) [+99.5%]
       ↓
 Phase 5: claude-sonnet-5 (Balanced-Coding) [+99.5% baseline]
 ```
@@ -330,3 +330,4 @@ All shifts are to GA (Generally Available) models on GitHub Copilot as of 2026-0
 **Validation Date**: 2026-07-24  
 **Source**: GitHub Copilot Supported Models official documentation  
 **Next Review**: Post Phase 5b validation (20 runs)
+

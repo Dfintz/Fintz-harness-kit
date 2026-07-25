@@ -41,8 +41,8 @@ and artifact handoff.
 **Tier:** Ultra-Reasoning  
 **Primary:** `gpt-5.6-luna` (Novel Problem-Solving)  
 **Fallback 1:** `claude-opus-5` (Analytical Depth)  
-**Fallback 2:** `claude-opus-4.8` (Proven Reliability)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 2:** `claude-opus-4-8` (Proven Reliability)  
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 upgrade: Complex architecture decisions need frontier reasoning. GPT-5.6 Luna offers creative problem-solving and novel approaches vs. Opus 5's analytical depth. Codename indicates reasoning specialization. Phase 4 baseline: +201.6%, Phase 5 validation: +12.1% improvement.
 
@@ -57,3 +57,4 @@ and artifact handoff.
 
 Do not auto-approve any architecture that widens tool permissions, weakens guardrails, or changes a
 destructive default without explicit human approval.
+

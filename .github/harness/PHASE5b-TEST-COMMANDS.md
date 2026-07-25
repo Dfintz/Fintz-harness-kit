@@ -125,7 +125,7 @@ Testing: architect                         [ultra-reasoning]
 
 🤖 BY MODEL (TOP 10 PERFORMERS)
 ────────────────────────────────────────────────────────────────────────────
-   claude-opus-4.8              | Quality: 0.865 | Latency: 2500ms | Cost: $0.0456
+   claude-opus-4-8              | Quality: 0.865 | Latency: 2500ms | Cost: $0.0456
    gpt-5.6-luna                 | Quality: 0.878 | Latency: 3500ms | Cost: $0.0245
    claude-opus-5                | Quality: 0.852 | Latency: 3200ms | Cost: $0.0389
    gpt-5.5                      | Quality: 0.821 | Latency: 2800ms | Cost: $0.0178
@@ -246,4 +246,5 @@ Contents:
 ---
 
 **Status**: ✅ Framework Ready | Commands Ready | Next: Execute!
+
 

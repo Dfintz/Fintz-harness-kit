@@ -15,7 +15,7 @@ Both Anthropic (claude-3.5+) and OpenAI (gpt-4o+) support prompt prefix caching:
 
 ## Repository Relevance
 
-Every harness loop invocation sends HARNESS.md (~3 KB), the loaded stage instructions (~10 KB), and the active skill files (~5 KB) as system-prompt prefix. For a 5-iteration loop with a high-reasoning model (claude-opus-4.8 at $15/M input tokens), the current approach charges full price every iteration. With caching, iterations 2–5 would pay ~$1.50/M for the cached prefix.
+Every harness loop invocation sends HARNESS.md (~3 KB), the loaded stage instructions (~10 KB), and the active skill files (~5 KB) as system-prompt prefix. For a 5-iteration loop with a high-reasoning model (claude-opus-4-8 at $15/M input tokens), the current approach charges full price every iteration. With caching, iterations 2–5 would pay ~$1.50/M for the cached prefix.
 
 The `llm-provider.mjs` module centralises all LLM calls. Adding a `cache_control: {type: "ephemeral"}` marker to the system-prompt prefix block is the only SDK change needed for Anthropic. OpenAI enables this automatically.
 
@@ -35,3 +35,4 @@ The `llm-provider.mjs` module centralises all LLM calls. Adding a `cache_control
 | 2026-07-24 | candidate | Initial capture | radar-pass |
 | 2026-07-24 | adopted | Adoption gates pass: 1-file change to llm-provider.mjs, clear cost problem, no breaking risk, prefix is already stable across loop iterations. Next: Implement stage — add cache_control header for Anthropic provider. | radar-pass |
 | 2026-07-24 | parked | Prerequisite missing: llm-provider.mjs only supports local providers (Ollama/LM Studio). Cloud calls go through the DSPy Python bridge. Adding cache_control requires adding Anthropic SDK to the JS layer first — that is a larger change than assessed. Revisit when cloud provider support is added to llm-provider.mjs. | implement-pass |
+

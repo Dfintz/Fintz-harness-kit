@@ -59,17 +59,17 @@ This session completed the full **Phase 5 Multi-Model Optimizer** workflow from 
 
 | Skill | Phase 5b → Phase 5c | Gain | Status |
 |-------|----------------------|------|--------|
-| setup-harness-bootstrap | claude-opus-4.8 → **gpt-5.5** | +9.0% | 🏆 Highest |
+| setup-harness-bootstrap | claude-opus-4-8 → **gpt-5.5** | +9.0% | 🏆 Highest |
 | feedback | claude-opus-5 → **gpt-5.6-luna** | +5.7% | 🚀 Frontier |
-| doubt-driven-development | claude-opus-4.8 → **claude-opus-5** | +6.4% | 🔒 Security |
-| deterministic-validation | claude-opus-4.8 → **claude-opus-5** | +6.4% | ✓ Proof |
-| context-engineering | claude-opus-4.8 → **gpt-5.5** | +5.4% | 💾 State |
-| retrieval-quality-ops | claude-opus-4.8 → **gpt-5.5** | +5.4% | 📊 Eval |
+| doubt-driven-development | claude-opus-4-8 → **claude-opus-5** | +6.4% | 🔒 Security |
+| deterministic-validation | claude-opus-4-8 → **claude-opus-5** | +6.4% | ✓ Proof |
+| context-engineering | claude-opus-4-8 → **gpt-5.5** | +5.4% | 💾 State |
+| retrieval-quality-ops | claude-opus-4-8 → **gpt-5.5** | +5.4% | 📊 Eval |
 | prototype | claude-sonnet-5 → **gpt-5.4** | +5.0% | 🔧 Balance |
-| pr | claude-opus-4.8 → **claude-opus-5** | +3.0% | 📋 Multi-PR |
-| remember | claude-opus-4.8 → **claude-opus-5** | +3.0% | 🧠 Knowledge |
-| understand-process | claude-opus-4.8 → **claude-opus-5** | +3.0% | 🎯 Depend |
-| review-breadth | claude-opus-4.8 → **claude-opus-5** | +3.0% | 📐 Multi-dim |
+| pr | claude-opus-4-8 → **claude-opus-5** | +3.0% | 📋 Multi-PR |
+| remember | claude-opus-4-8 → **claude-opus-5** | +3.0% | 🧠 Knowledge |
+| understand-process | claude-opus-4-8 → **claude-opus-5** | +3.0% | 🎯 Depend |
+| review-breadth | claude-opus-4-8 → **claude-opus-5** | +3.0% | 📐 Multi-dim |
 | ai-techniques-radar | gpt-5.5 → **claude-opus-5** | +2.8% | 🌊 Frontier |
 
 **Fallback Chains Preserved**:
@@ -186,7 +186,7 @@ npm run harness:phase5c:monitor:alerts    # Alert mode
 ## Model routing (Phase 5 — GA: 2026-07-25)
 - Active phase: phase5
 - Tiers: ultra-reasoning, high-reasoning, balanced-coding, fast-execution
-- Primary models: gpt-5.6-luna, claude-opus-5, claude-opus-4.8, ...
+- Primary models: gpt-5.6-luna, claude-opus-5, claude-opus-4-8, ...
 ```
 
 **After**:
@@ -433,3 +433,4 @@ npm run harness:phase5c:monitor:alerts
 ---
 
 **🎉 Phase 5c deployment complete. You're now running +3.4% higher quality harness skills with full monitoring and auto-recovery capability.**
+

@@ -167,10 +167,10 @@ reading code will reliably find the cause. Try these in order:
 ## Recommended Models (Phase 5)
 
 **Tier:** High-Reasoning  
-**Primary:** `claude-opus-4.8` (Analytical Depth)  
+**Primary:** `claude-opus-4-8` (Analytical Depth)  
 **Fallback 1:** `gpt-5.5` (Multi-hop Reasoning)  
 **Fallback 2:** `claude-opus-5` (Frontier Analysis)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Security and correctness skepticism demands sustained analytical rigour across long evidence chains. Claude Opus 4.8 excels at multi-step adversarial reasoning; GPT-5.5 provides complementary multi-hop traversal for complex bug hypotheses. Phase 4 baseline quality: 0.778. Phase 5 assignment: retained at High-Reasoning tier (no regression risk).
 5. Replay a captured trace (HAR file, log dump, saved payload)
@@ -254,3 +254,4 @@ A doubt-driven pass is complete when:
 ### Scenario 2: I want a security expert to review my auth change before deploy.
 
 **What this demonstrates:** Demonstrates cross-model review for production security changes
+

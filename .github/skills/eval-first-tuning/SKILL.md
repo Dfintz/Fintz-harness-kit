@@ -23,9 +23,9 @@ Do not treat prompt tweaks as the default fix.
 
 **Tier:** High-Reasoning (Procedural)  
 **Primary:** `gpt-5.5` (Eval-Driven Workflows)  
-**Fallback 1:** `claude-opus-4.8` (Baseline Evaluation)  
+**Fallback 1:** `claude-opus-4-8` (Baseline Evaluation)  
 **Fallback 2:** `gemini-3.6-flash` (Fast Evaluation)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 shift: GPT-5.5 specialized for eval-driven workflows with high keyword distinctiveness. Better than Phase 4's Opus 4.8 for procedural evaluation patterns. Alternative: Opus 4.8 for baseline evaluation. Phase 4 baseline: +251.5%, Phase 5 validation: +17.7% improvement.
 
@@ -145,3 +145,4 @@ Eval-first tuning is complete when:
 ### Scenario 2: How do I measure if an optimization actually improves our system?
 
 **What this demonstrates:** Demonstrates adoption readiness checks and metric selection
+

@@ -64,14 +64,14 @@ const STANDARDIZED_TASKS = {
 const PHASE_5_SKILLS = [
   {
     name: "pr",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-opus-5",
     tier: "high-reasoning",
     benchmark: "+252.3%",
   },
   {
     name: "remember",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-opus-5",
     tier: "high-reasoning",
     benchmark: "+219.8%",
@@ -79,7 +79,7 @@ const PHASE_5_SKILLS = [
   {
     name: "feedback",
     primary: "claude-opus-5",
-    fallback1: "claude-opus-4.8",
+    fallback1: "claude-opus-4-8",
     tier: "ultra-reasoning",
     benchmark: "+219.0%",
   },
@@ -99,21 +99,21 @@ const PHASE_5_SKILLS = [
   },
   {
     name: "understand-process",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-opus-5",
     tier: "high-reasoning",
     benchmark: "+199.5%",
   },
   {
     name: "doubt-driven-development",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gpt-5.5",
     tier: "high-reasoning",
     benchmark: "+149.4%",
   },
   {
     name: "setup-harness-bootstrap",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gemini-3.6-flash",
     tier: "high-reasoning",
     benchmark: "+145.0%",
@@ -127,7 +127,7 @@ const PHASE_5_SKILLS = [
   },
   {
     name: "review-breadth",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-opus-5",
     tier: "high-reasoning",
     benchmark: "+113.2%",
@@ -135,34 +135,34 @@ const PHASE_5_SKILLS = [
   {
     name: "budget-aware-execution",
     primary: "gemini-3.5-flash",
-    fallback1: "claude-haiku-4.5",
+    fallback1: "claude-haiku-4-5",
     tier: "fast-execution",
     benchmark: "+111.8%",
   },
   {
     name: "deterministic-validation",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gpt-5.5",
     tier: "high-reasoning",
     benchmark: "+111.8%",
   },
   {
     name: "context-engineering",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gpt-5.5",
     tier: "high-reasoning",
     benchmark: "+111.4%",
   },
   {
     name: "retrieval-quality-ops",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gpt-5.5",
     tier: "high-reasoning",
     benchmark: "+110.5%",
   },
   {
     name: "observability-and-instrumentation",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "gpt-5.5",
     tier: "high-reasoning",
     benchmark: "+108.4%",
@@ -170,13 +170,13 @@ const PHASE_5_SKILLS = [
   {
     name: "ai-techniques-radar",
     primary: "gpt-5.5",
-    fallback1: "claude-opus-4.8",
+    fallback1: "claude-opus-4-8",
     tier: "high-reasoning",
     benchmark: "+106.3%",
   },
   {
     name: "teach-agent",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-sonnet-5",
     tier: "high-reasoning",
     benchmark: "+101.8%",
@@ -184,13 +184,13 @@ const PHASE_5_SKILLS = [
   {
     name: "run-loop",
     primary: "claude-sonnet-5",
-    fallback1: "claude-opus-4.8",
+    fallback1: "claude-opus-4-8",
     tier: "balanced-coding",
     benchmark: "+99.5%",
   },
   {
     name: "review-depth",
-    primary: "claude-opus-4.8",
+    primary: "claude-opus-4-8",
     fallback1: "claude-opus-5",
     tier: "high-reasoning",
     benchmark: "+83.2%",
@@ -198,7 +198,7 @@ const PHASE_5_SKILLS = [
   {
     name: "evaluate-first-tuning",
     primary: "gpt-5.5",
-    fallback1: "claude-opus-4.8",
+    fallback1: "claude-opus-4-8",
     tier: "high-reasoning",
     benchmark: "+251.5%",
   },
@@ -270,7 +270,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     const baseLatency = 2000;
     const modelLatency = {
       "claude-opus-5": 3500,
-      "claude-opus-4.8": 2500,
+      "claude-opus-4-8": 2500,
       "gpt-5.6-luna": 4000,
       "gpt-5.5": 2800,
       "gpt-5.4": 2200,
@@ -278,7 +278,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
       "claude-sonnet-5": 2600,
       "gemini-3.6-flash": 2000,
       "gemini-3.5-flash": 1500,
-      "claude-haiku-4.5": 1200,
+      "claude-haiku-4-5": 1200,
     };
     const latency = modelLatency[model] || baseLatency;
     const taskMultiplier = {
@@ -291,7 +291,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     // Cost estimation (tokens)
     const modelCost = {
       "claude-opus-5": 0.015, // $15/1M output tokens
-      "claude-opus-4.8": 0.015,
+      "claude-opus-4-8": 0.015,
       "gpt-5.6-luna": 0.01, // $10/1M output
       "gpt-5.5": 0.006,
       "gpt-5.4": 0.008,
@@ -299,7 +299,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
       "claude-sonnet-5": 0.015,
       "gemini-3.6-flash": 0.004,
       "gemini-3.5-flash": 0.0015,
-      "claude-haiku-4.5": 0.004,
+      "claude-haiku-4-5": 0.004,
     };
     const outputTokens = {
       basic_execution: 150,
@@ -701,3 +701,4 @@ main().catch((error) => {
   console.error("❌ Error:", error.message);
   process.exit(1);
 });
+

@@ -44,17 +44,17 @@ You requested: *"Run an optimizer using different Copilot models rather than oll
 
 | Skill | Old → New | Gain | Rationale |
 |-------|-----------|------|-----------|
-| **setup-harness-bootstrap** | claude-opus-4.8 → **gpt-5.5** | **+9.0%** | 🏆 Highest upside; superior procedural guidance |
+| **setup-harness-bootstrap** | claude-opus-4-8 → **gpt-5.5** | **+9.0%** | 🏆 Highest upside; superior procedural guidance |
 | **feedback** | claude-opus-5 → **gpt-5.6-luna** | +5.7% | Frontier reasoning for conflict resolution |
-| **doubt-driven-development** | claude-opus-4.8 → **claude-opus-5** | +6.4% | Enhanced security skepticism analysis |
-| **deterministic-validation** | claude-opus-4.8 → **claude-opus-5** | +6.4% | Stronger proof selection logic |
-| **context-engineering** | claude-opus-4.8 → **gpt-5.5** | +5.4% | Better state management |
-| **retrieval-quality-ops** | claude-opus-4.8 → **gpt-5.5** | +5.4% | Superior A/B evaluation |
+| **doubt-driven-development** | claude-opus-4-8 → **claude-opus-5** | +6.4% | Enhanced security skepticism analysis |
+| **deterministic-validation** | claude-opus-4-8 → **claude-opus-5** | +6.4% | Stronger proof selection logic |
+| **context-engineering** | claude-opus-4-8 → **gpt-5.5** | +5.4% | Better state management |
+| **retrieval-quality-ops** | claude-opus-4-8 → **gpt-5.5** | +5.4% | Superior A/B evaluation |
 | **prototype** | claude-sonnet-5 → **gpt-5.4** | +5.0% | Better reasoning balance |
-| **pr** | claude-opus-4.8 → **claude-opus-5** | +3.0% | Deeper multi-PR analysis |
-| **remember** | claude-opus-4.8 → **claude-opus-5** | +3.0% | Enhanced knowledge synthesis |
-| **understand-process** | claude-opus-4.8 → **claude-opus-5** | +3.0% | Improved dependency tracing |
-| **review-breadth** | claude-opus-4.8 → **claude-opus-5** | +3.0% | Better multi-dimensional review |
+| **pr** | claude-opus-4-8 → **claude-opus-5** | +3.0% | Deeper multi-PR analysis |
+| **remember** | claude-opus-4-8 → **claude-opus-5** | +3.0% | Enhanced knowledge synthesis |
+| **understand-process** | claude-opus-4-8 → **claude-opus-5** | +3.0% | Improved dependency tracing |
+| **review-breadth** | claude-opus-4-8 → **claude-opus-5** | +3.0% | Better multi-dimensional review |
 | **ai-techniques-radar** | gpt-5.5 → **claude-opus-5** | +2.8% | Enhanced frontier awareness |
 
 **9 Skills Maintained** (Already Optimal):
@@ -194,3 +194,4 @@ You requested: *"Run an optimizer using different Copilot models rather than oll
 ---
 
 **🎉 Phase 5 → Phase 5c Multi-Model Optimization Complete**
+

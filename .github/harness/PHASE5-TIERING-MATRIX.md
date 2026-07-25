@@ -144,7 +144,7 @@ Phase 5 expands the model portfolio from 3 models (Phase 4) to a comprehensive 5
 
 #### 8. 🟠 **eval-first-tuning** (+251.5% Phase 4)
 - **Primary Tier**: High-Reasoning (GPT-5.5)
-- **Phase 4 Primary**: claude-opus-4.8
+- **Phase 4 Primary**: claude-opus-4-8
 - **Rationale**: Eval-driven workflows have high keyword distinctiveness. GPT-5.5's specialized eval patterns outperform general reasoning.
 - **Alternative**: Claude Opus 4.8 (stable baseline)
 - **Reasoning Depth**: High
@@ -169,7 +169,7 @@ Phase 5 expands the model portfolio from 3 models (Phase 4) to a comprehensive 5
 
 #### 12. 🟢 **budget-aware-execution** (+111.8% Phase 4) → NEW TIER
 - **Primary Tier**: Fast-Execution (Gemini 3.5 Flash)
-- **Phase 4 Primary**: claude-opus-4.8
+- **Phase 4 Primary**: claude-opus-4-8
 - **Rationale**: "Budget" in skill name + token tracking = cost-awareness task. Gemini 3.5 Flash best for fast, cheap analysis.
 - **Fallback**: Claude Haiku 4.5
 - **Reasoning Depth**: Moderate
@@ -210,9 +210,9 @@ Phase 5 expands the model portfolio from 3 models (Phase 4) to a comprehensive 5
 
 #### 18. 🟡 **run-loop** (+99.5% Phase 4) → MONITOR
 - **Primary Tier**: Balanced-Coding (Claude Sonnet 5)
-- **Phase 4 Primary**: claude-opus-4.8
+- **Phase 4 Primary**: claude-opus-4-8
 - **Rationale**: Loop orchestration requires code + reasoning. Sonnet 5 balances both for execution clarity.
-- **Fallback**: claude-opus-4.8
+- **Fallback**: claude-opus-4-8
 - **Reasoning Depth**: Balanced
 
 #### 19. 🟠 **retrieval-quality-ops** (+110.5% Phase 4)
@@ -286,10 +286,10 @@ All recommended models are **GA (Generally Available)** on GitHub Copilot as of 
 
 ### Skills Changed from Phase 4:
 1. **implement**: gpt-5.3-codex → GPT-5.4 (Balanced-Coding upgrade)
-2. **eval-first-tuning**: claude-opus-4.8 → GPT-5.5 (High-Reasoning specialization)
-3. **budget-aware-execution**: claude-opus-4.8 → Gemini 3.5 Flash (Fast-Execution tier)
-4. **run-loop**: claude-opus-4.8 → Claude Sonnet 5 (Balanced-Coding for loop orchestration)
-5. **review-depth**: claude-opus-4.8 (no shift, but High-Reasoning tier clarified)
+2. **eval-first-tuning**: claude-opus-4-8 → GPT-5.5 (High-Reasoning specialization)
+3. **budget-aware-execution**: claude-opus-4-8 → Gemini 3.5 Flash (Fast-Execution tier)
+4. **run-loop**: claude-opus-4-8 → Claude Sonnet 5 (Balanced-Coding for loop orchestration)
+5. **review-depth**: claude-opus-4-8 (no shift, but High-Reasoning tier clarified)
 
 ### Skills Retained (Phase 4 optimal):
 15/20 skills remain on Phase 4 primary model assignments. Strong validation of Phase 4 baseline.
@@ -310,3 +310,4 @@ All recommended models are **GA (Generally Available)** on GitHub Copilot as of 
 **Created**: 2026-07-24  
 **Data Source**: GitHub Copilot Supported Models official documentation  
 **Validation**: All models GA status verified
+

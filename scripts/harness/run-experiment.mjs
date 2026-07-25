@@ -192,7 +192,7 @@ function median(values) {
  */
 function measureMetric(loop) {
   const { run, extract, timeoutMs, repeatCount } = loop.metric;
-  const N = repeatCount ?? 1; // default 1 for backward compatibility
+  const N = repeatCount ?? 3; // default 3 for statistical rigor (median-of-3)
   const values = [];
   let lastOutput = '';
 
@@ -222,6 +222,16 @@ function measureMetric(loop) {
 }
 
 function isImproved(direction, candidate, best) {
+  // Enforce minimum effect size to avoid spurious gains
+  // With harnessScore as mean over 3 tasks, one task flipping by 1% changes metric ~0.33%
+  // Require at least 5% improvement to avoid noise-driven acceptance
+  const MIN_EFFECT_SIZE = 0.05; // 5% threshold
+  const improvement = Math.abs((candidate - best) / best);
+  
+  if (improvement < MIN_EFFECT_SIZE) {
+    return false; // Improvement too small to accept
+  }
+  
   return direction === 'minimize' ? candidate < best : candidate > best;
 }
 

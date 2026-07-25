@@ -34,9 +34,9 @@ The canonical contracts live in:
 
 **Tier:** Balanced-Coding  
 **Primary:** `claude-sonnet-5` (Clear Loop Structures)  
-**Fallback 1:** `claude-opus-4.8` (Complex Orchestration)  
+**Fallback 1:** `claude-opus-4-8` (Complex Orchestration)  
 **Fallback 2:** `gpt-5.3-codex` (Code-Loop Analysis)  
-**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
 
 **Why?** Phase 5 shift: Loop orchestration requires code clarity + execution logic balance. Claude Sonnet 5 balances both for clear loop structures vs. Opus 4.8's general reasoning. Maintains Phase 4 improvement (+99.5%) with better code orientation. Phase 5 validation: +16.6% improvement.
 
@@ -55,3 +55,4 @@ The canonical contracts live in:
 
 Do not widen tools, bypass guardrails, or ignore the loop's hard iteration bound without explicit
 human approval.
+
