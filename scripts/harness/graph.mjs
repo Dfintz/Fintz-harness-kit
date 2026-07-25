@@ -26,38 +26,43 @@
  *
  * Exit codes: 0 ok / fresh, 1 stale (status) or not-found, 2 usage/config error.
  */
-import { execSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { execSync } from "node:child_process";
 import {
-  buildGraphStatusCore,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join } from "node:path";
+import { CONFIG_PATH, repoRoot } from "./config.mjs";
+import {
   buildGraphGenUiPayload,
+  buildGraphStatusCore,
   buildProviderStatusPayload,
   loadGraphForQuery,
   readGraphEvents,
-} from './graph-provider.mjs';
+} from "./graph-provider.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const configPath = join(repoRoot, 'harness.config.json');
-const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
-const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
+const configPath = CONFIG_PATH;
+const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
+const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
 const BRANCH_TYPE_PREFIXES = new Set([
-  'feature',
-  'feat',
-  'fix',
-  'bugfix',
-  'hotfix',
-  'chore',
-  'docs',
-  'refactor',
-  'task',
-  'spike',
-  'claude',
+  "feature",
+  "feat",
+  "fix",
+  "bugfix",
+  "hotfix",
+  "chore",
+  "docs",
+  "refactor",
+  "task",
+  "spike",
+  "claude",
 ]);
 
 // Edge types that come straight from AST extraction are structural facts.
-const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports']);
+const EXTRACTED_EDGE_TYPES = new Set(["imports", "contains", "exports"]);
 // File extensions the graph analyses — used to count source churn for staleness.
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|graphql|sql)$/;
 
@@ -70,13 +75,13 @@ function parseFlags(argv) {
   const flags = { _: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--json') flags.json = true;
-    else if (a === '--provider') flags.provider = argv[++i];
-    else if (a === '--depth') flags.depth = Number(argv[++i]);
-    else if (a === '--type') flags.type = argv[++i];
-    else if (a === '--top') flags.top = Number(argv[++i]);
-    else if (a === '--limit') flags.limit = Number(argv[++i]);
-    else if (a.startsWith('--')) die(`Unknown option: ${a}`);
+    if (a === "--json") flags.json = true;
+    else if (a === "--provider") flags.provider = argv[++i];
+    else if (a === "--depth") flags.depth = Number(argv[++i]);
+    else if (a === "--type") flags.type = argv[++i];
+    else if (a === "--top") flags.top = Number(argv[++i]);
+    else if (a === "--limit") flags.limit = Number(argv[++i]);
+    else if (a.startsWith("--")) die(`Unknown option: ${a}`);
     else flags._.push(a);
   }
   return flags;
@@ -87,7 +92,8 @@ function loadGraphContext(flags) {
     return loadGraphForQuery({
       repoRoot,
       configPath,
-      overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+      overrideProvider:
+        typeof flags.provider === "string" ? flags.provider : undefined,
     });
   } catch (error) {
     die(error instanceof Error ? error.message : String(error), 1);
@@ -98,8 +104,8 @@ function git(args) {
   try {
     return execSync(`git ${args}`, {
       cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return null;
@@ -111,13 +117,13 @@ function gitRefExists(ref) {
 }
 
 function resolveDefaultBaseRef() {
-  const originHead = git('symbolic-ref refs/remotes/origin/HEAD');
+  const originHead = git("symbolic-ref refs/remotes/origin/HEAD");
   if (originHead) {
-    const ref = originHead.replace(/^refs\/remotes\//, '');
+    const ref = originHead.replace(/^refs\/remotes\//, "");
     if (gitRefExists(ref)) return ref;
   }
 
-  const fallbackRefs = ['origin/master', 'origin/main', 'master', 'main'];
+  const fallbackRefs = ["origin/master", "origin/main", "master", "main"];
   for (const ref of fallbackRefs) {
     if (gitRefExists(ref)) return ref;
   }
@@ -126,49 +132,53 @@ function resolveDefaultBaseRef() {
 
 function isBriefPath(filePath) {
   return (
-    filePath.startsWith('.github/harness/memory/briefs/') &&
-    filePath.endsWith('.md') &&
-    !filePath.endsWith('/README.md') &&
-    !filePath.endsWith('/_template.md')
+    filePath.startsWith(".github/harness/memory/briefs/") &&
+    filePath.endsWith(".md") &&
+    !filePath.endsWith("/README.md") &&
+    !filePath.endsWith("/_template.md")
   );
 }
 
 function briefNameFromPath(filePath) {
-  return filePath.replace('.github/harness/memory/briefs/', '').replace(/\.md$/, '');
+  return filePath
+    .replace(".github/harness/memory/briefs/", "")
+    .replace(/\.md$/, "");
 }
 
 function branchLeaf(branch) {
-  const parts = branch.split('/').filter(Boolean);
+  const parts = branch.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? branch;
 }
 
 function normalizeBranchSlug(value) {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function stripRunSuffix(slug) {
   // Trim run-id style suffixes like "-6nrbto" while preserving the main branch slug.
-  const stripped = slug.replace(/-[a-z0-9]*\d[a-z0-9]*$/, '');
+  const stripped = slug.replace(/-[a-z0-9]*\d[a-z0-9]*$/, "");
   return stripped.length >= 6 ? stripped : slug;
 }
 
 function maybeStripBranchPrefix(slug) {
-  const parts = slug.split('-');
+  const parts = slug.split("-");
   if (parts.length <= 1) return slug;
-  return BRANCH_TYPE_PREFIXES.has(parts[0]) ? parts.slice(1).join('-') : slug;
+  return BRANCH_TYPE_PREFIXES.has(parts[0]) ? parts.slice(1).join("-") : slug;
 }
 
 function deriveExpectedBriefNames(branch, defaultBranchName) {
-  if (!branch || branch === '(detached)' || branch === 'HEAD') return [];
+  if (!branch || branch === "(detached)" || branch === "HEAD") return [];
 
   const normalizedBranch = normalizeBranchSlug(branchLeaf(branch));
   if (!normalizedBranch) return [];
 
-  const normalizedDefault = defaultBranchName ? normalizeBranchSlug(defaultBranchName) : '';
+  const normalizedDefault = defaultBranchName
+    ? normalizeBranchSlug(defaultBranchName)
+    : "";
   if (normalizedDefault && normalizedBranch === normalizedDefault) return [];
 
   const expected = new Set([normalizedBranch]);
@@ -187,27 +197,42 @@ function deriveExpectedBriefNames(branch, defaultBranchName) {
 
 function summarizeBranchDiff(base) {
   const changed = base ? git(`diff --name-only ${base}..HEAD`) : null;
-  const changedFiles = changed ? changed.split('\n').filter(Boolean) : [];
+  const changedFiles = changed ? changed.split("\n").filter(Boolean) : [];
   const sourceChanged =
-    changed === null ? null : changedFiles.filter(f => SOURCE_EXT.test(f)).length;
+    changed === null
+      ? null
+      : changedFiles.filter((f) => SOURCE_EXT.test(f)).length;
   const nonTrivial = sourceChanged === null ? null : sourceChanged > 1;
   const changedBriefs =
-    changed === null ? null : changedFiles.filter(isBriefPath).map(briefNameFromPath);
-  const hasBranchBrief = changedBriefs === null ? null : changedBriefs.length > 0;
+    changed === null
+      ? null
+      : changedFiles.filter(isBriefPath).map(briefNameFromPath);
+  const hasBranchBrief =
+    changedBriefs === null ? null : changedBriefs.length > 0;
 
-  return { changedFiles, sourceChanged, nonTrivial, changedBriefs, hasBranchBrief };
+  return {
+    changedFiles,
+    sourceChanged,
+    nonTrivial,
+    changedBriefs,
+    hasBranchBrief,
+  };
 }
 
 function computeExpectedBriefMatch(expectedBriefs, changedBriefs) {
   if (changedBriefs === null) return null;
   if (expectedBriefs.length === 0) return true;
-  return changedBriefs.some(name => expectedBriefs.includes(name));
+  return changedBriefs.some((name) => expectedBriefs.includes(name));
 }
 
-function getBriefCheckFailureReason(nonTrivial, hasBranchBrief, hasExpectedBrief) {
-  if (nonTrivial === null) return 'missing-base';
-  if (nonTrivial && !hasBranchBrief) return 'missing-brief';
-  if (nonTrivial && !hasExpectedBrief) return 'name-mismatch';
+function getBriefCheckFailureReason(
+  nonTrivial,
+  hasBranchBrief,
+  hasExpectedBrief,
+) {
+  if (nonTrivial === null) return "missing-base";
+  if (nonTrivial && !hasBranchBrief) return "missing-brief";
+  if (nonTrivial && !hasExpectedBrief) return "name-mismatch";
   return null;
 }
 
@@ -217,8 +242,14 @@ function getBriefCheckFailureReason(nonTrivial, hasBranchBrief, hasExpectedBrief
 
 function computeStatus(graph) {
   const graphCommit = graph.project?.gitCommitHash ?? null;
-  const head = git('rev-parse HEAD');
-  const result = { graphCommit, head, fresh: false, commitsBehind: null, sourceFilesChanged: null };
+  const head = git("rev-parse HEAD");
+  const result = {
+    graphCommit,
+    head,
+    fresh: false,
+    commitsBehind: null,
+    sourceFilesChanged: null,
+  };
   if (!graphCommit || !head) return result;
   if (graphCommit === head) {
     result.fresh = true;
@@ -233,13 +264,15 @@ function computeStatus(graph) {
   result.commitsBehind = count === null ? null : Number(count);
   const changed = git(`diff --name-only ${graphCommit}..HEAD`);
   result.sourceFilesChanged =
-    changed === null ? null : changed.split('\n').filter(f => SOURCE_EXT.test(f)).length;
+    changed === null
+      ? null
+      : changed.split("\n").filter((f) => SOURCE_EXT.test(f)).length;
   result.fresh = result.commitsBehind === 0;
   return result;
 }
 
 function statusLine(s) {
-  if (s.fresh) return 'fresh — graph matches HEAD';
+  if (s.fresh) return "fresh — graph matches HEAD";
   if (s.commitsBehind === null) {
     return `unknown — graph commit ${short(s.graphCommit)} not in local history`;
   }
@@ -247,17 +280,18 @@ function statusLine(s) {
 }
 
 function short(sha) {
-  return sha ? sha.slice(0, 8) : '(none)';
+  return sha ? sha.slice(0, 8) : "(none)";
 }
 
 function cmdStatus(graphContext, flags) {
   const { graph, providerId, graphPath } = graphContext;
   const s = computeStatus(graph);
-  const workspaceGraphPath = graphPath.replaceAll('\\', '/');
+  const workspaceGraphPath = graphPath.replaceAll("\\", "/");
   const core = buildGraphStatusCore({
     repoRoot,
     configPath,
-    overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+    overrideProvider:
+      typeof flags.provider === "string" ? flags.provider : undefined,
     probe: true,
   });
   if (flags.json) {
@@ -269,21 +303,27 @@ function cmdStatus(graphContext, flags) {
           graphPath: workspaceGraphPath,
         },
         null,
-        2
-      )
+        2,
+      ),
     );
   } else {
     console.log(`Knowledge graph: ${statusLine(s)}`);
     console.log(
-      `  provider: ${core.provider} (query backend: ${providerId}, graph: ${workspaceGraphPath})`
+      `  provider: ${core.provider} (query backend: ${providerId}, graph: ${workspaceGraphPath})`,
     );
-    console.log(`  refresh readiness: ${core.refreshReadiness.ready ? 'ready' : 'degraded'}`);
+    console.log(
+      `  refresh readiness: ${core.refreshReadiness.ready ? "ready" : "degraded"}`,
+    );
     if (core.degradationReason) {
       console.log(`  degradation: ${core.degradationReason}`);
     }
-    console.log(`  graph commit: ${short(s.graphCommit)}   HEAD: ${short(s.head)}`);
+    console.log(
+      `  graph commit: ${short(s.graphCommit)}   HEAD: ${short(s.head)}`,
+    );
     if (!s.fresh && s.commitsBehind) {
-      console.log('  → refresh incrementally with /understand and commit the updated graph.');
+      console.log(
+        "  → refresh incrementally with /understand and commit the updated graph.",
+      );
     }
   }
   process.exit(s.fresh ? 0 : 1);
@@ -291,22 +331,31 @@ function cmdStatus(graphContext, flags) {
 
 function firstLine(file) {
   try {
-    const text = readFileSync(file, 'utf8');
-    for (const raw of text.split('\n')) {
-      const line = raw.replace(/^#+\s*/, '').trim();
+    const text = readFileSync(file, "utf8");
+    for (const raw of text.split("\n")) {
+      const line = raw.replace(/^#+\s*/, "").trim();
       if (line) return line;
     }
   } catch {
     /* ignore */
   }
-  return '(empty)';
+  return "(empty)";
 }
 
 function listMarkdown(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter(f => f.endsWith('.md') && f !== '_template.md' && f.toLowerCase() !== 'readme.md')
-    .map(f => ({ file: join(dir, f), name: f, mtime: statSync(join(dir, f)).mtimeMs }));
+    .filter(
+      (f) =>
+        f.endsWith(".md") &&
+        f !== "_template.md" &&
+        f.toLowerCase() !== "readme.md",
+    )
+    .map((f) => ({
+      file: join(dir, f),
+      name: f,
+      mtime: statSync(join(dir, f)).mtimeMs,
+    }));
 }
 
 function cmdBanner(graphContext) {
@@ -314,25 +363,31 @@ function cmdBanner(graphContext) {
   const s = computeStatus(graph);
   const lessons = listMarkdown(lessonsDir).sort((a, b) => b.mtime - a.mtime);
   const briefs = listMarkdown(briefsDir);
-  const active = briefs.filter(b => /—\s*active/i.test(firstLine(b.file)));
+  const active = briefs.filter((b) => /—\s*active/i.test(firstLine(b.file)));
 
-  console.log('─── Harness memory ───────────────────────────────────────────');
+  console.log("─── Harness memory ───────────────────────────────────────────");
   console.log(`Knowledge graph: ${statusLine(s)}`);
   console.log(
-    `Graph provider: ${providerState.selectedProvider} (query backend: ${providerId}, graph: ${graphPath.replaceAll('\\', '/')})`
+    `Graph provider: ${providerState.selectedProvider} (query backend: ${providerId}, graph: ${graphPath.replaceAll("\\", "/")})`,
   );
   if (!s.fresh && s.commitsBehind) {
-    console.log('  Run `npm run harness:graph -- status` then /understand to refresh.');
+    console.log(
+      "  Run `npm run harness:graph -- status` then /understand to refresh.",
+    );
   }
-  console.log(`Lessons: ${lessons.length} recorded (.github/harness/memory/lessons/)`);
+  console.log(
+    `Lessons: ${lessons.length} recorded (.github/harness/memory/lessons/)`,
+  );
   for (const l of lessons.slice(0, 5)) {
     console.log(`  • ${firstLine(l.file)}`);
   }
   console.log(
-    `Briefs: ${briefs.length} total, ${active.length} active (.github/harness/memory/briefs/)`
+    `Briefs: ${briefs.length} total, ${active.length} active (.github/harness/memory/briefs/)`,
   );
-  console.log('Query the graph instead of reading it: npm run harness:graph -- <cmd>');
-  console.log('──────────────────────────────────────────────────────────────');
+  console.log(
+    "Query the graph instead of reading it: npm run harness:graph -- <cmd>",
+  );
+  console.log("──────────────────────────────────────────────────────────────");
   process.exit(0);
 }
 
@@ -360,16 +415,24 @@ function resolveNode(graph, byId, raw) {
   const asFile = `file:${raw}`;
   if (byId.has(asFile)) return asFile;
   // Suffix match (symbol name or partial path)
-  const matches = graph.nodes.filter(n => n.id === raw || n.id.endsWith(`:${raw}`));
+  const matches = graph.nodes.filter(
+    (n) => n.id === raw || n.id.endsWith(`:${raw}`),
+  );
   if (matches.length === 1) return matches[0].id;
   if (matches.length > 1) {
-    die(`Ambiguous node "${raw}" — matches ${matches.length}. Use a full id.`, 1);
+    die(
+      `Ambiguous node "${raw}" — matches ${matches.length}. Use a full id.`,
+      1,
+    );
   }
   return null;
 }
 
 function edgeConfidence(e) {
-  return e.confidence ?? (EXTRACTED_EDGE_TYPES.has(e.type) ? 'EXTRACTED' : 'INFERRED');
+  return (
+    e.confidence ??
+    (EXTRACTED_EDGE_TYPES.has(e.type) ? "EXTRACTED" : "INFERRED")
+  );
 }
 
 function cmdNeighbors(graph, flags) {
@@ -385,8 +448,8 @@ function cmdNeighbors(graph, flags) {
     for (const node of frontier) {
       for (const e of [...(out.get(node) ?? []), ...(inc.get(node) ?? [])]) {
         if (flags.type && e.type !== flags.type) continue;
-        const dir = e.source === node ? 'out' : 'in';
-        const other = dir === 'out' ? e.target : e.source;
+        const dir = e.source === node ? "out" : "in";
+        const other = dir === "out" ? e.target : e.source;
         collected.push({
           depth: d + 1,
           direction: dir,
@@ -407,9 +470,9 @@ function cmdNeighbors(graph, flags) {
     return;
   }
   console.log(`Neighbors of ${id} (depth ${depth}):`);
-  if (collected.length === 0) console.log('  (none)');
+  if (collected.length === 0) console.log("  (none)");
   for (const c of collected) {
-    const arrow = c.direction === 'out' ? '→' : '←';
+    const arrow = c.direction === "out" ? "→" : "←";
     console.log(`  ${arrow} [${c.type}/${c.confidence}] ${c.node}`);
   }
 }
@@ -419,15 +482,18 @@ function cmdDependents(graph, flags) {
   const id = resolveNode(graph, byId, flags._[0]);
   if (!id) die(`Node not found: ${flags._[0]}`, 1);
   const dependents = (inc.get(id) ?? [])
-    .filter(e => e.type === 'imports')
-    .map(e => ({ node: e.source, confidence: edgeConfidence(e) }));
+    .filter((e) => e.type === "imports")
+    .map((e) => ({ node: e.source, confidence: edgeConfidence(e) }));
   if (flags.json) {
     console.log(JSON.stringify({ id, dependents }, null, 2));
     return;
   }
-  console.log(`Dependents of ${id} (modules that import it): ${dependents.length}`);
+  console.log(
+    `Dependents of ${id} (modules that import it): ${dependents.length}`,
+  );
   for (const d of dependents) console.log(`  ← ${d.node}`);
-  if (dependents.length === 0) console.log('  (none — leaf module or unimported)');
+  if (dependents.length === 0)
+    console.log("  (none — leaf module or unimported)");
 }
 
 function cmdPath(graph, flags) {
@@ -474,7 +540,9 @@ function cmdLayers(graph, flags) {
   const layers = graph.layers ?? [];
   if (flags.json) {
     console.log(
-      JSON.stringify(layers.map(l => ({ id: l.id, name: l.name, size: l.nodeIds.length })))
+      JSON.stringify(
+        layers.map((l) => ({ id: l.id, name: l.name, size: l.nodeIds.length })),
+      ),
     );
     return;
   }
@@ -484,12 +552,15 @@ function cmdLayers(graph, flags) {
 }
 
 function cmdLayer(graph, flags) {
-  const q = (flags._[0] ?? '').toLowerCase();
+  const q = (flags._[0] ?? "").toLowerCase();
   const layer = (graph.layers ?? []).find(
-    l =>
-      l.id.toLowerCase() === q || l.id.toLowerCase().includes(q) || l.name.toLowerCase().includes(q)
+    (l) =>
+      l.id.toLowerCase() === q ||
+      l.id.toLowerCase().includes(q) ||
+      l.name.toLowerCase().includes(q),
   );
-  if (!layer) die(`No layer matching "${flags._[0]}". Use \`layers\` to list them.`, 1);
+  if (!layer)
+    die(`No layer matching "${flags._[0]}". Use \`layers\` to list them.`, 1);
   if (flags.json) {
     console.log(JSON.stringify(layer, null, 2));
     return;
@@ -506,56 +577,73 @@ function cmdHubs(graph, flags) {
     degree.set(e.source, (degree.get(e.source) ?? 0) + 1);
     degree.set(e.target, (degree.get(e.target) ?? 0) + 1);
   }
-  const byId = new Map(graph.nodes.map(n => [n.id, n]));
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   let ranked = [...degree.entries()]
-    .map(([id, deg]) => ({ id, degree: deg, type: byId.get(id)?.type ?? '?' }))
-    .filter(r => !flags.type || r.type === flags.type)
+    .map(([id, deg]) => ({ id, degree: deg, type: byId.get(id)?.type ?? "?" }))
+    .filter((r) => !flags.type || r.type === flags.type)
     .sort((a, b) => b.degree - a.degree)
     .slice(0, top);
   if (flags.json) {
     console.log(JSON.stringify(ranked, null, 2));
     return;
   }
-  console.log(`Top ${ranked.length} hubs by degree (refactor-risk "god nodes"):`);
-  for (const r of ranked) console.log(`  ${String(r.degree).padStart(4)}  [${r.type}] ${r.id}`);
+  console.log(
+    `Top ${ranked.length} hubs by degree (refactor-risk "god nodes"):`,
+  );
+  for (const r of ranked)
+    console.log(`  ${String(r.degree).padStart(4)}  [${r.type}] ${r.id}`);
 }
 
 function cmdAnnotate(graphContext) {
   const { graph, graphPath, providerId } = graphContext;
-  if (providerId !== 'understand-anything') {
+  if (providerId !== "understand-anything") {
     die(
       `annotate is only supported for understand-anything graphs. Current query backend: ${providerId}.`,
-      2
+      2,
     );
   }
   let changed = 0;
   for (const e of graph.edges) {
     if (!e.confidence) {
-      e.confidence = EXTRACTED_EDGE_TYPES.has(e.type) ? 'EXTRACTED' : 'INFERRED';
+      e.confidence = EXTRACTED_EDGE_TYPES.has(e.type)
+        ? "EXTRACTED"
+        : "INFERRED";
       changed++;
     }
   }
   if (changed === 0) {
-    console.log('All edges already carry a confidence tag — nothing to do.');
+    console.log("All edges already carry a confidence tag — nothing to do.");
     return;
   }
   // Match the generator's output exactly (single line, no trailing newline) so the
   // diff stays minimal and a later /understand regeneration overwrites cleanly.
   writeFileSync(graphPath, JSON.stringify(graph));
-  console.log(`Annotated ${changed} edge(s) with a confidence tag and rewrote the graph.`);
-  console.log('Remember to commit .understand-anything/knowledge-graph.json.');
+  console.log(
+    `Annotated ${changed} edge(s) with a confidence tag and rewrote the graph.`,
+  );
+  console.log("Remember to commit .understand-anything/knowledge-graph.json.");
 }
 
 function cmdBriefCheck(flags) {
-  const branch = git('rev-parse --abbrev-ref HEAD') ?? '(detached)';
-  const briefs = listMarkdown(briefsDir).map(b => b.name.replace(/\.md$/, ''));
+  const branch = git("rev-parse --abbrev-ref HEAD") ?? "(detached)";
+  const briefs = listMarkdown(briefsDir).map((b) =>
+    b.name.replace(/\.md$/, ""),
+  );
   const baseRef = resolveDefaultBaseRef();
-  const defaultBranchName = baseRef ? baseRef.split('/').pop() : null;
+  const defaultBranchName = baseRef ? baseRef.split("/").pop() : null;
   const base = baseRef ? git(`merge-base ${baseRef} HEAD`) : null;
-  const { sourceChanged, nonTrivial, changedBriefs, hasBranchBrief } = summarizeBranchDiff(base);
+  const { sourceChanged, nonTrivial, changedBriefs, hasBranchBrief } =
+    summarizeBranchDiff(base);
   const expectedBriefs = deriveExpectedBriefNames(branch, defaultBranchName);
-  const hasExpectedBrief = computeExpectedBriefMatch(expectedBriefs, changedBriefs);
-  const failureReason = getBriefCheckFailureReason(nonTrivial, hasBranchBrief, hasExpectedBrief);
+  const hasExpectedBrief = computeExpectedBriefMatch(
+    expectedBriefs,
+    changedBriefs,
+  );
+  const failureReason = getBriefCheckFailureReason(
+    nonTrivial,
+    hasBranchBrief,
+    hasExpectedBrief,
+  );
 
   const result = {
     branch,
@@ -577,33 +665,43 @@ function cmdBriefCheck(flags) {
   }
 
   console.log(`Branch: ${branch}`);
-  console.log(`Base ref: ${baseRef ?? '(not found)'}`);
-  const briefsSuffix = briefs.length ? ` (${briefs.join(', ')})` : '';
+  console.log(`Base ref: ${baseRef ?? "(not found)"}`);
+  const briefsSuffix = briefs.length ? ` (${briefs.join(", ")})` : "";
   console.log(`Briefs on disk: ${briefs.length}${briefsSuffix}`);
 
-  if (failureReason === 'missing-base') {
-    console.log('⚠ Unable to determine branch diff against a default base ref.');
-    console.log('  Ensure origin/HEAD (or origin/master|origin/main) exists locally.');
-    process.exit(1);
-  }
-
-  if (failureReason === 'missing-brief') {
+  if (failureReason === "missing-base") {
     console.log(
-      `⚠ This branch changes ${sourceChanged} source files but no Architecture Brief was added or updated in this branch.`
+      "⚠ Unable to determine branch diff against a default base ref.",
     );
-    console.log('  Stage 1 (Architect) should write one to .github/harness/memory/briefs/.');
+    console.log(
+      "  Ensure origin/HEAD (or origin/master|origin/main) exists locally.",
+    );
     process.exit(1);
   }
 
-  if (failureReason === 'name-mismatch') {
-    console.log('⚠ Branch brief naming check failed.');
-    console.log(`  Expected a branch-mapped brief file name: ${expectedBriefs.join(', ')}`);
-    console.log(`  Changed brief files: ${changedBriefs?.join(', ') || '(none)'}`);
-    console.log('  Rename/add the brief to match the branch slug mapping.');
+  if (failureReason === "missing-brief") {
+    console.log(
+      `⚠ This branch changes ${sourceChanged} source files but no Architecture Brief was added or updated in this branch.`,
+    );
+    console.log(
+      "  Stage 1 (Architect) should write one to .github/harness/memory/briefs/.",
+    );
     process.exit(1);
   }
 
-  console.log('No brief gap detected.');
+  if (failureReason === "name-mismatch") {
+    console.log("⚠ Branch brief naming check failed.");
+    console.log(
+      `  Expected a branch-mapped brief file name: ${expectedBriefs.join(", ")}`,
+    );
+    console.log(
+      `  Changed brief files: ${changedBriefs?.join(", ") || "(none)"}`,
+    );
+    console.log("  Rename/add the brief to match the branch slug mapping.");
+    process.exit(1);
+  }
+
+  console.log("No brief gap detected.");
 }
 
 // ---------------------------------------------------------------------------
@@ -611,21 +709,22 @@ function cmdBriefCheck(flags) {
 function main() {
   const [cmd, ...rest] = process.argv.slice(2);
   const flags = parseFlags(rest);
-  if (!cmd || cmd === '--help' || cmd === '-h') {
+  if (!cmd || cmd === "--help" || cmd === "-h") {
     die(
-      'Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]'
+      "Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]",
     );
   }
-  if (cmd === 'brief-check') {
+  if (cmd === "brief-check") {
     return cmdBriefCheck(flags);
   }
-  if (cmd === 'provider-status') {
+  if (cmd === "provider-status") {
     let payload;
     try {
       payload = buildProviderStatusPayload({
         repoRoot,
         configPath,
-        overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+        overrideProvider:
+          typeof flags.provider === "string" ? flags.provider : undefined,
       });
     } catch (error) {
       die(error instanceof Error ? error.message : String(error), 1);
@@ -637,29 +736,36 @@ function main() {
     console.log(`Selected graph provider: ${payload.selectedProvider}`);
     for (const providerId of payload.activeProviders) {
       const details = payload.active[providerId];
-      console.log(`  ${providerId}: available=${details.available ? 'yes' : 'no'} query=${details.querySupported ? 'yes' : 'no'} refresh=${details.refreshSupported ? 'yes' : 'no'}`);
-      console.log(`    graph: ${details.graphPath} (${details.graphPathExists ? 'present' : 'missing'})`);
-      if (providerId === 'understand-anything') {
-        console.log(`    pluginRoot: ${details.pluginRoot ?? '(not set)'}`);
+      console.log(
+        `  ${providerId}: available=${details.available ? "yes" : "no"} query=${details.querySupported ? "yes" : "no"} refresh=${details.refreshSupported ? "yes" : "no"}`,
+      );
+      console.log(
+        `    graph: ${details.graphPath} (${details.graphPathExists ? "present" : "missing"})`,
+      );
+      if (providerId === "understand-anything") {
+        console.log(`    pluginRoot: ${details.pluginRoot ?? "(not set)"}`);
       } else {
-        console.log(`    graphHtml: ${details.graphHtmlPath} (${details.graphHtmlExists ? 'present' : 'missing'})`);
         console.log(
-          `    refreshCommand: ${details.refreshCommandConfigured ? 'configured' : 'not configured'} (cwd=${details.refreshCwd})`
+          `    graphHtml: ${details.graphHtmlPath} (${details.graphHtmlExists ? "present" : "missing"})`,
         );
         console.log(
-          `    graphify-signal: cli=${details.cliAvailable === null ? 'n/a' : details.cliAvailable ? 'yes' : 'no'}, env=${details.signalPresent ? 'yes' : 'no'}`
+          `    refreshCommand: ${details.refreshCommandConfigured ? "configured" : "not configured"} (cwd=${details.refreshCwd})`,
+        );
+        console.log(
+          `    graphify-signal: cli=${details.cliAvailable === null ? "n/a" : details.cliAvailable ? "yes" : "no"}, env=${details.signalPresent ? "yes" : "no"}`,
         );
       }
     }
     return;
   }
-  if (cmd === 'genui-status') {
+  if (cmd === "genui-status") {
     let payload;
     try {
       payload = buildGraphGenUiPayload({
         repoRoot,
         configPath,
-        overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+        overrideProvider:
+          typeof flags.provider === "string" ? flags.provider : undefined,
       });
     } catch (error) {
       die(error instanceof Error ? error.message : String(error), 1);
@@ -669,28 +775,32 @@ function main() {
       return;
     }
     console.log(`Graph GenUI status (provider=${payload.selectedProvider})`);
-    console.log(`  query backend: ${payload.queryProvider ?? '(none)'}`);
-    console.log(`  query graph: ${payload.queryGraphPath ?? '(none)'}`);
+    console.log(`  query backend: ${payload.queryProvider ?? "(none)"}`);
+    console.log(`  query graph: ${payload.queryGraphPath ?? "(none)"}`);
     console.log(
-      `  graph.html: ${payload.graphHtml.configuredPath} (${payload.graphHtml.exists ? 'present' : 'missing'})`
+      `  graph.html: ${payload.graphHtml.configuredPath} (${payload.graphHtml.exists ? "present" : "missing"})`,
     );
     console.log(
-      `  served via HTTP: ${payload.graphHtml.httpPath ?? 'disabled (path outside repo root or missing)'}`
+      `  served via HTTP: ${payload.graphHtml.httpPath ?? "disabled (path outside repo root or missing)"}`,
     );
     for (const note of payload.notes ?? []) {
       console.log(`  note: ${note}`);
     }
     return;
   }
-  if (cmd === 'events') {
-    const limit = Number.isFinite(flags.limit) && flags.limit > 0 ? Math.floor(flags.limit) : 20;
+  if (cmd === "events") {
+    const limit =
+      Number.isFinite(flags.limit) && flags.limit > 0
+        ? Math.floor(flags.limit)
+        : 20;
     let payload;
     try {
       payload = {
         ...buildGraphStatusCore({
           repoRoot,
           configPath,
-          overrideProvider: typeof flags.provider === 'string' ? flags.provider : undefined,
+          overrideProvider:
+            typeof flags.provider === "string" ? flags.provider : undefined,
           probe: true,
         }),
         ...readGraphEvents({ repoRoot, configPath, limit }),
@@ -702,11 +812,13 @@ function main() {
       console.log(JSON.stringify(payload, null, 2));
       return;
     }
-    console.log(`Graph events (provider=${payload.provider}, count=${payload.count ?? 0})`);
+    console.log(
+      `Graph events (provider=${payload.provider}, count=${payload.count ?? 0})`,
+    );
     console.log(`  log path: ${payload.path}`);
     for (const event of payload.events || []) {
       console.log(
-        `  ${event.timestamp || '(no-ts)'} ${event.eventType || '(unknown)'}${event.degradationReason ? ` — ${event.degradationReason}` : ''}`
+        `  ${event.timestamp || "(no-ts)"} ${event.eventType || "(unknown)"}${event.degradationReason ? ` — ${event.degradationReason}` : ""}`,
       );
     }
     return;
@@ -714,23 +826,23 @@ function main() {
 
   const graphContext = loadGraphContext(flags);
   switch (cmd) {
-    case 'status':
+    case "status":
       return cmdStatus(graphContext, flags);
-    case 'banner':
+    case "banner":
       return cmdBanner(graphContext);
-    case 'neighbors':
+    case "neighbors":
       return cmdNeighbors(graphContext.graph, flags);
-    case 'dependents':
+    case "dependents":
       return cmdDependents(graphContext.graph, flags);
-    case 'path':
+    case "path":
       return cmdPath(graphContext.graph, flags);
-    case 'layers':
+    case "layers":
       return cmdLayers(graphContext.graph, flags);
-    case 'layer':
+    case "layer":
       return cmdLayer(graphContext.graph, flags);
-    case 'hubs':
+    case "hubs":
       return cmdHubs(graphContext.graph, flags);
-    case 'annotate':
+    case "annotate":
       return cmdAnnotate(graphContext);
     default:
       return die(`Unknown command: ${cmd}`);

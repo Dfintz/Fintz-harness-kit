@@ -5,52 +5,84 @@
  * This script does not implement an MCP transport server on its own.
  * It exposes stable JSON commands that an MCP server can call directly.
  */
-import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { buildMcpListPayload, mcpToolSpecs } from './mcp-contracts.mjs';
-import { buildCatalog } from './harness-catalog.mjs';
-import { loadConfig as loadRouterConfig, planTask } from './prompt-router.mjs';
+import { harnessRuntimeRoot, repoRoot } from "./config.mjs";
+import { buildCatalog } from "./harness-catalog.mjs";
+import { buildMcpListPayload, mcpToolSpecs } from "./mcp-contracts.mjs";
+import { loadConfig as loadRouterConfig, planTask } from "./prompt-router.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const graphCliPath = join(repoRoot, 'scripts', 'harness', 'graph.mjs');
-const vectorCliPath = join(repoRoot, 'scripts', 'harness', 'vector-search.mjs');
-const memoryLinkCliPath = join(repoRoot, 'scripts', 'harness', 'memory-link-index.mjs');
-const reportCliPath = join(repoRoot, 'scripts', 'harness', 'harness-report.mjs');
-const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
-const briefsDir = join(repoRoot, '.github', 'harness', 'memory', 'briefs');
-const understandingDir = join(repoRoot, '.github', 'harness', 'memory', 'understanding');
-const reviewsDir = join(repoRoot, '.github', 'harness', 'memory', 'reviews');
-const radarDir = join(repoRoot, '.github', 'harness', 'memory', 'radar');
-const spotcheckDir = join(repoRoot, '.github', 'harness', 'memory', 'spotcheck');
-const memoryRootDir = join(repoRoot, '.github', 'harness', 'memory');
+const graphCliPath = join(
+  harnessRuntimeRoot,
+  "scripts",
+  "harness",
+  "graph.mjs",
+);
+const vectorCliPath = join(
+  harnessRuntimeRoot,
+  "scripts",
+  "harness",
+  "vector-search.mjs",
+);
+const memoryLinkCliPath = join(
+  harnessRuntimeRoot,
+  "scripts",
+  "harness",
+  "memory-link-index.mjs",
+);
+const reportCliPath = join(
+  harnessRuntimeRoot,
+  "scripts",
+  "harness",
+  "harness-report.mjs",
+);
+const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
+const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
+const understandingDir = join(
+  repoRoot,
+  ".github",
+  "harness",
+  "memory",
+  "understanding",
+);
+const reviewsDir = join(repoRoot, ".github", "harness", "memory", "reviews");
+const radarDir = join(repoRoot, ".github", "harness", "memory", "radar");
+const spotcheckDir = join(
+  repoRoot,
+  ".github",
+  "harness",
+  "memory",
+  "spotcheck",
+);
+const memoryRootDir = join(repoRoot, ".github", "harness", "memory");
 const memoryRootResolved = resolve(memoryRootDir);
-const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
-const toolByName = new Map(mcpToolSpecs.map(spec => [spec.name, spec]));
+const loopsDir = join(repoRoot, ".github", "harness", "loops");
+const toolByName = new Map(mcpToolSpecs.map((spec) => [spec.name, spec]));
 
 function toWorkspacePath(pathValue) {
-  return relative(repoRoot, pathValue).replaceAll('\\', '/');
+  return relative(repoRoot, pathValue).replaceAll("\\", "/");
 }
 
 function parseArgs(argv) {
   const flags = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (!arg.startsWith('--')) {
+    if (!arg.startsWith("--")) {
       flags._.push(arg);
       continue;
     }
 
-    if (arg === '--help') {
+    if (arg === "--help") {
       flags.help = true;
       continue;
     }
 
     const key = arg.slice(2);
     const next = argv[i + 1];
-    if (!next || next.startsWith('--')) {
+    if (!next || next.startsWith("--")) {
       flags[key] = true;
       continue;
     }
@@ -62,52 +94,55 @@ function parseArgs(argv) {
 }
 
 function normalizeScope(scope) {
-  const value = String(scope || 'all').toLowerCase();
+  const value = String(scope || "all").toLowerCase();
   if (
-    value === 'lessons' ||
-    value === 'briefs' ||
-    value === 'understanding' ||
-    value === 'reviews' ||
-    value === 'radar' ||
-    value === 'spotcheck' ||
-    value === 'memory' ||
-    value === 'all'
+    value === "lessons" ||
+    value === "briefs" ||
+    value === "understanding" ||
+    value === "reviews" ||
+    value === "radar" ||
+    value === "spotcheck" ||
+    value === "memory" ||
+    value === "all"
   ) {
     return value;
   }
   throw new Error(
-    `Invalid scope "${scope}". Expected lessons, briefs, understanding, reviews, radar, spotcheck, memory, or all.`
+    `Invalid scope "${scope}". Expected lessons, briefs, understanding, reviews, radar, spotcheck, memory, or all.`,
   );
 }
 
 function getScopeDirs(scope) {
-  if (scope === 'memory') {
+  if (scope === "memory") {
     return [
-      { scope: 'lessons', dir: lessonsDir },
-      { scope: 'briefs', dir: briefsDir },
+      { scope: "lessons", dir: lessonsDir },
+      { scope: "briefs", dir: briefsDir },
     ];
   }
-  if (scope === 'lessons') return [{ scope: 'lessons', dir: lessonsDir }];
-  if (scope === 'briefs') return [{ scope: 'briefs', dir: briefsDir }];
-  if (scope === 'understanding') return [{ scope: 'understanding', dir: understandingDir }];
-  if (scope === 'reviews') return [{ scope: 'reviews', dir: reviewsDir }];
-  if (scope === 'radar') return [{ scope: 'radar', dir: radarDir }];
-  if (scope === 'spotcheck') return [{ scope: 'spotcheck', dir: spotcheckDir }];
+  if (scope === "lessons") return [{ scope: "lessons", dir: lessonsDir }];
+  if (scope === "briefs") return [{ scope: "briefs", dir: briefsDir }];
+  if (scope === "understanding")
+    return [{ scope: "understanding", dir: understandingDir }];
+  if (scope === "reviews") return [{ scope: "reviews", dir: reviewsDir }];
+  if (scope === "radar") return [{ scope: "radar", dir: radarDir }];
+  if (scope === "spotcheck") return [{ scope: "spotcheck", dir: spotcheckDir }];
   return [
-    { scope: 'lessons', dir: lessonsDir },
-    { scope: 'briefs', dir: briefsDir },
-    { scope: 'understanding', dir: understandingDir },
-    { scope: 'reviews', dir: reviewsDir },
-    { scope: 'radar', dir: radarDir },
-    { scope: 'spotcheck', dir: spotcheckDir },
+    { scope: "lessons", dir: lessonsDir },
+    { scope: "briefs", dir: briefsDir },
+    { scope: "understanding", dir: understandingDir },
+    { scope: "reviews", dir: reviewsDir },
+    { scope: "radar", dir: radarDir },
+    { scope: "spotcheck", dir: spotcheckDir },
   ];
 }
 
 function assertWithinMemoryRoot(pathValue) {
   const absolute = resolve(pathValue); // NOSONAR - immediately constrained to memory root
   const rel = relative(memoryRootResolved, absolute);
-  if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(`Refusing to access path outside memory root: ${pathValue}`);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(
+      `Refusing to access path outside memory root: ${pathValue}`,
+    );
   }
   return absolute;
 }
@@ -117,19 +152,24 @@ function listMarkdownFiles(dir) {
   if (!existsSync(safeDir)) return [];
   return readdirSync(safeDir)
     .filter(
-      file => file.endsWith('.md') && file !== '_template.md' && file.toLowerCase() !== 'readme.md'
+      (file) =>
+        file.endsWith(".md") &&
+        file !== "_template.md" &&
+        file.toLowerCase() !== "readme.md",
     )
-    .filter(file => statSync(assertWithinMemoryRoot(join(safeDir, file))).isFile())
+    .filter((file) =>
+      statSync(assertWithinMemoryRoot(join(safeDir, file))).isFile(),
+    )
     .sort((a, b) => a.localeCompare(b));
 }
 
 function firstMeaningfulLine(content) {
-  const lines = content.split('\n');
+  const lines = content.split("\n");
   for (const line of lines) {
-    const trimmed = line.replace(/^#+\s*/, '').trim();
+    const trimmed = line.replace(/^#+\s*/, "").trim();
     if (trimmed.length > 0) return trimmed;
   }
-  return '(empty)';
+  return "(empty)";
 }
 
 function readMemoryEntries(scope) {
@@ -139,7 +179,7 @@ function readMemoryEntries(scope) {
     const files = listMarkdownFiles(safeDir);
     for (const file of files) {
       const absolutePath = assertWithinMemoryRoot(join(safeDir, file));
-      const content = readFileSync(absolutePath, 'utf8'); // NOSONAR - root-constrained memory file
+      const content = readFileSync(absolutePath, "utf8"); // NOSONAR - root-constrained memory file
       entries.push({
         scope: item.scope,
         name: file,
@@ -157,12 +197,12 @@ function readMemoryEntries(scope) {
 function runCli(cliPath, args) {
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
-  const stdout = (result.stdout || '').trim();
-  const stderr = (result.stderr || '').trim();
+  const stdout = (result.stdout || "").trim();
+  const stderr = (result.stderr || "").trim();
 
   let parsed = null;
   if (stdout) {
@@ -179,7 +219,7 @@ function runCli(cliPath, args) {
     data: parsed,
     stdout,
     stderr,
-    command: ['node', toWorkspacePath(cliPath), ...args].join(' '),
+    command: ["node", toWorkspacePath(cliPath), ...args].join(" "),
   };
 }
 
@@ -195,18 +235,21 @@ function readLoopCatalog() {
   if (!existsSync(loopsDir)) return [];
   const loops = [];
   for (const file of readdirSync(loopsDir)) {
-    if (!file.endsWith('.json') || file.startsWith('_')) continue;
+    if (!file.endsWith(".json") || file.startsWith("_")) continue;
     try {
-      const loop = JSON.parse(readFileSync(join(loopsDir, file), 'utf8'));
-      if (!loop || typeof loop.name !== 'string') continue;
+      const loop = JSON.parse(readFileSync(join(loopsDir, file), "utf8"));
+      if (!loop || typeof loop.name !== "string") continue;
       loops.push({
         name: loop.name,
-        kind: loop.kind ?? 'convergence',
-        description: loop.description ?? '',
+        kind: loop.kind ?? "convergence",
+        description: loop.description ?? "",
         maxIterations: loop.maxIterations ?? null,
         metric:
-          loop.metric && typeof loop.metric === 'object'
-            ? { name: loop.metric.name ?? loop.name, direction: loop.metric.direction ?? null }
+          loop.metric && typeof loop.metric === "object"
+            ? {
+                name: loop.metric.name ?? loop.name,
+                direction: loop.metric.direction ?? null,
+              }
             : null,
         file: toWorkspacePath(join(loopsDir, file)),
       });
@@ -225,27 +268,27 @@ function printJson(data, code = 0) {
 function showHelp() {
   printJson({
     usage: {
-      command: 'node scripts/harness/mcp-tools.mjs <tool> [--flags]',
+      command: "node scripts/harness/mcp-tools.mjs <tool> [--flags]",
       tools: [...toolByName.keys()],
     },
     examples: [
-      'node scripts/harness/mcp-tools.mjs list-tools',
-      'node scripts/harness/mcp-tools.mjs graph-status',
-      'node scripts/harness/mcp-tools.mjs graph-provider-status',
-      'node scripts/harness/mcp-tools.mjs graph-genui-status',
-      'node scripts/harness/mcp-tools.mjs graph-events',
+      "node scripts/harness/mcp-tools.mjs list-tools",
+      "node scripts/harness/mcp-tools.mjs graph-status",
+      "node scripts/harness/mcp-tools.mjs graph-provider-status",
+      "node scripts/harness/mcp-tools.mjs graph-genui-status",
+      "node scripts/harness/mcp-tools.mjs graph-events",
       'node scripts/harness/mcp-tools.mjs graph-neighbors --node-id "file:backend/src/app.ts" --depth 2',
       'node scripts/harness/mcp-tools.mjs memory-search --query "tenant" --scope all --limit 5',
       'node scripts/harness/mcp-tools.mjs vector-search --query "tenant isolation" --scope all --top 8',
       'node scripts/harness/mcp-tools.mjs harness-pick-profile --task "design multi-agent handoff"',
-      'node scripts/harness/mcp-tools.mjs harness-tool-discover --intent drop-in-memory --limit 5',
+      "node scripts/harness/mcp-tools.mjs harness-tool-discover --intent drop-in-memory --limit 5",
     ],
   });
 }
 
 function requireValue(flags, key, message) {
   const value = flags[key];
-  if (typeof value !== 'string' || value.length === 0) {
+  if (typeof value !== "string" || value.length === 0) {
     throw new Error(message);
   }
   return value;
@@ -273,13 +316,13 @@ function cliArgsToFlags(cliArgs) {
   const flags = { _: [] };
   for (let i = 0; i < cliArgs.length; i += 1) {
     const token = cliArgs[i];
-    if (!token.startsWith('--')) {
+    if (!token.startsWith("--")) {
       flags._.push(token);
       continue;
     }
     const key = token.slice(2);
     const next = cliArgs[i + 1];
-    if (next === undefined || next.startsWith('--')) {
+    if (next === undefined || next.startsWith("--")) {
       flags[key] = true;
       continue;
     }
@@ -317,7 +360,7 @@ function executeMemoryList(flags) {
   const scope = normalizeScope(flags.scope);
   const entries = readMemoryEntries(scope)
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .map(entry => ({
+    .map((entry) => ({
       scope: entry.scope,
       name: entry.name,
       path: entry.workspacePath,
@@ -328,14 +371,20 @@ function executeMemoryList(flags) {
 }
 
 function executeMemoryRead(flags) {
-  const scope = normalizeScope(flags.scope || 'all');
-  const name = requireValue(flags, 'name', 'memory-read requires --name');
-  const normalizedName = name.endsWith('.md') ? name : `${name}.md`;
+  const scope = normalizeScope(flags.scope || "all");
+  const name = requireValue(flags, "name", "memory-read requires --name");
+  const normalizedName = name.endsWith(".md") ? name : `${name}.md`;
 
   const entries = readMemoryEntries(scope);
-  const match = entries.find(entry => entry.name.toLowerCase() === normalizedName.toLowerCase());
+  const match = entries.find(
+    (entry) => entry.name.toLowerCase() === normalizedName.toLowerCase(),
+  );
   if (!match) {
-    return { ok: false, error: `Memory file not found: ${normalizedName}`, scope };
+    return {
+      ok: false,
+      error: `Memory file not found: ${normalizedName}`,
+      scope,
+    };
   }
 
   return {
@@ -350,26 +399,31 @@ function executeMemoryRead(flags) {
 }
 
 function executeMemorySearch(flags) {
-  const query = requireValue(flags, 'query', 'memory-search requires --query').toLowerCase();
-  const scope = normalizeScope(flags.scope || 'all');
+  const query = requireValue(
+    flags,
+    "query",
+    "memory-search requires --query",
+  ).toLowerCase();
+  const scope = normalizeScope(flags.scope || "all");
   const limit = toPositiveInt(flags.limit, 20);
 
   const entries = readMemoryEntries(scope)
-    .map(entry => {
-      const haystack = `${entry.name}\n${entry.summary}\n${entry.content}`.toLowerCase();
+    .map((entry) => {
+      const haystack =
+        `${entry.name}\n${entry.summary}\n${entry.content}`.toLowerCase();
       const index = haystack.indexOf(query);
       return {
         ...entry,
         matchIndex: index,
       };
     })
-    .filter(entry => entry.matchIndex >= 0)
+    .filter((entry) => entry.matchIndex >= 0)
     .sort((a, b) => {
       if (a.matchIndex !== b.matchIndex) return a.matchIndex - b.matchIndex;
       return b.mtimeMs - a.mtimeMs;
     })
     .slice(0, limit)
-    .map(entry => ({
+    .map((entry) => ({
       scope: entry.scope,
       name: entry.name,
       path: entry.workspacePath,
@@ -393,35 +447,52 @@ function executeGraphTool(toolName, flags) {
   }
 
   const handlers = {
-    'graph-status': () => ['status', '--json'],
-    'graph-provider-status': () => ['provider-status', '--json'],
-    'graph-genui-status': () => ['genui-status', '--json'],
-    'graph-events': () => ['events', '--json'],
-    'graph-neighbors': () => {
-      const nodeId = requireValue(flags, 'node-id', 'graph-neighbors requires --node-id');
-      const args = ['neighbors', nodeId, '--json'];
-      if (flags.depth) args.push('--depth', String(toPositiveInt(flags.depth, 1)));
-      if (typeof flags.type === 'string') args.push('--type', flags.type);
+    "graph-status": () => ["status", "--json"],
+    "graph-provider-status": () => ["provider-status", "--json"],
+    "graph-genui-status": () => ["genui-status", "--json"],
+    "graph-events": () => ["events", "--json"],
+    "graph-neighbors": () => {
+      const nodeId = requireValue(
+        flags,
+        "node-id",
+        "graph-neighbors requires --node-id",
+      );
+      const args = ["neighbors", nodeId, "--json"];
+      if (flags.depth)
+        args.push("--depth", String(toPositiveInt(flags.depth, 1)));
+      if (typeof flags.type === "string") args.push("--type", flags.type);
       return args;
     },
-    'graph-dependents': () => {
-      const filePath = requireValue(flags, 'file-path', 'graph-dependents requires --file-path');
-      return ['dependents', filePath, '--json'];
+    "graph-dependents": () => {
+      const filePath = requireValue(
+        flags,
+        "file-path",
+        "graph-dependents requires --file-path",
+      );
+      return ["dependents", filePath, "--json"];
     },
-    'graph-path': () => {
-      const srcId = requireValue(flags, 'src-id', 'graph-path requires --src-id');
-      const dstId = requireValue(flags, 'dst-id', 'graph-path requires --dst-id');
-      return ['path', srcId, dstId, '--json'];
+    "graph-path": () => {
+      const srcId = requireValue(
+        flags,
+        "src-id",
+        "graph-path requires --src-id",
+      );
+      const dstId = requireValue(
+        flags,
+        "dst-id",
+        "graph-path requires --dst-id",
+      );
+      return ["path", srcId, dstId, "--json"];
     },
-    'graph-layers': () => ['layers', '--json'],
-    'graph-layer': () => {
-      const name = requireValue(flags, 'name', 'graph-layer requires --name');
-      return ['layer', name, '--json'];
+    "graph-layers": () => ["layers", "--json"],
+    "graph-layer": () => {
+      const name = requireValue(flags, "name", "graph-layer requires --name");
+      return ["layer", name, "--json"];
     },
-    'graph-hubs': () => {
-      const args = ['hubs', '--json'];
-      if (flags.top) args.push('--top', String(toPositiveInt(flags.top, 10)));
-      if (typeof flags.type === 'string') args.push('--type', flags.type);
+    "graph-hubs": () => {
+      const args = ["hubs", "--json"];
+      if (flags.top) args.push("--top", String(toPositiveInt(flags.top, 10)));
+      if (typeof flags.type === "string") args.push("--type", flags.type);
       return args;
     },
   };
@@ -434,34 +505,34 @@ function executeGraphTool(toolName, flags) {
 }
 
 function buildVectorIndexArgs(flags) {
-  const args = ['index'];
-  pushRequiredValueArg(args, flags, 'scope', '--scope requires a value');
-  pushRequiredValueArg(args, flags, 'provider', '--provider requires a value');
-  pushRequiredValueArg(args, flags, 'model', '--model requires a value');
-  pushRequiredValueArg(args, flags, 'host', '--host requires a value');
-  pushOptionalPositiveIntArg(args, flags, 'max-text-chars');
-  pushOptionalPositiveIntArg(args, flags, 'graph-limit');
-  pushOptionalPositiveIntArg(args, flags, 'timeout-ms');
-  pushOptionalBooleanFlag(args, flags, 'force');
-  pushOptionalBooleanFlag(args, flags, 'verbose');
+  const args = ["index"];
+  pushRequiredValueArg(args, flags, "scope", "--scope requires a value");
+  pushRequiredValueArg(args, flags, "provider", "--provider requires a value");
+  pushRequiredValueArg(args, flags, "model", "--model requires a value");
+  pushRequiredValueArg(args, flags, "host", "--host requires a value");
+  pushOptionalPositiveIntArg(args, flags, "max-text-chars");
+  pushOptionalPositiveIntArg(args, flags, "graph-limit");
+  pushOptionalPositiveIntArg(args, flags, "timeout-ms");
+  pushOptionalBooleanFlag(args, flags, "force");
+  pushOptionalBooleanFlag(args, flags, "verbose");
   return args;
 }
 
 function buildVectorSearchArgs(flags) {
-  const query = requireValue(flags, 'query', 'vector-search requires --query');
-  const args = ['search', '--query', query];
-  pushRequiredValueArg(args, flags, 'scope', '--scope requires a value');
-  pushRequiredValueArg(args, flags, 'provider', '--provider requires a value');
-  pushOptionalPositiveIntArg(args, flags, 'top');
-  pushOptionalFiniteNumberArg(args, flags, 'min-score');
-  pushRequiredValueArg(args, flags, 'model', '--model requires a value');
-  pushRequiredValueArg(args, flags, 'host', '--host requires a value');
-  pushOptionalPositiveIntArg(args, flags, 'max-text-chars');
-  pushOptionalPositiveIntArg(args, flags, 'graph-limit');
-  pushOptionalPositiveIntArg(args, flags, 'timeout-ms');
-  pushOptionalBooleanFlag(args, flags, 'force');
-  pushOptionalBooleanFlag(args, flags, 'no-auto-index');
-  pushOptionalBooleanFlag(args, flags, 'verbose');
+  const query = requireValue(flags, "query", "vector-search requires --query");
+  const args = ["search", "--query", query];
+  pushRequiredValueArg(args, flags, "scope", "--scope requires a value");
+  pushRequiredValueArg(args, flags, "provider", "--provider requires a value");
+  pushOptionalPositiveIntArg(args, flags, "top");
+  pushOptionalFiniteNumberArg(args, flags, "min-score");
+  pushRequiredValueArg(args, flags, "model", "--model requires a value");
+  pushRequiredValueArg(args, flags, "host", "--host requires a value");
+  pushOptionalPositiveIntArg(args, flags, "max-text-chars");
+  pushOptionalPositiveIntArg(args, flags, "graph-limit");
+  pushOptionalPositiveIntArg(args, flags, "timeout-ms");
+  pushOptionalBooleanFlag(args, flags, "force");
+  pushOptionalBooleanFlag(args, flags, "no-auto-index");
+  pushOptionalBooleanFlag(args, flags, "verbose");
   return args;
 }
 
@@ -471,9 +542,9 @@ function executeVectorTool(toolName, flags) {
   }
 
   const handlers = {
-    'vector-status': () => ['status'],
-    'vector-index': () => buildVectorIndexArgs(flags),
-    'vector-search': () => buildVectorSearchArgs(flags),
+    "vector-status": () => ["status"],
+    "vector-index": () => buildVectorIndexArgs(flags),
+    "vector-search": () => buildVectorSearchArgs(flags),
   };
 
   const handler = handlers[toolName];
@@ -492,7 +563,7 @@ function executeHarnessReport() {
   if (!existsSync(reportCliPath)) {
     return { ok: false, error: `report CLI not found at ${reportCliPath}` };
   }
-  return runCli(reportCliPath, ['--json']);
+  return runCli(reportCliPath, ["--json"]);
 }
 
 function executeHarnessCatalog() {
@@ -502,10 +573,10 @@ function executeHarnessCatalog() {
 function executeHarnessPickProfile(flags) {
   const task = requireValue(
     flags,
-    'task',
-    'harness-pick-profile requires --task'
+    "task",
+    "harness-pick-profile requires --task",
   );
-  const intent = typeof flags.intent === 'string' ? flags.intent : null;
+  const intent = typeof flags.intent === "string" ? flags.intent : null;
   const route = planTask(task, loadRouterConfig(), {
     intent,
   });
@@ -523,25 +594,28 @@ function executeHarnessPickProfile(flags) {
 
 function executeHarnessToolDiscover(flags) {
   const limit = toPositiveInt(flags.limit, 10);
-  const intent = typeof flags.intent === 'string' ? flags.intent.trim() : '';
-  const query = typeof flags.query === 'string' ? flags.query.trim().toLowerCase() : '';
+  const intent = typeof flags.intent === "string" ? flags.intent.trim() : "";
+  const query =
+    typeof flags.query === "string" ? flags.query.trim().toLowerCase() : "";
   const requestedTags = new Set(
-    String(flags.tags ?? '')
-      .split(',')
-      .map(tag => tag.trim().toLowerCase())
-      .filter(Boolean)
+    String(flags.tags ?? "")
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean),
   );
   const catalog = buildCatalog();
   const intentDefinition =
-    catalog.routing.intents.find(item => item.intent === intent) ?? null;
+    catalog.routing.intents.find((item) => item.intent === intent) ?? null;
   const intentTags = new Set(
-    (intentDefinition?.tags ?? []).map(tag => String(tag).toLowerCase())
+    (intentDefinition?.tags ?? []).map((tag) => String(tag).toLowerCase()),
   );
 
   const ranked = catalog.capabilities.mcp.tools
-    .map(tool => {
+    .map((tool) => {
       let score = 0;
-      const tags = new Set((tool.tags ?? []).map(tag => String(tag).toLowerCase()));
+      const tags = new Set(
+        (tool.tags ?? []).map((tag) => String(tag).toLowerCase()),
+      );
       const haystack = `${tool.name} ${tool.description}`.toLowerCase();
 
       if (query && haystack.includes(query)) score += 3;
@@ -557,7 +631,7 @@ function executeHarnessToolDiscover(flags) {
       }
       return { ...tool, score };
     })
-    .filter(tool => tool.score > 0)
+    .filter((tool) => tool.score > 0)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
     .slice(0, limit);
 
@@ -573,15 +647,22 @@ function executeHarnessToolDiscover(flags) {
 
 function executeMemoryLinkTool(toolName, flags) {
   if (!existsSync(memoryLinkCliPath)) {
-    return { ok: false, error: `memory-link CLI not found at ${memoryLinkCliPath}` };
+    return {
+      ok: false,
+      error: `memory-link CLI not found at ${memoryLinkCliPath}`,
+    };
   }
 
   const handlers = {
-    'memory-link-status': () => ['status'],
-    'memory-link-search': () => {
-      const query = requireValue(flags, 'query', 'memory-link-search requires --query');
-      const args = ['search', '--query', query];
-      if (flags.top) args.push('--top', String(toPositiveInt(flags.top, 10)));
+    "memory-link-status": () => ["status"],
+    "memory-link-search": () => {
+      const query = requireValue(
+        flags,
+        "query",
+        "memory-link-search requires --query",
+      );
+      const args = ["search", "--query", query];
+      if (flags.top) args.push("--top", String(toPositiveInt(flags.top, 10)));
       return args;
     },
   };
@@ -594,17 +675,20 @@ function executeMemoryLinkTool(toolName, flags) {
 }
 
 function executeToolWithFlags(toolName, flags) {
-  if (toolName.startsWith('graph-')) return executeGraphTool(toolName, flags);
-  if (toolName === 'memory-list') return executeMemoryList(flags);
-  if (toolName === 'memory-read') return executeMemoryRead(flags);
-  if (toolName === 'memory-search') return executeMemorySearch(flags);
-  if (toolName.startsWith('memory-link-')) return executeMemoryLinkTool(toolName, flags);
-  if (toolName.startsWith('vector-')) return executeVectorTool(toolName, flags);
-  if (toolName === 'harness-loops') return executeHarnessLoops();
-  if (toolName === 'harness-report') return executeHarnessReport();
-  if (toolName === 'harness-catalog') return executeHarnessCatalog();
-  if (toolName === 'harness-pick-profile') return executeHarnessPickProfile(flags);
-  if (toolName === 'harness-tool-discover') return executeHarnessToolDiscover(flags);
+  if (toolName.startsWith("graph-")) return executeGraphTool(toolName, flags);
+  if (toolName === "memory-list") return executeMemoryList(flags);
+  if (toolName === "memory-read") return executeMemoryRead(flags);
+  if (toolName === "memory-search") return executeMemorySearch(flags);
+  if (toolName.startsWith("memory-link-"))
+    return executeMemoryLinkTool(toolName, flags);
+  if (toolName.startsWith("vector-")) return executeVectorTool(toolName, flags);
+  if (toolName === "harness-loops") return executeHarnessLoops();
+  if (toolName === "harness-report") return executeHarnessReport();
+  if (toolName === "harness-catalog") return executeHarnessCatalog();
+  if (toolName === "harness-pick-profile")
+    return executeHarnessPickProfile(flags);
+  if (toolName === "harness-tool-discover")
+    return executeHarnessToolDiscover(flags);
   throw new Error(`Unknown tool: ${toolName}`);
 }
 
@@ -627,7 +711,7 @@ function main() {
     return;
   }
 
-  if (tool === 'list-tools') {
+  if (tool === "list-tools") {
     printJson(buildMcpListPayload());
     return;
   }
@@ -640,7 +724,10 @@ function main() {
   printJson(response, response.ok ? 0 : 1);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
   try {
     main();
   } catch (error) {
@@ -649,7 +736,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       },
-      2
+      2,
     );
   }
 }

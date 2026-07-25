@@ -16,13 +16,40 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// repoRoot = two levels up from scripts/harness/ = the adopting project root.
-export const repoRoot = resolve(
+// repoRoot defaults to harness-kit root, but can be overridden at runtime.
+// Resolution order:
+// 1) HARNESS_REPO_ROOT (absolute or relative)
+// 2) process.cwd() when it contains harness.config.json
+// 3) script default (two levels up from scripts/harness)
+const defaultRepoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
 );
-export const CONFIG_PATH = join(repoRoot, "harness.config.json");
+export const harnessRuntimeRoot = defaultRepoRoot;
+
+function resolveRuntimeRepoRoot() {
+  const envRoot = process.env.HARNESS_REPO_ROOT;
+  if (typeof envRoot === "string" && envRoot.trim().length > 0) {
+    return resolve(envRoot.trim());
+  }
+
+  const cwdRoot = resolve(process.cwd());
+  if (existsSync(join(cwdRoot, "harness.config.json"))) {
+    return cwdRoot;
+  }
+
+  return defaultRepoRoot;
+}
+
+export const repoRoot = resolveRuntimeRepoRoot();
+
+const configuredConfigPath = process.env.HARNESS_CONFIG_PATH;
+export const CONFIG_PATH =
+  typeof configuredConfigPath === "string" &&
+  configuredConfigPath.trim().length > 0
+    ? resolve(configuredConfigPath.trim())
+    : join(repoRoot, "harness.config.json");
 
 let cached;
 

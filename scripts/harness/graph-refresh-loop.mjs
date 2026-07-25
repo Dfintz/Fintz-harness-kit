@@ -15,13 +15,16 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { resolveGraphProviderState, resolveRefreshBackends } from "./graph-provider.mjs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { harnessRuntimeRoot, repoRoot } from "./config.mjs";
+import {
+  resolveGraphProviderState,
+  resolveRefreshBackends,
+} from "./graph-provider.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const refreshScript = resolve(
-  repoRoot,
+  harnessRuntimeRoot,
   "scripts",
   "harness",
   "refresh-graph.mjs",
@@ -206,7 +209,9 @@ function probePluginDependencyResolution(pluginRoot) {
 
 function runPreflight(options) {
   if (!options.requiresPlugin) {
-    process.stdout.write("[graph-refresh-loop] preflight ok (no plugin backend required)\n");
+    process.stdout.write(
+      "[graph-refresh-loop] preflight ok (no plugin backend required)\n",
+    );
     return { sourceDepsResolvable: true };
   }
 
