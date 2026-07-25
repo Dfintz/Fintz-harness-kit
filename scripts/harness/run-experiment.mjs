@@ -108,6 +108,16 @@ function loadLoop(name) {
   if (loop.metric.direction !== 'minimize' && loop.metric.direction !== 'maximize') {
     fail(`Loop "${name}" metric.direction must be "minimize" or "maximize".`);
   }
+  if (loop.metric.repeatCount !== undefined) {
+    if (!Number.isInteger(loop.metric.repeatCount) || loop.metric.repeatCount < 1) {
+      fail(`Loop "${name}" metric.repeatCount must be a positive integer.`);
+    }
+  }
+  if (loop.metric.minEffectSize !== undefined) {
+    if (!Number.isFinite(loop.metric.minEffectSize) || loop.metric.minEffectSize < 0) {
+      fail(`Loop "${name}" metric.minEffectSize must be a non-negative number.`);
+    }
+  }
   if (!Array.isArray(loop.target) || loop.target.length === 0) {
     fail(`Loop "${name}" needs a non-empty target[] (the file(s) the agent optimizes).`);
   }
@@ -221,8 +231,19 @@ function measureMetric(loop) {
   return { value: finalValue, output: truncateOutput(lastOutput) };
 }
 
-function isImproved(direction, candidate, best) {
-  return direction === 'minimize' ? candidate < best : candidate > best;
+/**
+ * Keep an edit only if it beats the incumbent by more than minEffectSize.
+ *
+ * repeatCount narrows the noise band around a measurement; it does not say where that band
+ * ends. Without a floor, a bare `>` still ratchets on a difference smaller than the metric's
+ * own measurement error, and every later honest attempt is compared against that phantom
+ * high-water mark. minEffectSize is the "how much is real" half of the pair.
+ *
+ * Defaults to 0, which is exactly the previous strict-comparison behaviour.
+ */
+function isImproved(direction, candidate, best, minEffectSize = 0) {
+  const delta = direction === 'minimize' ? best - candidate : candidate - best;
+  return delta > minEffectSize;
 }
 
 function improvementDelta(direction, baseline, best) {
@@ -280,17 +301,20 @@ function invokeAgent(agentCmd, prompt, targetFiles) {
 // (e.g. overnight) run leaves a reviewable trail without sweeping in unrelated work.
 function commitTargets(targetFiles, loop, iteration, metricName, value) {
   try {
-    execSync(`git add -- ${targetFiles.map(f => `"${f}"`).join(' ')}`, {
+    execFileSync('git', ['add', '--', ...targetFiles], {
       cwd: repoRoot,
       stdio: 'ignore',
     });
-    const staged = execSync('git diff --cached --name-only', {
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], {
       cwd: repoRoot,
       encoding: 'utf8',
     }).trim();
     if (!staged) return;
     const message = `chore(harness): ${loop.name} iter ${iteration} — ${metricName}=${value}`;
-    execSync(`git commit -m "${message}" --no-verify`, { cwd: repoRoot, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', message, '--no-verify'], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
     console.log(`[run-experiment]   committed target(s): ${message}`);
   } catch (err) {
     console.warn(`[run-experiment]   auto-commit failed: ${err.message}`);
@@ -525,7 +549,9 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   );
 
   const measure = measureMetric(loop);
-  const improved = measure.value !== null && isImproved(direction, measure.value, best);
+  const improved =
+    measure.value !== null &&
+    isImproved(direction, measure.value, best, loop.metric.minEffectSize);
 
   if (improved) {
     best = measure.value;
@@ -572,7 +598,7 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
 
 record.metric.best = best;
 record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
-const netImproved = isImproved(direction, best, baseMetricValue);
+const netImproved = isImproved(direction, best, baseMetricValue, loop.metric.minEffectSize);
 if (netImproved) {
   finish(
     'converged',
