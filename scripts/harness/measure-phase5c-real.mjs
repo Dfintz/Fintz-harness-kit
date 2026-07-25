@@ -82,6 +82,15 @@ const CLOUD_TIER_MODEL_MAP = {
   'universal-fallback': 'claude-haiku-4-5',    // Safety net
 };
 
+// GitHub Copilot model tier mapping (optimized for reasoning + code)
+const COPILOT_TIER_MODEL_MAP = {
+  'ultra-reasoning':    'claude-opus-5',           // Strongest reasoning (complex multi-step)
+  'high-reasoning':     'claude-sonnet-5',         // Excellent reasoning + code understanding
+  'balanced-coding':    'gpt-5.6-luna',            // Best balance for code + reasoning
+  'fast-execution':     'gpt-5.4-mini',            // Fast and capable
+  'universal-fallback': 'gpt-5.4',                 // Fallback safety net
+};
+
 // Local Ollama tier mapping
 const LOCAL_TIER_MODEL_MAP = {
   'ultra-reasoning':    'deepseek-r1:14b',
@@ -109,6 +118,12 @@ const CLOUD_PROVIDERS = {
     label: 'Google Gemini',
     apiKey: process.env.GOOGLE_API_KEY || '',
     models: ['gemini-3.5-flash', 'gemini-3.6-flash'],
+  },
+  'github-copilot': {
+    label: 'GitHub Copilot',
+    apiKey: process.env.GITHUB_TOKEN || process.env.COPILOT_API_KEY || '',
+    endpoint: 'https://models.inference.ai.github.com/v1',
+    models: ['gpt-5.6-luna', 'gpt-5.4', 'claude-opus-5', 'claude-sonnet-5'],
   },
 };
 
@@ -239,6 +254,29 @@ async function callCloudLLM(model, prompt) {
     return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
 
+  // GitHub Copilot API (OpenAI-compatible)
+  if (provider === CLOUD_PROVIDERS['github-copilot']) {
+    const endpoint = provider.endpoint.replace(/\/$/, '');
+    const response = await fetch(`${endpoint}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${provider.apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 512,
+        temperature: 0,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`GitHub Copilot API error: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || '';
+  }
+
   throw new Error(`Unsupported provider for model: ${model}`);
 }
 
@@ -335,7 +373,7 @@ async function measureTask(task, model, provider, dryRun) {
     }
     try {
       let response;
-      if (provider === 'cloud') {
+      if (provider === 'cloud' || provider === 'copilot') {
         response = await callCloudLLM(model, task.prompt);
       } else {
         response = await callLocalLLM(model, task.prompt);
@@ -380,7 +418,13 @@ async function main() {
     }
   }
 
-  const tierMap = provider === 'cloud' ? CLOUD_TIER_MODEL_MAP : LOCAL_TIER_MODEL_MAP;
+  // Select tier mapping based on provider
+  let tierMap = LOCAL_TIER_MODEL_MAP;
+  if (provider === 'cloud') {
+    tierMap = CLOUD_TIER_MODEL_MAP;
+  } else if (provider === 'copilot') {
+    tierMap = COPILOT_TIER_MODEL_MAP;
+  }
 
   if (listModels) {
     console.log(`\nTier → Model routing (${provider} provider):\n`);
@@ -403,7 +447,7 @@ async function main() {
   if (!dryRun) {
     const fallbackModel = tierMap['universal-fallback'];
     try {
-      if (provider === 'cloud') {
+      if (provider === 'cloud' || provider === 'copilot') {
         await callCloudLLM(fallbackModel, 'OK');
       } else {
         await callLocalLLM(fallbackModel, 'OK');
@@ -413,6 +457,8 @@ async function main() {
       console.error(`[phase5c-real-measure] Health check FAILED: ${err.message}`);
       if (provider === 'local') {
         console.error('  Is Ollama running? Try: ollama serve');
+      } else if (provider === 'copilot') {
+        console.error('  Set GITHUB_TOKEN or COPILOT_API_KEY environment variable.');
       } else {
         console.error('  Check API keys and credentials for cloud provider.');
       }
