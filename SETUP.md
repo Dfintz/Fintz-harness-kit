@@ -1,22 +1,84 @@
 # Adopting the Harness in Your Project
 
-The harness is configuration-driven: you copy two directories and edit one JSON file. No script edits
-are required for the core loops.
+## Two layers — keep them separate
 
-## Install paths
+The harness has two distinct layers. **Never mix them into the same repo:**
+
+| Layer | Lives in | Contains |
+|-------|----------|----------|
+| **Engine** | This repo (harness-kit) — or installed as a package | `scripts/harness/`, loop definitions, MCP server, Phase 5 model config |
+| **Project overlay** | Your project repo | Config, memory, entrypoints, domain knowledge |
+
+The engine is a tool. Your project repo holds only what is specific to your project.
+
+---
+
+## Option A — Project overlay only (recommended)
+
+Use this when the harness engine runs from harness-kit (local install, npx, or Claude Code plugin)
+and your project repo only needs the thin overlay.
+
+**Drop in the template:**
+
+```bash
+# From harness-kit root:
+cp -r templates/project-adoption/. /path/to/your-project/
+```
+
+Then edit the placeholders in:
+
+| File | What to fill in |
+|------|----------------|
+| `AGENTS.md` | Project name, tech stack, key commands, conventions |
+| `.github/copilot-instructions.md` | Project name, project-specific standards |
+| `harness.config.json` | Real commands (`lint`, `build`, `test`), project name |
+| `docs/agents/domain.md` | Domain concepts, invariants, external systems, ownership map |
+| `docs/agents/issue-tracker.md` | Issue tracking mode (github / local-markdown) |
+| `docs/agents/triage-labels.md` | Project-specific labels and aliases |
+
+The engine commands (`npm run harness:*`) run from the harness-kit install. Point agents at
+harness-kit's `HARNESS.md` as the operating contract.
+
+**Template layout:**
+
+```
+templates/project-adoption/
+├── AGENTS.md                              ← project entry point
+├── harness.config.json                    ← project config (commands, models, graph)
+├── .github/
+│   ├── copilot-instructions.md            ← Copilot App entrypoint
+│   └── harness/
+│       └── memory/
+│           ├── README.md                  ← memory protocol
+│           ├── lessons/
+│           │   └── _template.md           ← lesson format
+│           ├── briefs/
+│           │   └── README.md              ← briefs protocol
+│           └── quarantine/
+│               └── README.md              ← quarantine protocol
+└── docs/
+    └── agents/
+        ├── domain.md                      ← project domain knowledge
+        ├── issue-tracker.md               ← issue tracking config
+        └── triage-labels.md               ← label vocabulary
+```
+
+---
+
+## Option B — Full engine copy (self-contained)
+
+Use this when you want loops, experiments, dashboard, and MCP server to run directly from your
+project repo without a separate harness-kit install.
+
+### Install paths
 
 | Path                          | Command                                                                          | What you get                                                                                |
 | ----------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| **Agent Skill** (70+ agents)  | `npx skills add <owner>/harness-kit -g`                                          | The harness **playbook** (`skills/harness/SKILL.md`) — agent guidance on stages/gates/loops |
-| **Claude Code plugin**        | `/plugin marketplace add <owner>/harness-kit` then `/plugin install harness-kit` | The plugin bundle (playbook + engine files)                                                 |
+| **Agent Skill** (70+ agents)  | `npx skills add Dfintz/harness-kit -g`                                           | The harness **playbook** (`skills/harness/SKILL.md`) — agent guidance on stages/gates/loops |
+| **Claude Code plugin**        | `/plugin marketplace add Dfintz/harness-kit` then `/plugin install harness-kit`  | The plugin bundle (playbook + engine files)                                                 |
 | **Copy the scaffold** (below) | manual                                                                           | The full runnable **engine** dropped into your repo                                         |
 
-The skill teaches an agent _how_ to drive the harness; the **engine** (the `scripts/harness/*.mjs`
-runners, dashboard, MCP server, loop definitions) is what actually runs loops. The copy-the-scaffold
-steps below give you that engine in your own repo — do this when you want the loops, experiments,
-dashboard, and MCP server runnable from your project.
-
-## 1. Copy the kit into your repo
+### 1. Copy the kit into your repo
 
 Copy these into your project root (merge, don't overwrite your own files):
 
@@ -37,7 +99,7 @@ your project's `package.json`.
 If you use the GitHub Copilot App, keep `.github/copilot-instructions.md` committed. It is the repo
 surface Copilot reads to discover the harness entrypoint and standards.
 
-## 2. Edit `harness.config.json`
+### 2. Edit `harness.config.json`
 
 This is the only required step. Point the tokens at your project's real commands:
 
@@ -87,7 +149,7 @@ Loop definitions in `.github/harness/loops/*.json` reference these via `{{comman
 [`scripts/harness/config.mjs`](scripts/harness/config.mjs); unresolved tokens are left intact with a
 warning, so partial configs degrade gracefully.
 
-## 3. Verify
+### 3. Verify
 
 ```bash
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"   # valid JSON
@@ -96,7 +158,7 @@ node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only     
 npm run harness:report                                                           # builds the dashboard
 ```
 
-## 4. (Optional) Wire an agent
+### 4. (Optional) Wire an agent
 
 Loops invoke an agent command via stdin. Any CLI works:
 
@@ -125,7 +187,7 @@ node scripts/harness/run-loop.mjs build-fix \
 > `scripts/harness/ollama-apply-agent.mjs` (it rewrites the single declared target), not the
 > describe-only `ollama-agent.mjs`.
 
-## 5. (Optional) Sidecars
+### 5. (Optional) Sidecars
 
 ```bash
 # Always-on metrics dashboard:
@@ -141,7 +203,7 @@ npm run harness:graph:genui
 npm run harness:graph:parity -- --local-only
 ```
 
-## 6. (Optional) MCP integration
+### 6. (Optional) MCP integration
 
 The kit ships `.vscode/mcp.json`, which registers the harness MCP server for VS Code automatically.
 For Claude Code or Cursor, add the same stdio entry to their MCP config:
