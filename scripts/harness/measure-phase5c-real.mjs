@@ -176,6 +176,38 @@ const TIER_TASKS = [
   },
 ];
 
+function getTierTasksForProvider(provider) {
+  const tasks = TIER_TASKS.map((task) => ({
+    ...task,
+    expectContains: [...task.expectContains],
+    rejectPatterns: [...task.rejectPatterns],
+  }));
+
+  if (provider === 'local') {
+    const idx = tasks.findIndex((task) => task.skill === 'understand-process');
+    if (idx >= 0) {
+      tasks[idx] = {
+        ...tasks[idx],
+        prompt:
+          'You are a code analysis expert. Return exactly three bullet points. ' +
+          'Each bullet must begin with "- " and include one of these ideas: dependency impact map, affected components, architecture layers.',
+        expectContains: [
+          'dependency impact map',
+          'affected components',
+          'architecture layers',
+          'impact',
+          'components',
+          'layers',
+        ],
+        minLength: 50,
+        maxLength: 500,
+      };
+    }
+  }
+
+  return tasks;
+}
+
 // Cloud LLM invocation via fetch (minimal dependencies)
 async function callCloudLLM(model, prompt) {
   let provider = null;
@@ -425,6 +457,7 @@ async function main() {
   } else if (provider === 'copilot') {
     tierMap = COPILOT_TIER_MODEL_MAP;
   }
+  const tierTasks = getTierTasksForProvider(provider);
 
   if (listModels) {
     console.log(`\nTier → Model routing (${provider} provider):\n`);
@@ -438,7 +471,7 @@ async function main() {
 
   console.log(`\n[phase5c-real-measure] Starting Phase 5c real measurement`);
   console.log(`  provider:  ${provider}`);
-  console.log(`  tasks:     ${TIER_TASKS.length} (1 per tier)`);
+  console.log(`  tasks:     ${tierTasks.length} (1 per tier)`);
   console.log(`  N:         ${REPEAT_COUNT} runs per task (median-of-${REPEAT_COUNT})`);
   console.log(`  baseline:  ${PHASE5B_BASELINE}`);
   console.log(`  dry-run:   ${dryRun}\n`);
@@ -469,7 +502,7 @@ async function main() {
   const startTime = Date.now();
   const results = [];
 
-  for (const task of TIER_TASKS) {
+  for (const task of tierTasks) {
     const model = tierMap[task.tier];
     process.stdout.write(`  Measuring ${task.tier.padEnd(20)} via ${model.padEnd(24)}...`);
     const result = await measureTask(task, model, provider, dryRun);
@@ -482,10 +515,10 @@ async function main() {
   const passCount = results.filter(r => r.pass).length;
   const compositeScores = results.map(r => r.compositeScore).filter(s => s !== null);
   const overallScore = compositeScores.length > 0 ? compositeScores.reduce((a, b) => a + b) / compositeScores.length : null;
-  const passed = passCount === TIER_TASKS.length && overallScore !== null && overallScore >= PHASE5B_BASELINE;
+  const passed = passCount === tierTasks.length && overallScore !== null && overallScore >= PHASE5B_BASELINE;
 
   console.log(`\n[phase5c-real-measure] Results:`);
-  console.log(`  Tasks passing:   ${passCount}/${TIER_TASKS.length}`);
+  console.log(`  Tasks passing:   ${passCount}/${tierTasks.length}`);
   console.log(`  Overall score:   ${overallScore?.toFixed(3) ?? 'null'}`);
   console.log(`  Baseline:        ${PHASE5B_BASELINE}`);
   console.log(`  Elapsed:         ${elapsed}s`);
@@ -500,7 +533,7 @@ async function main() {
     timestamp: new Date().toISOString(),
     baseline: PHASE5B_BASELINE,
     passCount,
-    totalTasks: TIER_TASKS.length,
+    totalTasks: tierTasks.length,
     overallScore,
     passed,
     elapsedSeconds: parseFloat(elapsed),

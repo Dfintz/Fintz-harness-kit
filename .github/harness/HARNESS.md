@@ -44,7 +44,7 @@ each tier today, but treat them as examples, not requirements: any model in the 
 class works.
 
 | Tier | Stages | Copilot default | Pinned examples | Rationale |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4-8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
 | **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
@@ -164,22 +164,20 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
 
 ### Stage Reference
 
-| #   | Stage          | Instruction file                                 | Claude Code skill                        | Mandatory output                                                         |
-| --- | -------------- | ------------------------------------------------ | ---------------------------------------- | ------------------------------------------------------------------------ |
-| 0   | Understand     | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status                                 |
-| 1   | Architect      | `.github/instructions/03-ARCHITECT.md`           | `/architect`                             | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
-| 1′  | Architect Challenge *(manual opt-in)* | `.github/agents/architect-challenge.agent.md` | — | VERDICT: APPROVED \| REVISE \| BLOCKED on the Brief |
-| 2   | Implement      | `.github/instructions/04-IMPLEMENT.md`           | `/implement`                             | Delivered change + proof summary + self-review summary                   |
-| 2′  | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement`                       | Minimal-diff change + proof summary + surgical boundary note             |
-| 3   | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md`      | `/review-breadth`                        | Findings ledger (severity, evidence, impact, confidence, fix)            |
-| 4   | Review Depth   | `.github/instructions/06-REVIEW-DEPTH.md`        | `/review-depth`                          | Gate ledger + structural findings + Brief divergences                    |
-| 5   | Feedback       | `.github/instructions/07-FEEDBACK.md`            | `/feedback`                              | Verdict record + Brief updates + response notes                          |
+| # | Stage | Instruction file | Claude Code skill | Mandatory output |
+| --- | --- | --- | --- | --- |
+| 0 | Understand | `.github/instructions/02-UNDERSTAND-WORKFLOW.md` | `understand-process` (`.github/skills/`) | Component/layer impact map, graph status |
+| 1 | Architect | `.github/instructions/03-ARCHITECT.md` | `/architect` | Architecture Brief (scope, artifacts, decisions, constraints, validation, assumptions) |
+| 1′ | Architect Challenge | `.github/agents/architect-challenge.agent.md` | — | VERDICT: APPROVED \| REVISE \| BLOCKED on the Brief |
+| 2 | Implement | `.github/instructions/04-IMPLEMENT.md` | `/implement` | Delivered change + proof summary + self-review summary |
+| 2′ | Implement (surgical) | `.github/instructions/04.5-SURGICAL-IMPLEMENT.md` | `/implement` | Minimal-diff change + proof summary + surgical boundary note |
+| 3 | Review Breadth | `.github/instructions/05-REVIEW-BREADTH.md` | `/review-breadth` | Findings ledger (severity, evidence, impact, confidence, fix) |
+| 4 | Review Depth | `.github/instructions/06-REVIEW-DEPTH.md` | `/review-depth` | Gate ledger + structural findings + Brief divergences |
+| 5 | Feedback | `.github/instructions/07-FEEDBACK.md` | `/feedback` | Verdict record + Brief updates + response notes |
 
-> **Architect Challenge:** Stage 1′ is a manual opt-in that runs a cross-model adversarial review
-> on the Architecture Brief before implementation. It is **not** auto-emitted by the prompt router.
-> Invoke it explicitly with `npm run harness:plan-review -- --lens plan` when the change is high-risk
-> or when a second opinion on the Brief is desired. The workflow-stage prompt templates include
-> inline guidance for cases when the route omits this stage.
+> **Architect Challenge:** Stage 1′ now sits on the default non-trivial feature route between
+> Architect and Implement. Use `npm run harness:plan-review -- --lens plan` when you want to run
+> the same challenge surface independently against an existing brief or re-run it after revisions.
 
 ### Stage Contract (applies to every stage)
 
@@ -217,22 +215,22 @@ description and the files being touched.
 
 ### Shipped Skills
 
-| Skill                               | Load when the task involves…                                                  |
-| ----------------------------------- | ----------------------------------------------------------------------------- |
-| `understand-process`                | Any non-trivial change; stage-0 impact analysis and graph freshness           |
-| `context-engineering`               | Task switching, stale context, compact handoffs, and session memory hygiene   |
-| `deterministic-validation`          | Exit criteria, proof selection, and objective completion checks               |
-| `doubt-driven-development`          | Security, correctness skepticism, and evidence-led bug diagnosis              |
-| `observability-and-instrumentation` | Telemetry, instrumentation, RED signals, and operational proof                |
-| `eval-first-tuning`                 | Retrieval, prompt, or agent quality tuning with explicit evals                |
-| `ai-techniques-radar`               | External technique intake, triage, and adoption decisions                     |
-| `budget-aware-execution`            | Cost-aware tool/model selection and bounded execution                         |
-| `teach-agent`                       | Machine-first guidance curation, promotion gates, and agent teachability      |
-| `setup-harness-bootstrap`           | Adopting the harness in a new repository or workflow surface                  |
-| `retrieval-quality-ops`             | A/B evaluation of retrieval stacks (vector-only vs contextual+BM25+rerank)    |
-| `remember` *(Claude Code only)*     | Persisting reusable lessons and Architecture Briefs to harness memory. Non-Claude agents: follow the write protocol in `memory/README.md` directly. |
-| `run-loop` *(Claude Code only)*     | Native execution of workflow loops using checked-in loop JSON and guardrails. Non-Claude agents: follow the loop JSON as protocol per `LOOPS.md § Native Execution`. |
-| `pr`                                | PR creation, verification, and review-before-ship workflow                    |
+| Skill | Load when the task involves… |
+| --- | --- |
+| `understand-process` | Any non-trivial change; stage-0 impact analysis and graph freshness |
+| `context-engineering` | Task switching, stale context, compact handoffs, and session memory hygiene |
+| `deterministic-validation` | Exit criteria, proof selection, and objective completion checks |
+| `doubt-driven-development` | Security, correctness skepticism, and evidence-led bug diagnosis |
+| `observability-and-instrumentation` | Telemetry, instrumentation, RED signals, and operational proof |
+| `eval-first-tuning` | Retrieval, prompt, or agent quality tuning with explicit evals |
+| `ai-techniques-radar` | External technique intake, triage, and adoption decisions |
+| `budget-aware-execution` | Cost-aware tool/model selection and bounded execution |
+| `teach-agent` | Machine-first guidance curation, promotion gates, and agent teachability |
+| `setup-harness-bootstrap` | Adopting the harness in a new repository or workflow surface |
+| `retrieval-quality-ops` | A/B evaluation of retrieval stacks (vector-only vs contextual+BM25+rerank) |
+| `remember` _(Claude Code only)_ | Persisting reusable lessons and Architecture Briefs to harness memory. Non-Claude agents: follow the write protocol in `memory/README.md` directly. |
+| `run-loop` _(Claude Code only)_ | Native execution of workflow loops using checked-in loop JSON and guardrails. Non-Claude agents: follow the loop JSON as protocol per `LOOPS.md § Native Execution`. |
+| `pr` | PR creation, verification, and review-before-ship workflow |
 
 Repositories may add domain specialists under `.github/skills/` or `.claude/skills/`, but they
 should only be listed in `registry.json` once the skill files are actually checked in.
@@ -243,7 +241,7 @@ When running `npm run harness:prompt-pack`, two optional sidecar prompt files ar
 alongside the main stage prompts:
 
 | Sidecar | Purpose | When to use |
-|---|---|---|
+| --- | --- | --- |
 | `optional-scout.md` | Parallel research — find reuse opportunities, missing context, and adjacent risks | Highest value before or during Understand and Architect |
 | `optional-challenger.md` | Independent challenge — pressure-test assumptions, risks, and review blind spots | After architecture or implementation artifacts exist; can run in parallel with breadth review |
 
@@ -265,13 +263,13 @@ Run the narrowest command that covers the change; loops use these as their conve
 > actual commands, which are resolved from `harness.config.json`. Replace scope names and commands
 > with whatever applies to your stack.
 
-| Scope touched       | Required before completion                                                                    |
-| ------------------- | --------------------------------------------------------------------------------------------- |
-| Any code change     | `{{commands.lint}}` · `{{commands.typeCheck}}` · `{{commands.build}}`                        |
-| Tests               | `{{commands.test}}`                                                                           |
-| Backend-only        | `{{commands.testBackend}}`                                                                    |
-| Frontend-only       | `{{commands.testFrontend}}`                                                                   |
-| Full feature        | All of the above for touched scopes; E2E if user-facing flow changed                         |
+| Scope touched | Required before completion |
+| --- | --- |
+| Any code change | `{{commands.lint}}` · `{{commands.typeCheck}}` · `{{commands.build}}` |
+| Tests | `{{commands.test}}` |
+| Backend-only | `{{commands.testBackend}}` |
+| Frontend-only | `{{commands.testFrontend}}` |
+| Full feature | All of the above for touched scopes; E2E if user-facing flow changed |
 
 Hard rules (loop guardrails — restated here because loops are tempted to violate them):
 
@@ -431,4 +429,3 @@ on their own. As models improve, some scaffolding becomes unnecessary — prune 
 it ossify. The `Model:` lines at the top of each `.github/instructions/0*.md` and the stage skills
 are **advisory provenance, not a runtime requirement**: any capable agent runs these stages. Treat a
 component that no longer earns its context cost as debt to remove.
-

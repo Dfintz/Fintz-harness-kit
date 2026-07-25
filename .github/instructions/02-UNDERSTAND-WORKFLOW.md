@@ -40,6 +40,12 @@ Before planning code changes:
    - Use `/understand --full` for broad refactors or major architecture changes.
 4. If refresh is not possible, continue only with explicit warning about reduced confidence.
 
+When graph refresh is unavailable (for example `graph.enabled=false`, missing local snapshot, or no plugin runtime), use this deterministic fallback instead of blocking:
+
+- Build the impact map directly from repository sources (`registry.json`, loop definitions, stage instructions, skill directories, and targeted file-level grep/search evidence).
+- Record that graph-derived dependency confidence is reduced, but do not downgrade confidence for deterministic command outputs.
+- Explicitly list assumptions that would have been confirmed via graph traversal.
+
 Then query the graph instead of reading the multi-megabyte JSON — these commands return only the
 slice you need:
 

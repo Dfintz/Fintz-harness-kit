@@ -327,12 +327,8 @@ Report saved to: .github/harness/optimization-reports/optimization-report-tier1-
 ### Step 4.4: Cross-Model Validation (Optional)
 
 ```bash
-# Validate optimized skills on Claude + GPT-4
-node scripts/harness/pilot/cross-model-validation.mjs \
-  --source .github/harness/optimized-skills-tier1/ \
-  --eval-sets .github/harness/pilot/synthetic-tests/ \
-  --models ollama,claude,gpt-4 \
-  --output-dir .github/harness/pilot/cross-model-results/
+# Validate Tier 2 evaluation infrastructure against pilot synthetic sets
+node scripts/harness/pilot/tier2-test.mjs
 ```
 
 ---

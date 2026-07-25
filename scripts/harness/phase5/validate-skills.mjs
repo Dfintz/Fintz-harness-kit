@@ -196,7 +196,7 @@ const PHASE_5_SKILLS = [
     benchmark: "+83.2%",
   },
   {
-    name: "evaluate-first-tuning",
+    name: "eval-first-tuning",
     primary: "gpt-5.5",
     fallback1: "claude-opus-4-8",
     tier: "high-reasoning",
@@ -219,7 +219,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     const isShifted = [
       "architect",
       "feedback",
-      "evaluate-first-tuning",
+      "eval-first-tuning",
       "budget-aware-execution",
       "implement",
       "run-loop",
@@ -581,7 +581,7 @@ function printDashboard(results) {
   const shiftedSkills = [
     "architect",
     "feedback",
-    "evaluate-first-tuning",
+    "eval-first-tuning",
     "budget-aware-execution",
     "implement",
     "run-loop",

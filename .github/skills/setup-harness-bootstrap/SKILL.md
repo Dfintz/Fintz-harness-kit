@@ -104,6 +104,10 @@ Ensure `.github/harness/registry.json` includes this skill with triggers for:
 
 Run:
 
+- `npm run harness:docs:check`
+
+Compatibility alias (optional):
+
 - `npm run harness:skills:validate`
 
 If docs were changed, run markdown diagnostics and fix broken links or malformed headings.

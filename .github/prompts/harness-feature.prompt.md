@@ -51,8 +51,8 @@ Important execution rule:
 - Continue into stages 1-7 in the same run unless the user explicitly asks to stop.
 - Treat a "minimal kickoff" instruction as completed only when explicitly requested for this run.
 
-**Model roles:** The route output is authoritative. The router uses a deterministic task-class
-matrix from `harness.config.json` to select either `exploratory` or `deterministic` model sets and
-records the decision in handoff telemetry (`.github/harness/runs/handoffs.jsonl`).
+**Model roles:** The route output is authoritative. The router derives stage assignments from
+`harness.config.json`, using the active per-stage skill mapping when available and falling back to
+the repository role defaults only when no stage-specific override exists.
 
 **PowerShell note:** run each npm wrapper command on its own line — do not chain with semicolons.

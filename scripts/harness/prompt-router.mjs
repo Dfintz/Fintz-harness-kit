@@ -5,7 +5,14 @@
  * It does not intercept editor prompts on its own. Instead it gives operators and wrapper commands
  * a deterministic stage/model handoff plan that mirrors the harness environment policy.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,6 +24,7 @@ import {
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const configPath = join(repoRoot, "harness.config.json");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
+const handoffLogPath = join(runsDir, "handoffs.jsonl");
 const promptPacksDir = join(runsDir, "prompt-packs");
 
 const DEFAULT_STAGE_PROMPT_METADATA = {
@@ -41,6 +49,18 @@ const DEFAULT_STAGE_PROMPT_METADATA = {
       "Run gates 1-5 (and gate 4b when applicable) with explicit pass/fail reasoning.",
       "Define exactly which files change and why they belong there.",
       "Persist the settled brief in the repository memory briefs folder when implementation proceeds.",
+    ],
+  },
+  "architect-challenge": {
+    title: "Architect Challenge",
+    outputFile: "architect-challenge-verdict.md",
+    deliverable:
+      "Independent verdict on the Architecture Brief with required revisions or unblock steps.",
+    instructions: [
+      "Read architecture-brief.md and any cited supporting files first.",
+      "Pressure-test ownership, boundaries, reuse, approval assumptions, and missing context.",
+      "Return APPROVED, REVISE, or BLOCKED with the smallest concrete next step.",
+      "Keep the verdict concise and grounded in the current brief rather than reopening the whole design.",
     ],
   },
   implement: {
@@ -200,10 +220,23 @@ function readStdin() {
   });
 }
 
-function normalize(text) {
+function normalizeText(text) {
   return String(text ?? "")
     .trim()
     .toLowerCase();
+}
+
+function ensureSafeSegment(value, label) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9._-]+$/.test(value)) {
+    fail(`invalid ${label}: ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function safeJoinUnder(baseDir, segment, label) {
+  const safeSegment = ensureSafeSegment(segment, label);
+  const separator = baseDir.endsWith("/") || baseDir.endsWith("\\") ? "" : "/";
+  return `${baseDir}${separator}${safeSegment}`;
 }
 
 function getModelAssignments(config) {
@@ -211,6 +244,144 @@ function getModelAssignments(config) {
     implementer: config.models?.implementer?.model ?? "gpt-5.3-codex",
     reviewer: config.models?.reviewer?.model ?? "claude-opus-4-8",
   };
+}
+
+function getSkillModelEntry(config, skillName) {
+  const mappings = config.skillModelMapping?.mappings;
+  if (!mappings || typeof mappings !== "object") {
+    return null;
+  }
+  const entry = mappings[skillName];
+  return entry && typeof entry === "object" ? entry : null;
+}
+
+function getPrimaryModelForSkill(config, skillName, fallbackModel) {
+  const entry = getSkillModelEntry(config, skillName);
+  return typeof entry?.primary === "string" && entry.primary.trim()
+    ? entry.primary
+    : fallbackModel;
+}
+
+function getStageSkillName(stage) {
+  switch (stage) {
+    case "understand":
+      return "understand-process";
+    case "architect":
+      return "architect";
+    case "architect-challenge":
+      return null;
+    case "implement":
+    case "review-breadth":
+    case "review-depth":
+    case "feedback":
+      return stage;
+    default:
+      return null;
+  }
+}
+
+function getStageModel(config, stage, roleModels) {
+  const skillName = getStageSkillName(stage);
+  if (skillName) {
+    const defaultModel =
+      stage === "implement" || stage === "build-fix" || stage === "test-fix"
+        ? roleModels.implementer
+        : roleModels.reviewer;
+    return getPrimaryModelForSkill(config, skillName, defaultModel);
+  }
+
+  if (stage === "architect-challenge") {
+    return roleModels.implementer;
+  }
+  if (stage === "build-fix" || stage === "test-fix") {
+    return roleModels.implementer;
+  }
+  return roleModels.implementer;
+}
+
+function detectModelProvider(model) {
+  if (typeof model !== "string" || model.trim() === "") return "unknown";
+  if (model.startsWith("claude-")) return "anthropic";
+  if (model.startsWith("gemini-")) return "google";
+  if (model.startsWith("gpt-")) return "github-copilot";
+  if (model.includes(":")) return "local";
+  return "unknown";
+}
+
+function getStageTelemetryDetails(config, stage, model) {
+  const skillName = getStageSkillName(stage);
+  const entry = skillName ? getSkillModelEntry(config, skillName) : null;
+  if (entry) {
+    return {
+      skill: skillName,
+      tier: entry.tier ?? null,
+      provider: detectModelProvider(model),
+      primary: entry.primary ?? null,
+      fallback: Array.isArray(entry.fallback) ? entry.fallback : [],
+    };
+  }
+  if (stage === "architect-challenge") {
+    return {
+      skill: null,
+      tier: "challenge",
+      provider: detectModelProvider(model),
+      primary: model,
+      fallback: [],
+      note: "Challenge stage defaults to the repository implementer-role model unless explicitly overridden.",
+    };
+  }
+  return {
+    skill: skillName,
+    tier: null,
+    provider: detectModelProvider(model),
+    primary: model,
+    fallback: [],
+  };
+}
+
+function buildHandoffTelemetry(route, command, config) {
+  return {
+    id: `hof-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    at: new Date().toISOString(),
+    command,
+    task: route.task,
+    profile: route.profile,
+    intent: route.intent,
+    intentSource: route.intentSource,
+    mode: route.mode,
+    why: route.why,
+    modelSet: config.modelPolicy?.activePhase ?? "default",
+    routingDecision: {
+      source:
+        route.intentSource ?? (route.profile ? "profile-selected" : "default"),
+      profile: route.profile ?? null,
+      intent: route.intent ?? null,
+    },
+    stages: route.stages,
+    models: route.models,
+    stageModelDetails: Object.fromEntries(
+      route.stages.map((stage) => [
+        stage,
+        getStageTelemetryDetails(config, stage, route.models[stage]),
+      ]),
+    ),
+    crossModelReview: route.crossModelReview,
+  };
+}
+
+function recordHandoffTelemetry(route, command, config) {
+  const payload = buildHandoffTelemetry(route, command, config);
+  try {
+    mkdirSync(runsDir, { recursive: true });
+    appendFileSync(handoffLogPath, `${JSON.stringify(payload)}\n`, "utf8");
+    return { ok: true, path: handoffLogPath, payload };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      payload,
+    };
+  }
 }
 
 function getProfile(config, profileName) {
@@ -239,13 +410,13 @@ function scoreIntent(text, intentName, intentConfig) {
     : [];
   for (const keyword of keywords) {
     if (typeof keyword === "string" && keyword.trim()) {
-      if (text.includes(normalize(keyword))) score += 3;
+      if (text.includes(normalizeText(keyword))) score += 3;
     }
   }
 
   const nameTokens = String(intentName)
     .split(/[-_\s]+/)
-    .map((token) => normalize(token))
+    .map((token) => normalizeText(token))
     .filter(Boolean);
   for (const token of nameTokens) {
     if (token.length > 2 && text.includes(token)) score += 1;
@@ -260,7 +431,7 @@ function recommendIntentProfile(taskText, config, explicitIntent = null) {
 
   if (explicitIntent) {
     const canonical = Object.keys(intents).find(
-      (key) => normalize(key) === normalize(explicitIntent),
+      (key) => normalizeText(key) === normalizeText(explicitIntent),
     );
     const matched = canonical ? intents[canonical] : null;
     if (!matched) {
@@ -275,7 +446,7 @@ function recommendIntentProfile(taskText, config, explicitIntent = null) {
     };
   }
 
-  const text = normalize(taskText);
+  const text = normalizeText(taskText);
   let best = null;
   for (const [intentName, intentConfig] of entries) {
     const score = scoreIntent(text, intentName, intentConfig);
@@ -306,18 +477,35 @@ function validateModelSeparation(config) {
 }
 
 function buildModelRouting(config) {
-  const { implementer, reviewer } = validateModelSeparation(config);
+  const roleModels = validateModelSeparation(config);
   return {
-    understand: reviewer,
-    architect: reviewer,
-    implement: implementer,
-    "review-breadth": reviewer,
-    "review-depth": reviewer,
-    feedback: reviewer,
-    "build-fix": implementer,
-    "test-fix": implementer,
-    "cross-model-review": `${implementer} -> ${reviewer}`,
+    understand: getStageModel(config, "understand", roleModels),
+    architect: getStageModel(config, "architect", roleModels),
+    "architect-challenge": getStageModel(config, "architect-challenge", roleModels),
+    implement: getStageModel(config, "implement", roleModels),
+    "review-breadth": getStageModel(config, "review-breadth", roleModels),
+    "review-depth": getStageModel(config, "review-depth", roleModels),
+    feedback: getStageModel(config, "feedback", roleModels),
+    "build-fix": getStageModel(config, "build-fix", roleModels),
+    "test-fix": getStageModel(config, "test-fix", roleModels),
+    "cross-model-review": `${roleModels.implementer} -> ${roleModels.reviewer}`,
   };
+}
+
+function summarizeCrossModelReview(stages, models) {
+  const implementModel = models.implement ?? models["build-fix"] ?? models["test-fix"] ?? "unspecified";
+  const reviewStages = stages.filter((stage) =>
+    stage === "review-breadth" || stage === "review-depth" || stage === "feedback",
+  );
+  const distinctReviewModels = [...new Set(reviewStages.map((stage) => models[stage]).filter(Boolean))];
+
+  if (distinctReviewModels.length === 0) {
+    return models["cross-model-review"] ?? `${implementModel} -> review`;
+  }
+  if (distinctReviewModels.length === 1) {
+    return `${implementModel} -> ${distinctReviewModels[0]}`;
+  }
+  return `${implementModel} -> [${distinctReviewModels.join(", ")}]`;
 }
 
 function resolveTaskText(flags) {
@@ -333,7 +521,7 @@ function resolveTaskText(flags) {
 }
 
 export function planTask(taskText, config, options = {}) {
-  const text = normalize(taskText);
+  const text = normalizeText(taskText);
   const routing = config.routing ?? {};
   const trivialKeywords = routing.trivialKeywords ?? [];
   const nonTrivialKeywords = routing.nonTrivialKeywords ?? [];
@@ -401,25 +589,33 @@ export function planTask(taskText, config, options = {}) {
         modelRouting[stage] ?? modelRouting.implement,
       ]),
     ),
-    crossModelReview: modelRouting["cross-model-review"],
+    crossModelReview: summarizeCrossModelReview(
+      stages,
+      Object.fromEntries(
+        stages.map((stage) => [
+          stage,
+          modelRouting[stage] ?? modelRouting.implement,
+        ]),
+      ),
+    ),
   };
 }
 
 function slugifyTask(taskText) {
-  const slug = normalize(taskText)
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+  let slug = normalizeText(taskText).replace(/[^a-z0-9]+/g, "-");
+  while (slug.startsWith("-")) slug = slug.slice(1);
+  while (slug.endsWith("-")) slug = slug.slice(0, -1);
+  slug = slug.slice(0, 80);
   return slug || "task";
 }
 
 function resolvePromptPackDir(slug, outDir) {
   const dirName = outDir ? slugifyTask(outDir) : slug;
-  return join(promptPacksDir, dirName); // NOSONAR: sanitized filename under fixed prompt-packs root.
+  return safeJoinUnder(promptPacksDir, dirName, "prompt pack directory name");
 }
 
 function packFilePath(packDir, fileName) {
-  return join(packDir, fileName); // NOSONAR: constrained script output path.
+  return safeJoinUnder(packDir, fileName, "prompt pack file name");
 }
 
 function writePackFile(packDir, fileName, contents) {
@@ -514,8 +710,9 @@ function renderStagePrompt(pack, stageFile) {
   const approvalRequirements = Array.isArray(stageFile.approval?.requiredFor)
     ? stageFile.approval.requiredFor
     : [];
+  const approvalItems = approvalRequirements.map((item) => `- ${item}`).join("\n");
   const approvalBlock = approvalRequirements.length
-    ? `\nApproval triggers:\n${approvalRequirements.map((item) => `- ${item}`).join("\n")}\n`
+    ? `\nApproval triggers:\n${approvalItems}\n`
     : "";
 
   return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
@@ -672,11 +869,13 @@ export function renderHandoffPlan(route) {
 }
 
 function printBanner(config) {
-  const { implementer, reviewer } = validateModelSeparation(config);
+  const roleModels = validateModelSeparation(config);
+  const stageModels = buildModelRouting(config);
   process.stdout.write(
     `[prompt-router] Harness-first mode is ON for this repo.\n` +
-      `[prompt-router] Non-trivial prompts route: understand -> architect -> implement -> review-breadth -> review-depth -> feedback\n` +
-      `[prompt-router] Model roles: implement=${implementer}; reasoning/review=${reviewer}; cross-model=${implementer} -> ${reviewer}\n` +
+      `[prompt-router] Non-trivial prompts route: understand -> architect -> architect-challenge -> implement -> review-breadth -> review-depth -> feedback\n` +
+      `[prompt-router] Stage defaults: understand=${stageModels.understand}; architect=${stageModels.architect}; architect-challenge=${stageModels["architect-challenge"]}; implement=${stageModels.implement}; review-breadth=${stageModels["review-breadth"]}; review-depth=${stageModels["review-depth"]}; feedback=${stageModels.feedback}\n` +
+      `[prompt-router] Cross-model review guardrail: ${roleModels.implementer} -> ${roleModels.reviewer}\n` +
       `[prompt-router] Trivial prompts may start at implement only when they are clearly one-file/low-risk.\n`,
   );
 }
@@ -714,6 +913,97 @@ function showHelp() {
   );
 }
 
+function resolveCommand(flags) {
+  const command = flags._[0] ?? "banner";
+  if (
+    command !== "banner" &&
+    command !== "remind" &&
+    command !== "route" &&
+    command !== "handoff" &&
+    command !== "prompt-pack" &&
+    command !== "pick-profile"
+  ) {
+    fail(`unknown command: ${command}`);
+  }
+  return command;
+}
+
+function printPickProfile(route, asJson) {
+  const payload = {
+    task: route.task,
+    intent: route.intent,
+    profile: route.profile,
+    mode: route.mode,
+    why: route.why,
+    stages: route.stages,
+  };
+  if (asJson) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(
+    `[prompt-router] intent: ${payload.intent ?? "none"}\n` +
+      `[prompt-router] profile: ${payload.profile ?? "default"}\n` +
+      `[prompt-router] rationale: ${payload.why}\n` +
+      `[prompt-router] stages: ${payload.stages.join(" -> ")}\n`,
+  );
+}
+
+function printPromptPack(route, flags) {
+  const pack = writePromptPack(route, flags.out);
+  if (flags.json) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          task: pack.route.task,
+          profile: pack.route.profile ?? null,
+          output: pack.packDir,
+          stages: pack.stageFiles.map((stage) => ({
+            stage: stage.stage,
+            model: stage.model,
+            promptFile: stage.promptFile,
+            outputFile: stage.outputFile,
+          })),
+          sidecars: pack.sidecarFiles.map((sidecar) => ({
+            key: sidecar.key,
+            promptFile: sidecar.promptFile,
+            outputFile: sidecar.outputFile,
+            recommendedModel: sidecar.recommendedModel,
+          })),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+  process.stdout.write(renderPromptPackSummary(pack));
+}
+
+function printRouteOutput(command, route, flags) {
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(route, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(
+    command === "handoff"
+      ? renderHandoffPlan(route)
+      : renderCompactRoute(route),
+  );
+}
+
+function maybeRecordHandoff(route, command, config) {
+  if (command !== "handoff") {
+    return;
+  }
+  const telemetry = recordHandoffTelemetry(route, command, config);
+  if (!telemetry.ok) {
+    process.stderr.write(
+      `[prompt-router] warning: could not write handoff telemetry: ${telemetry.error}\n`,
+    );
+  }
+}
+
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
   if (flags.help) {
@@ -721,7 +1011,7 @@ async function main() {
     return;
   }
 
-  const command = flags._[0] ?? "banner";
+  const command = resolveCommand(flags);
   const config = loadConfig();
 
   if (command === "banner") {
@@ -734,15 +1024,6 @@ async function main() {
     return;
   }
 
-  if (
-    command !== "route" &&
-    command !== "handoff" &&
-    command !== "prompt-pack" &&
-    command !== "pick-profile"
-  ) {
-    fail(`unknown command: ${command}`);
-  }
-
   const task = flags.stdin ? await readStdin() : resolveTaskText(flags);
   if (!task || !String(task).trim()) {
     fail(`${command} requires --task "..." or --stdin`);
@@ -752,69 +1033,20 @@ async function main() {
     profile: flags.profile,
     intent: flags.intent,
   });
+
+  maybeRecordHandoff(route, command, config);
+
   if (command === "pick-profile") {
-    const payload = {
-      task: route.task,
-      intent: route.intent,
-      profile: route.profile,
-      mode: route.mode,
-      why: route.why,
-      stages: route.stages,
-    };
-    if (flags.json) {
-      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-      return;
-    }
-    process.stdout.write(
-      `[prompt-router] intent: ${payload.intent ?? "none"}\n` +
-        `[prompt-router] profile: ${payload.profile ?? "default"}\n` +
-        `[prompt-router] rationale: ${payload.why}\n` +
-        `[prompt-router] stages: ${payload.stages.join(" -> ")}\n`,
-    );
+    printPickProfile(route, flags.json);
     return;
   }
+
   if (command === "prompt-pack") {
-    const pack = writePromptPack(route, flags.out);
-    if (flags.json) {
-      process.stdout.write(
-        `${JSON.stringify(
-          {
-            task: pack.route.task,
-            profile: pack.route.profile ?? null,
-            output: pack.packDir,
-            stages: pack.stageFiles.map((stage) => ({
-              stage: stage.stage,
-              model: stage.model,
-              promptFile: stage.promptFile,
-              outputFile: stage.outputFile,
-            })),
-            sidecars: pack.sidecarFiles.map((sidecar) => ({
-              key: sidecar.key,
-              promptFile: sidecar.promptFile,
-              outputFile: sidecar.outputFile,
-              recommendedModel: sidecar.recommendedModel,
-            })),
-          },
-          null,
-          2,
-        )}\n`,
-      );
-      return;
-    }
-    process.stdout.write(renderPromptPackSummary(pack));
+    printPromptPack(route, flags);
     return;
   }
 
-  if (flags.json) {
-    process.stdout.write(`${JSON.stringify(route, null, 2)}\n`);
-    return;
-  }
-
-  process.stdout.write(
-    command === "handoff"
-      ? renderHandoffPlan(route)
-      : renderCompactRoute(route),
-  );
+  printRouteOutput(command, route, flags);
 }
 
 if (

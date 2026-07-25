@@ -34,7 +34,18 @@ const outputFile = process.argv.find(arg => arg.startsWith('--output='))?.split(
 
 // Load config
 const config = JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
-const skillMappings = config.skillModelMapping.mappings;
+const SKILL_ALIASES = {
+  'evaluate-first-tuning': 'eval-first-tuning',
+};
+
+function canonicalSkillName(name) {
+  return SKILL_ALIASES[name] || name;
+}
+
+const rawSkillMappings = config.skillModelMapping.mappings || {};
+const skillMappings = Object.fromEntries(
+  Object.entries(rawSkillMappings).map(([name, value]) => [canonicalSkillName(name), value]),
+);
 
 // Load Phase 5 baseline
 const phase5Baseline = JSON.parse(readFileSync(PHASE5_BASELINE, 'utf8'));
@@ -59,7 +70,7 @@ const modelMatrix = {
   },
   'high-reasoning': {
     'pr': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5', 'gpt-5.3-codex'] },
-    'evaluate-first-tuning': { primary: 'gpt-5.5', alternates: ['claude-opus-4-8', 'gemini-3.6-flash'] },
+    'eval-first-tuning': { primary: 'gpt-5.5', alternates: ['claude-opus-4-8', 'gemini-3.6-flash'] },
     'remember': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'claude-sonnet-5'] },
     'understand-process': { primary: 'claude-opus-4-8', alternates: ['claude-opus-5', 'gpt-5.5'] },
     'doubt-driven-development': { primary: 'claude-opus-4-8', alternates: ['gpt-5.5', 'claude-opus-5'] },
@@ -230,8 +241,9 @@ for (const skill of Object.keys(skillMappings)) {
 // Compare to Phase 5 baseline
 const baselineBySkill = {};
 for (const run of phase5Baseline.test_runs) {
-  if (!baselineBySkill[run.skill]) baselineBySkill[run.skill] = [];
-  baselineBySkill[run.skill].push(run);
+  const key = canonicalSkillName(run.skill);
+  if (!baselineBySkill[key]) baselineBySkill[key] = [];
+  baselineBySkill[key].push(run);
 }
 
 // Generate recommendations
@@ -242,7 +254,8 @@ for (const [skill, models] of Object.entries(skillResults)) {
 
   if (modelList.length === 0) continue; // Skip if no model data
 
-  const current = skillMappings[skill];
+  const current = skillMappings[canonicalSkillName(skill)];
+  if (!current) continue;
   const [topModel, topMetrics] = modelList[0];
   const [secondModel, secondMetrics] = modelList[1] || [null, {}];
 

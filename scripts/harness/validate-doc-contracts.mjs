@@ -83,6 +83,13 @@ function addWarning(list, code, subject, details) {
   list.push({ level: "warning", code, subject, details });
 }
 
+function isGeneratedOptimizedSkillDoc(markdownPath) {
+  const rel = relativePath(markdownPath);
+  if (!rel.startsWith(".github/harness/optimized-skills/")) return false;
+  const filename = rel.split("/").pop() ?? "";
+  return /--ollama--\d{4}-\d{2}-\d{2}\.md$/i.test(filename);
+}
+
 function validateWorkflowStages(registry, findings) {
   const stageOrder = Array.isArray(registry.workflow?.order) ? registry.workflow.order : [];
   const stages = registry.workflow?.stages ?? {};
@@ -258,9 +265,11 @@ function validateCitedScripts(findings) {
 
   for (const markdownPath of markdownFiles) {
     const text = readFileSync(markdownPath, "utf8");
+    const skipGeneratedCitationWarnings = isGeneratedOptimizedSkillDoc(markdownPath);
     for (const match of text.matchAll(npmPattern)) {
       const scriptName = match[1];
       if (!Object.hasOwn(packageScripts, scriptName)) {
+        if (skipGeneratedCitationWarnings) continue;
         addWarning(
           findings,
           "missing-package-script",
@@ -274,6 +283,7 @@ function validateCitedScripts(findings) {
       const citedPath = match[1];
       const resolved = join(repoRoot, citedPath);
       if (!existsSync(resolved)) {
+        if (skipGeneratedCitationWarnings) continue;
         addWarning(
           findings,
           "missing-cited-script",

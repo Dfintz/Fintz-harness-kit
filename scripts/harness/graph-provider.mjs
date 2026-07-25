@@ -97,6 +97,171 @@ function activeProvidersFor(provider) {
   return [provider];
 }
 
+/**
+ * Discover knowledge graphs in configured local paths.
+ * Supports custom paths from config and common auto-discovery locations.
+ */
+export function discoverLocalGraphs(repoRoot, graphConfig = {}) {
+  const discovered = {
+    paths: [],
+    primary: null,
+  };
+
+  // 1. Check explicitly configured local paths first
+  const customPaths = graphConfig.localGraphPaths;
+  if (Array.isArray(customPaths) && customPaths.length > 0) {
+    for (const configuredPath of customPaths) {
+      const absPath = toAbsolutePath(repoRoot, configuredPath, configuredPath);
+      if (existsSync(absPath)) {
+        discovered.paths.push(absPath);
+        if (!discovered.primary) discovered.primary = absPath;
+      }
+    }
+  }
+
+  // 2. Auto-discover in common locations
+  const autoDiscoveryPaths = [
+    'knowledge-graph.json',
+    'dist/knowledge-graph.json',
+    'build/knowledge-graph.json',
+    '.output/knowledge-graph.json',
+  ];
+
+  for (const relPath of autoDiscoveryPaths) {
+    const absPath = resolve(repoRoot, relPath);
+    if (existsSync(absPath) && !discovered.paths.includes(absPath)) {
+      discovered.paths.push(absPath);
+      if (!discovered.primary) discovered.primary = absPath;
+    }
+  }
+
+  return discovered;
+}
+
+/**
+ * Discover memory domains (lessons, briefs, radar) in configured or auto-detected paths.
+ */
+export function discoverMemoryDomains(repoRoot, memoryConfig = {}) {
+  const discovered = {
+    lessons: { paths: [], primary: null },
+    briefs: { paths: [], primary: null },
+    radar: { paths: [], primary: null },
+  };
+
+  // Helper to discover a domain type
+  function discoverDomain(domainName, configKey, defaults = []) {
+    const configuredPaths = memoryConfig[configKey];
+    const domain = discovered[domainName];
+
+    // 1. Check explicitly configured paths first
+    if (Array.isArray(configuredPaths) && configuredPaths.length > 0) {
+      for (const configuredPath of configuredPaths) {
+        const absPath = toAbsolutePath(repoRoot, configuredPath, configuredPath);
+        if (existsSync(absPath)) {
+          domain.paths.push(absPath);
+          if (!domain.primary) domain.primary = absPath;
+        }
+      }
+    }
+
+    // 2. Auto-discover in default locations
+    for (const relPath of defaults) {
+      const absPath = resolve(repoRoot, relPath);
+      if (existsSync(absPath) && !domain.paths.includes(absPath)) {
+        domain.paths.push(absPath);
+        if (!domain.primary) domain.primary = absPath;
+      }
+    }
+  }
+
+  discoverDomain('lessons', 'localLessonsPaths', [
+    '.github/harness/memory/lessons',
+    'docs/lessons',
+    'docs/knowledge/lessons',
+  ]);
+
+  discoverDomain('briefs', 'localBriefsPaths', [
+    '.github/harness/memory/briefs',
+    'docs/briefs',
+    'docs/knowledge/briefs',
+    'docs/architecture',
+  ]);
+
+  discoverDomain('radar', 'localRadarPaths', [
+    '.github/harness/memory/radar',
+    'docs/radar',
+    'docs/techniques',
+  ]);
+
+  return discovered;
+}
+
+/**
+ * Discover runs directory in configured or default paths.
+ * Runs directory stores execution journals from run-loop.mjs.
+ */
+export function discoverRunsDir(repoRoot, harnessConfig = {}) {
+  const discovered = {
+    paths: [],
+    primary: null,
+  };
+
+  // 1. Check explicitly configured local paths first
+  const configuredPaths = harnessConfig.runs?.localPaths;
+  if (Array.isArray(configuredPaths) && configuredPaths.length > 0) {
+    for (const configuredPath of configuredPaths) {
+      const absPath = toAbsolutePath(repoRoot, configuredPath, configuredPath);
+      if (existsSync(absPath)) {
+        discovered.paths.push(absPath);
+        if (!discovered.primary) discovered.primary = absPath;
+      }
+    }
+  }
+
+  // 2. Auto-discover in default location
+  const defaultPath = '.github/harness/runs';
+  const absPath = resolve(repoRoot, defaultPath);
+  if (existsSync(absPath) && !discovered.paths.includes(absPath)) {
+    discovered.paths.push(absPath);
+    if (!discovered.primary) discovered.primary = absPath;
+  }
+
+  return discovered;
+}
+
+/**
+ * Discover loops directory in configured or default paths.
+ * Loops directory stores convergence/experiment/workflow loop definitions.
+ */
+export function discoverLoopsDir(repoRoot, harnessConfig = {}) {
+  const discovered = {
+    paths: [],
+    primary: null,
+  };
+
+  // 1. Check explicitly configured local paths first
+  const configuredPaths = harnessConfig.loops?.localPaths;
+  if (Array.isArray(configuredPaths) && configuredPaths.length > 0) {
+    for (const configuredPath of configuredPaths) {
+      const absPath = toAbsolutePath(repoRoot, configuredPath, configuredPath);
+      if (existsSync(absPath)) {
+        discovered.paths.push(absPath);
+        if (!discovered.primary) discovered.primary = absPath;
+      }
+    }
+  }
+
+  // 2. Auto-discover in default location
+  const defaultPath = '.github/harness/loops';
+  const absPath = resolve(repoRoot, defaultPath);
+  if (existsSync(absPath) && !discovered.paths.includes(absPath)) {
+    discovered.paths.push(absPath);
+    if (!discovered.primary) discovered.primary = absPath;
+  }
+
+  return discovered;
+}
+
 export function resolveGraphProviderState({
   repoRoot,
   configPath = join(repoRoot, 'harness.config.json'),
@@ -141,6 +306,18 @@ export function resolveGraphProviderState({
     DEFAULT_GRAPH_EVENTS_PATH
   );
 
+  // Discover local knowledge graphs in configured or auto-detected paths
+  const localGraphs = discoverLocalGraphs(repoRoot, graphConfig);
+
+  // Discover memory domains (lessons, briefs, radar)
+  const memoryConfig = config.memory && typeof config.memory === 'object' ? config.memory : {};
+  const memoryDomains = discoverMemoryDomains(repoRoot, memoryConfig);
+
+  // Discover harness infrastructure directories (runs, loops)
+  const harnessConfig = config.harness && typeof config.harness === 'object' ? config.harness : {};
+  const runsDir = discoverRunsDir(repoRoot, harnessConfig);
+  const loopsDir = discoverLoopsDir(repoRoot, harnessConfig);
+
   const graphifyCliAvailable = probe ? probeGraphifyCli() : null;
   const graphifySignal = Boolean(graphifySignalsPresent());
 
@@ -152,7 +329,20 @@ export function resolveGraphProviderState({
       graphifyGraphPath,
       graphifyHtmlPath,
     },
+    memory: memoryDomains,
+    harness: {
+      runs: runsDir,
+      loops: loopsDir,
+    },
     providers: {
+      local: {
+        id: 'local',
+        available: localGraphs.primary !== null,
+        querySupported: localGraphs.primary !== null,
+        refreshSupported: false,
+        graphPath: localGraphs.primary || null,
+        discoveredPaths: localGraphs.paths,
+      },
       'understand-anything': {
         id: 'understand-anything',
         available: existsSync(uaGraphPath),
@@ -193,30 +383,52 @@ export function resolveGraphQueryTarget(state) {
     throw new Error('Graph provider state is required.');
   }
 
+  // When using 'both' provider, prioritize: understand-anything > graphify > local
+  // For single provider, check that provider first, then fall back to local if not available
+  
   if (state.selectedProvider === 'understand-anything') {
-    return { providerId: 'understand-anything', graphPath: state.providers['understand-anything'].graphPath };
+    if (existsSync(state.providers['understand-anything'].graphPath)) {
+      return { providerId: 'understand-anything', graphPath: state.providers['understand-anything'].graphPath };
+    }
+    // Fallback to local if understand-anything is not available
+    if (state.providers.local?.available && state.providers.local?.graphPath) {
+      return { providerId: 'local', graphPath: state.providers.local.graphPath };
+    }
+    throw new Error(
+      `graph.provider is "understand-anything", but no graph found at ${state.providers['understand-anything'].graphPath}. ` +
+        'Action: export a compatible graph snapshot there or configure graph.localGraphPaths.'
+    );
   }
 
   if (state.selectedProvider === 'graphify') {
-    const graphify = state.providers.graphify;
-    if (!graphify.querySupported) {
-      throw new Error(
-        `graph.provider is "graphify", but no queryable graph snapshot was found at ${graphify.graphPath}. ` +
-          'Action: export a compatible graph snapshot there or set graph.provider to "understand-anything" or "both".'
-      );
+    if (state.providers.graphify.querySupported) {
+      return { providerId: 'graphify', graphPath: state.providers.graphify.graphPath };
     }
-    return { providerId: 'graphify', graphPath: graphify.graphPath };
+    // Fallback to local if graphify is not available
+    if (state.providers.local?.available && state.providers.local?.graphPath) {
+      return { providerId: 'local', graphPath: state.providers.local.graphPath };
+    }
+    throw new Error(
+      `graph.provider is "graphify", but no queryable graph snapshot was found at ${state.providers.graphify.graphPath}. ` +
+        'Action: export a compatible graph snapshot there, set graph.provider to "understand-anything", or configure graph.localGraphPaths.'
+    );
   }
 
+  // Provider is 'both' — check all in order: understand-anything, graphify, local
   if (existsSync(state.providers['understand-anything'].graphPath)) {
     return { providerId: 'understand-anything', graphPath: state.providers['understand-anything'].graphPath };
   }
   if (state.providers.graphify.querySupported) {
     return { providerId: 'graphify', graphPath: state.providers.graphify.graphPath };
   }
+  if (state.providers.local?.available && state.providers.local?.graphPath) {
+    return { providerId: 'local', graphPath: state.providers.local.graphPath };
+  }
+  
   throw new Error(
-    `graph.provider is "both", but neither provider has a queryable graph snapshot. ` +
-      `Checked ${state.providers['understand-anything'].graphPath} and ${state.providers.graphify.graphPath}.`
+    `graph.provider is "both", but no queryable graph found. ` +
+      `Checked: ${state.providers['understand-anything'].graphPath}, ${state.providers.graphify.graphPath}, ` +
+      `and ${state.providers.local?.discoveredPaths?.join(', ') || 'no configured local paths'}.`
   );
 }
 

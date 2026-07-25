@@ -4,6 +4,8 @@
 **Status:** Pre-Pilot (pilot scripts generated, awaiting execution)  
 **Goal:** Scale Tier 1 techniques from 3-skill pilot to full 20-skill batch
 
+> Historical note: this document now references only currently shipped scripts in `scripts/harness/pilot/`.
+
 ---
 
 ## 1. Phase Timeline
@@ -123,7 +125,7 @@ for (const skill of discoveredSkills) {
 
 ### Step 2: Generate Synthetic Tests for All 20 Skills
 
-**Script:** `scripts/harness/pilot/generate-synthetic-tests-batch.mjs`
+**Script:** `scripts/harness/pilot/generate-synthetic-tests.mjs`
 
 ```bash
 # For each of 20 skills:
@@ -133,11 +135,13 @@ for (const skill of discoveredSkills) {
 #   4. Save to .github/harness/pilot/synthetic-tests/
 #   5. Merge baseline + synthetic into combined eval-set
 
-node scripts/harness/pilot/generate-synthetic-tests-batch.mjs \
-  --skills "ai-techniques-radar,architect,...,understand-process" \
-  --count-per-skill 10 \
-  --output-dir ".github/harness/pilot/synthetic-tests" \
-  --validate
+for skill in ai-techniques-radar architect budget-aware-execution context-engineering deterministic-validation doubt-driven-development eval-first-tuning implement observability-and-instrumentation pr prototype retrieval-quality-ops review-breadth review-depth run-loop setup-harness-bootstrap teach-agent understand-process remember feedback
+do
+  node scripts/harness/pilot/generate-synthetic-tests.mjs \
+    --skill "$skill" \
+    --count 10 \
+    --output-dir ".github/harness/pilot/synthetic-tests"
+done
 ```
 
 **Output:** 20 JSON files in `.github/harness/pilot/synthetic-tests/`
@@ -164,7 +168,7 @@ node scripts/harness/optimize-all-skills.mjs \
 
 ### Step 4: Capture Cross-Model Validation
 
-**Script:** `scripts/harness/pilot/cross-model-validation.mjs`
+**Script:** `scripts/harness/pilot/tier2-test.mjs`
 
 ```bash
 # After Tier 1 optimization complete:
@@ -174,25 +178,17 @@ node scripts/harness/optimize-all-skills.mjs \
 #   4. Calculate consensus % (pass on all 3 models)
 #   5. Flag any model-specific overfitting
 
-node scripts/harness/pilot/cross-model-validation.mjs \
-  --source ".github/harness/optimized-skills-tier1/" \
-  --eval-sets ".github/harness/pilot/synthetic-tests/" \
-  --models "ollama,claude,gpt-4" \
-  --output-dir ".github/harness/pilot/cross-model-results/"
+node scripts/harness/pilot/tier2-test.mjs
 ```
 
 **Output:** `.github/harness/pilot/cross-model-results/consensus-{date}.json`
 
 ### Step 5: Generate Final Report
 
-**Script:** `scripts/harness/pilot/generate-rollout-report.mjs`
+**Script:** `scripts/harness/pilot/phase4-rollout.mjs`
 
 ```bash
-node scripts/harness/pilot/generate-rollout-report.mjs \
-  --pilot-metrics ".github/harness/pilot/results/PILOT-METRICS-{date}.json" \
-  --full-batch-metrics ".github/harness/optimization-reports/optimization-report-tier1-{date}.json" \
-  --cross-model-results ".github/harness/pilot/cross-model-results/consensus-{date}.json" \
-  --output ".github/harness/ROLLOUT-REPORT-TIER1-{date}.md"
+node scripts/harness/pilot/phase4-rollout.mjs
 ```
 
 **Report Contents:**
@@ -204,7 +200,7 @@ node scripts/harness/pilot/generate-rollout-report.mjs \
 
 ### Step 6: Commit to Harness Memory
 
-**Script:** `scripts/harness/pilot/commit-learnings.mjs`
+**Script:** `scripts/harness/new-brief.mjs`
 
 ```bash
 # After approval, save lessons to harness memory:
@@ -213,11 +209,9 @@ node scripts/harness/pilot/generate-rollout-report.mjs \
 #   3. Archive pilot scripts for reuse on Tier 2
 #   4. Create Architecture Brief for future optimization work
 
-node scripts/harness/pilot/commit-learnings.mjs \
-  --brief-title "Tier 1 Optimization Results (Synthetic Tests + Contrastive)" \
-  --findings ".github/harness/ROLLOUT-REPORT-TIER1-{date}.md" \
-  --metrics ".github/harness/optimization-reports/optimization-report-tier1-{date}.json" \
-  --output ".github/harness/memory/TIER1-RESULTS-{date}.md"
+node scripts/harness/new-brief.mjs \
+  --feature tier1-optimization-results-{date} \
+  --resource .github/harness/pilot/results/PILOT-METRICS-{date}.json,.github/harness/optimization-reports/optimization-report-tier1-{date}.json
 ```
 
 ---
@@ -237,7 +231,7 @@ PRE-ROLLOUT CHECKLIST:
 INTEGRATION CHECKLIST:
 ─────────────────────
 [ ] optimize-all-skills.mjs updated with TIER_1_CONFIG
-[ ] generate-synthetic-tests-batch.mjs created for all 20 skills
+[ ] generate-synthetic-tests.mjs executed for all 20 skills
 [ ] Synthetic tests generated for all 20 skills
 [ ] Manual spot-check: 5/20 synthetic test sets (quality)
 [ ] Dry-run: full 20-skill batch with Tier 1 (no actual optimization)
@@ -285,11 +279,10 @@ POST-ROLLOUT CHECKLIST:
 # Issue: Synthetic tests aren't meaningful enough
 # Fix: Manual curation + few-shot examples
 
-node scripts/harness/pilot/refine-synthetic-tests.mjs \
+node scripts/harness/pilot/generate-synthetic-tests.mjs \
   --skill "architect" \
-  --review-mode true \
-  --use-few-shot-examples true \
-  --output ".github/harness/pilot/synthetic-tests/architect-synthetic-v2.json"
+  --count 10 \
+  --output-dir ".github/harness/pilot/synthetic-tests"
 
 # Manually review output, remove uninformative tests, re-run pilot
 ```
@@ -321,10 +314,7 @@ node scripts/harness/pilot/run-pilot-optimization.mjs \
 # Fix: Add RAGAS semantic scoring (Tier 2 technique)
 
 # Build minimal RAGAS prototype (1 skill)
-node scripts/harness/pilot/ragas-prototype.mjs \
-  --skill "architect" \
-  --eval-set ".github/harness/pilot/synthetic-tests/architect-synthetic.json" \
-  --output ".github/harness/pilot/ragas-results/"
+node scripts/harness/pilot/ragas-evaluator.mjs architect .github/harness/pilot/synthetic-tests/architect-synthetic.json
 
 # Compare RAGAS scoring vs. binary scoring
 # If RAGAS shows better signal → integrate into full rollout
@@ -343,10 +333,7 @@ node scripts/harness/pilot/ragas-prototype.mjs \
 
 npm install ragas
 
-node scripts/harness/pilot/ragas-full-pilot.mjs \
-  --skills "architect,eval-first-tuning,run-loop" \
-  --eval-sets ".github/harness/pilot/synthetic-tests/" \
-  --output ".github/harness/pilot/ragas-pilot/"
+node scripts/harness/pilot/tier2-optimizer-simple.mjs
 
 # If RAGAS shows ≥ 20% improvement signal → proceed with RAGAS integration
 ```
@@ -356,11 +343,7 @@ node scripts/harness/pilot/ragas-full-pilot.mjs \
 # Use Claude to score instructions against explicit rubric
 # Rubric: clarity, completeness, actionability (1-5 per criterion)
 
-node scripts/harness/pilot/llm-judge-full-pilot.mjs \
-  --skills "architect,eval-first-tuning,run-loop" \
-  --rubrics ".github/harness/pilot/rubrics/" \
-  --judge-model "claude-opus-4" \
-  --output ".github/harness/pilot/llm-judge-pilot/"
+node scripts/harness/pilot/llm-judge-evaluator.mjs architect
 
 # If Judge scores show ≥ 20% improvement signal → proceed with Judge integration
 ```
@@ -370,11 +353,7 @@ node scripts/harness/pilot/llm-judge-full-pilot.mjs \
 # Hypothesis: Tier 1 works but only on Ollama (overfitting)
 # Solution: Add multi-model validation as early gate
 
-node scripts/harness/pilot/multimodel-gate-pilot.mjs \
-  --skills "architect,eval-first-tuning,run-loop" \
-  --models "ollama,claude,gpt-4" \
-  --consensus-threshold 0.7 \
-  --output ".github/harness/pilot/multimodel-pilot/"
+node scripts/harness/pilot/tier2-test.mjs
 
 # If consensus gate improves signal → integrate as mandatory gate
 ```
@@ -405,11 +384,11 @@ node scripts/harness/pilot/multimodel-gate-pilot.mjs \
 │  │  └─ consensus-2026-07-24.json
 │  └─ scripts/
 │     ├─ generate-synthetic-tests.mjs
-│     ├─ generate-synthetic-tests-batch.mjs
 │     ├─ run-pilot-optimization.mjs
-│     ├─ cross-model-validation.mjs
-│     ├─ generate-rollout-report.mjs
-│     └─ commit-learnings.mjs
+│     ├─ phase4-rollout.mjs
+│     ├─ ragas-evaluator.mjs
+│     ├─ llm-judge-evaluator.mjs
+│     └─ tier2-test.mjs
 ├─ optimized-skills-tier1/        # Tier 1 optimized skills (if APPROVED)
 │  ├─ architect--tier1--2026-07-24.md
 │  └─ ... (20 skills)
