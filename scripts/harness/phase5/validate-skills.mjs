@@ -674,6 +674,22 @@ async function main() {
     return;
   }
 
+  if (options.collectOnly) {
+    const files = fs
+      .readdirSync(RESULTS_DIR)
+      .filter((f) => f.startsWith("phase5b-validation"));
+    if (files.length === 0) {
+      console.log("❌ No validation results found. Run tests first.");
+      return;
+    }
+    const latestFile = files.sort().pop();
+    const results = JSON.parse(
+      fs.readFileSync(path.join(RESULTS_DIR, latestFile), "utf8")
+    );
+    printDashboard(results);
+    return;
+  }
+
   // Run validation
   const results = await runValidationSuite(options);
   printDashboard(results);

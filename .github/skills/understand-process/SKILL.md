@@ -69,6 +69,18 @@ Use the local Understand graph as a first-class input to coding decisions so age
    - Changed components
    - Affected components
    - Affected layers
+
+---
+
+## Recommended Models (Phase 5)
+
+**Tier:** High-Reasoning  
+**Primary:** `claude-opus-4.8` (Graph-Aware Analysis)  
+**Fallback 1:** `claude-opus-5` (Frontier Reasoning)  
+**Fallback 2:** `gpt-5.5` (Multi-hop Traversal)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Impact analysis and blast-radius mapping require multi-hop dependency reasoning over complex graphs. Claude Opus 4.8 has demonstrated strong performance on dependency chain analysis; Opus 5 provides frontier-level handling of novel graph structures. Phase 4 baseline quality: 0.778. Phase 5 assignment: retained at High-Reasoning tier.
    - Risk level and mitigation steps
 
 ### Phase 5: Knowledge Transfer (optional)

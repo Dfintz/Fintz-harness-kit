@@ -1,7 +1,17 @@
 # Phase 5 Delivery: Complete Re-Evaluation Summary
-**Date**: 2026-07-24  
-**Status**: ✅ ANALYSIS COMPLETE | READY FOR INTEGRATION  
-**Token Budget**: 64.7K / 200K  
+**Date**: 2026-07-25  
+**Status**: ✅ GENERALLY AVAILABLE (GA) | PHASE 5 DEPLOYED  
+**Validation**: Phase 5b passed (120/120 tests, 100% success rate)  
+
+---
+
+## Deployment Status
+
+- Phase 5c completed: `harness.config.json` merged with the full skill model mapping
+- All 20 harness skills updated with Phase 5 recommended model sections
+- Deployment runbook published: `PHASE5-DEPLOYMENT-RUNBOOK.md`
+- GA marker published: `PHASE5-GA-MARKER.md`
+- Rollout commands wired into `package.json` for validation, cascade health, tier-shift checks, and monitoring
 
 ---
 

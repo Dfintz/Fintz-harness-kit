@@ -35,6 +35,18 @@ The canonical contract lives in [`07-FEEDBACK.md`](../../../.github/instructions
 
 ---
 
+## Recommended Models (Phase 5)
+
+**Tier:** Ultra-Reasoning  
+**Primary:** `claude-opus-5` (Multi-Stage Conflict Analysis)  
+**Fallback 1:** `claude-opus-4.8` (Proven Analytical Depth)  
+**Fallback 2:** `gpt-5.6-luna` (Novel Problem-Solving)  
+**Fallback 3:** `claude-haiku-4.5` (Universal Safety Net)
+
+**Why?** Phase 5 tier shift: feedback requires adjudicating multi-party conflicts and issuing verdicts against an Architecture Brief — a task demanding frontier reasoning and nuanced judgment. Claude Opus 5 leads on complex multi-stage conflict analysis. Phase 4 baseline: 0.800 (claude-opus-4.8). Phase 5 primary validation: 0.953 (+19.1% delta).
+
+---
+
 ## Recommended Models
 
 **Primary:** `claude-opus-4.8` (High-Reasoning)  
