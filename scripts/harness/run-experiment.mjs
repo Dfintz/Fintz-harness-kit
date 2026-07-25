@@ -35,6 +35,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertSafeCliCommand } from './command-validation.mjs';
 import { resolveTokens } from './config.mjs';
+import { classifyGitCommand } from './git-guard.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
@@ -290,17 +291,26 @@ function invokeAgent(agentCmd, prompt, targetFiles) {
 // (e.g. overnight) run leaves a reviewable trail without sweeping in unrelated work.
 function commitTargets(targetFiles, loop, iteration, metricName, value) {
   try {
-    execSync(`git add -- ${targetFiles.map(f => `"${f}"`).join(' ')}`, {
+    // Use execFileSync with argument arrays to avoid shell injection from filenames or messages.
+    execFileSync('git', ['add', '--', ...targetFiles], {
       cwd: repoRoot,
       stdio: 'ignore',
     });
-    const staged = execSync('git diff --cached --name-only', {
+    const staged = execFileSync('git', ['diff', '--cached', '--name-only'], {
       cwd: repoRoot,
       encoding: 'utf8',
     }).trim();
     if (!staged) return;
     const message = `chore(harness): ${loop.name} iter ${iteration} — ${metricName}=${value}`;
-    execSync(`git commit -m "${message}" --no-verify`, { cwd: repoRoot, stdio: 'ignore' });
+    // Validate through git-guard before committing (activates the exported classifyGitCommand).
+    const commitCmd = `git commit -m ${JSON.stringify(message)}`;
+    const guard = classifyGitCommand(commitCmd);
+    if (guard.severity === 'block') {
+      console.warn(`[run-experiment]   auto-commit blocked by git-guard (${guard.rule}): ${guard.reason}`);
+      return;
+    }
+    // No --no-verify: let git hooks run.
+    execFileSync('git', ['commit', '-m', message], { cwd: repoRoot, stdio: 'ignore' });
     console.log(`[run-experiment]   committed target(s): ${message}`);
   } catch (err) {
     console.warn(`[run-experiment]   auto-commit failed: ${err.message}`);

@@ -17,7 +17,7 @@
  *
  * It is import-only logic with a thin CLI for inspection. No agent, no network.
  */
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -66,7 +66,8 @@ function toPosix(p) {
 function resolvePattern(pattern) {
   const files = new Set();
   try {
-    const out = execSync(`git ls-files -- "${pattern}"`, {
+    // Use execFileSync with an argument array to avoid shell injection from pattern values.
+    const out = execFileSync('git', ['ls-files', '--', pattern], {
       cwd: repoRoot,
       encoding: "utf8",
     }).trim();

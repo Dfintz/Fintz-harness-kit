@@ -16,7 +16,7 @@
  *
  * Options:
  *   --port <n>              HTTP port to listen on (default 8099).
- *   --host <addr>           Bind address (default 0.0.0.0).
+ *   --host <addr>           Bind address (default 127.0.0.1). Use 0.0.0.0 only in trusted networks.
  *   --interval-seconds <n>  Regeneration interval (default 60).
  *   --help                  Show this help.
  *
@@ -299,7 +299,9 @@ function main() {
   }
 
   const port = parsePositiveInt(flags.port ?? process.env.HARNESS_DASHBOARD_PORT, 8099);
-  const host = String(flags.host || process.env.HARNESS_DASHBOARD_HOST || '0.0.0.0').trim();
+  // Default to loopback only. Use --host 0.0.0.0 or HARNESS_DASHBOARD_HOST explicitly
+  // for network access — the server has no authentication.
+  const host = String(flags.host || process.env.HARNESS_DASHBOARD_HOST || '127.0.0.1').trim();
   const intervalSeconds = parsePositiveInt(
     flags['interval-seconds'] ?? process.env.HARNESS_DASHBOARD_INTERVAL_SECONDS,
     60
