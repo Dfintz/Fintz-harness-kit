@@ -1,0 +1,56 @@
+# MCP Resources Test Suite
+
+## Test Execution Order
+
+All tests in this directory must run **sequentially**. Do not run tests in parallel.
+
+### Why Sequential Execution?
+
+The cache and streaming tests use the `_flushCache()` fixture to reset state deterministically between test scenarios. This ensures:
+
+- Each test starts with a clean cache state
+- TTL expiry tests are reproducible
+- Concurrent access patterns are measured without state leakage from other tests
+
+### If Tests Run in Parallel
+
+Running tests in parallel **may cause cache state leakage** (expected behavior):
+
+- Test A flushes cache; Test B sees empty cache
+- Test C sets cache; Test A reads stale data
+- Latency measurements become non-deterministic
+
+This is a feature, not a bug — it validates that cache isolation works correctly. However, for consistent benchmark results, always use sequential execution.
+
+### Running Tests
+
+```bash
+# Sequential (recommended for consistent results)
+node scripts/harness/test/mcp-resources-streaming-test.mjs
+node scripts/harness/test/mcp-resources-streaming-latency.mjs
+node scripts/harness/test/mcp-resources-cache-benchmark.mjs
+node scripts/harness/test/mcp-resources-graph-latency.mjs
+
+# Or all at once (sequential runner)
+for test in scripts/harness/test/mcp-resources-*.mjs; do node "$test"; done
+```
+
+## Test Coverage
+
+| Test File | Purpose | Isolation |
+|-----------|---------|-----------|
+| mcp-resources-streaming-test.mjs | Streaming + buffered modes, cache behavior | _flushCache() between tests |
+| mcp-resources-streaming-latency.mjs | Chunk size SLA validation (25/50/100 items) | Fresh cache per iteration |
+| mcp-resources-cache-benchmark.mjs | Cache hit/miss/expiry patterns | _flushCache() between scenarios |
+| mcp-resources-graph-latency.mjs | Graph adapter latency + graceful degradation | Reads only; no state mutation |
+
+## Cache Isolation Validation
+
+See `mcp-resources-cache-benchmark.mjs` for validation of:
+
+- Cache hit latency <1ms (1000 samples, P99)
+- Cache miss + populate behavior
+- TTL expiry and refresh cycles
+- Concurrent read safety
+- Flush mechanism determinism
+

@@ -547,6 +547,55 @@ export const mcpToolSpecs = [
   },
 ];
 
+/**
+ * MCP Error Code Taxonomy (4-core model for read-only servers)
+ * Maps to JSON-RPC standard error codes when appropriate.
+ */
+export const ErrorCode = {
+  /** Client-provided invalid arguments (-32602: Invalid Params) */
+  INVALID_ARGUMENTS: 'INVALID_ARGUMENTS',
+  /** Resource/tool not found (-32602: Invalid Params) */
+  NOT_FOUND: 'NOT_FOUND',
+  /** Provider/subprocess unavailable or timed out (-32603: Internal Error) */
+  PROVIDER_UNAVAILABLE: 'PROVIDER_UNAVAILABLE',
+  /** Unexpected internal error (-32603: Internal Error) */
+  INTERNAL: 'INTERNAL',
+};
+
+/**
+ * Map ErrorCode to JSON-RPC error code (-32602 or -32603)
+ */
+export function errorCodeToJsonRpcCode(errorCode) {
+  switch (errorCode) {
+    case ErrorCode.INVALID_ARGUMENTS:
+    case ErrorCode.NOT_FOUND:
+      return -32602; // Invalid Params
+    case ErrorCode.PROVIDER_UNAVAILABLE:
+    case ErrorCode.INTERNAL:
+    default:
+      return -32603; // Internal Error
+  }
+}
+
+/**
+ * Create a structured MCP error response
+ */
+export function createErrorResponse(errorCode, message) {
+  return {
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          ok: false,
+          error: errorCode,
+          message: message,
+        }),
+      },
+    ],
+  };
+}
+
 export function buildMcpListPayload() {
   return {
     tools: mcpToolSpecs.map(spec => ({

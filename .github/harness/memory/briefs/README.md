@@ -1,5 +1,9 @@
 # Architecture Briefs
 
+**See Also:** [GOVERNANCE-ARCHITECTURE.md](../GOVERNANCE-ARCHITECTURE.md) — Governance framework lifecycle, brief taxonomy, ownership model, and discovery paths for governance artifacts.
+
+---
+
 Architecture Briefs produced by harness stage 1 (Architect, `.github/instructions/03-ARCHITECT.md`)
 are persisted here so a later session inherits the gate decisions instead of re-deriving them.
 

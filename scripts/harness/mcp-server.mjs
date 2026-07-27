@@ -5,17 +5,29 @@
  *
  * This server exposes the existing wrappers in scripts/harness/mcp-tools.mjs
  * over the MCP protocol using stdio transport.
+ *
+ * Features:
+ * - 20+ tools for graph, memory, vector, routing, catalog
+ * - Resources API: Memory briefs/lessons as discoverable resources (Phase 1)
+ * - Server metadata: Capabilities and instructions
+ * - Error codes: Structured 4-code taxonomy
  */
-import { spawnSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { harnessRuntimeRoot, repoRoot } from "./config.mjs";
+import { ErrorCode, createErrorResponse, errorCodeToJsonRpcCode } from "./mcp-contracts.mjs";
+import { ResourceCache } from "./mcp-cache.mjs";
+import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resources.mjs";
 
 const wrapperPath = join(
   harnessRuntimeRoot,
@@ -570,6 +582,187 @@ const toolSpecs = [
 
 const toolByName = new Map(toolSpecs.map((spec) => [spec.name, spec]));
 
+// Memory resource paths (Phase 1: memory resources only; graph deferred to Phase 2+)
+const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
+const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
+
+/**
+ * Parse frontmatter from markdown file to extract title and metadata
+ * Returns { title, status, owner, created, updated }
+ */
+function parseFrontmatter(content) {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!frontmatterMatch) {
+    return { title: null, status: null, owner: null };
+  }
+
+  const frontmatter = frontmatterMatch[1];
+  const titleMatch = content.match(/^# (.+)$/m);
+  const statusMatch = frontmatter.match(/^status:\s*(.+)$/m);
+  const ownerMatch = frontmatter.match(/^owner:\s*(.+)$/m);
+
+  return {
+    title: titleMatch ? titleMatch[1].trim() : null,
+    status: statusMatch ? statusMatch[1].trim() : null,
+    owner: ownerMatch ? ownerMatch[1].trim() : null,
+  };
+}
+
+/**
+ * Build resource list from memory directories (in-process, no subprocess)
+ * Returns array of { uri, name, description, mimeType }
+ */
+function buildMemoryResources() {
+  const resources = [];
+
+  // Enumerate briefs
+  if (statSync(briefsDir, { throwIfNotFound: false })) {
+    try {
+      const briefFiles = readdirSync(briefsDir).filter(f => f.endsWith(".md"));
+      for (const file of briefFiles) {
+        const name = file.replace(".md", "");
+        const uri = `io.modelcontextprotocol/harness/memory/briefs/${name}`;
+        resources.push({
+          uri,
+          name,
+          description: "Harness Architecture Brief",
+          mimeType: "text/markdown",
+        });
+      }
+    } catch {
+      // Directory not readable; skip
+    }
+  }
+
+  // Enumerate lessons
+  if (statSync(lessonsDir, { throwIfNotFound: false })) {
+    try {
+      const lessonFiles = readdirSync(lessonsDir).filter(f => f.endsWith(".md"));
+      for (const file of lessonFiles) {
+        const name = file.replace(".md", "");
+        const uri = `io.modelcontextprotocol/harness/memory/lessons/${name}`;
+        resources.push({
+          uri,
+          name,
+          description: "Harness Lesson Learned",
+          mimeType: "text/markdown",
+        });
+      }
+    } catch {
+      // Directory not readable; skip
+    }
+  }
+
+  return resources;
+}
+
+/**
+ * Read a resource by URI
+ * Returns { uri, mimeType, text } or null if not found
+ */
+function readResource(uri) {
+  // Parse URI: io.modelcontextprotocol/harness/memory/briefs/name
+  const match = uri.match(/^io\.modelcontextprotocol\/harness\/memory\/(\w+)\/(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  const [, type, name] = match;
+  const dir = type === "briefs" ? briefsDir : type === "lessons" ? lessonsDir : null;
+
+  if (!dir) {
+    return null;
+  }
+
+  try {
+    const filePath = join(dir, `${name}.md`);
+    const content = readFileSync(filePath, "utf-8");
+    return {
+      uri,
+      mimeType: "text/markdown",
+      text: content,
+    };
+  } catch {
+    return null; // File not found or not readable
+  }
+}
+
+/**
+ * Build combined resource list (memory + graph) with caching
+ * Phase 2a: Includes briefs, lessons, graph layers, and graph nodes
+ * Uses TTL cache to achieve <5ms hit latency
+ */
+async function buildAllResources(cache) {
+  // Check cache first
+  const cacheKey = "all_resources";
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  const resources = [];
+
+  // Add memory resources (Phase 1)
+  try {
+    const memoryResources = buildMemoryResources();
+    resources.push(...memoryResources);
+  } catch (err) {
+    console.error("Failed to load memory resources:", err.message);
+  }
+
+  // Add graph resources (Phase 2a)
+  try {
+    const graphReady = await isGraphReady();
+    if (graphReady) {
+      const graphLayers = await exportGraphLayers();
+      resources.push(...graphLayers);
+
+      // Optional: Also enumerate nodes for each layer
+      // Deferred to per-layer reads for performance
+    }
+  } catch (err) {
+    console.error("Failed to load graph resources:", err.message);
+    // Graceful degradation: continue with memory resources only
+  }
+
+  // Cache the combined result
+  cache.set(cacheKey, resources);
+
+  return resources;
+}
+
+/**
+ * Read graph resource by URI
+ * Handles: io.modelcontextprotocol/harness/graph/layers/layerName
+ *          io.modelcontextprotocol/harness/graph/nodes/nodeId
+ */
+async function readGraphResource(uri) {
+  try {
+    // Parse graph layer URI
+    const layerMatch = uri.match(/^io\.modelcontextprotocol\/harness\/graph\/layers\/(.+)$/);
+    if (layerMatch) {
+      const layerName = layerMatch[1];
+      const nodes = await exportGraphNodes(layerName);
+      return {
+        uri,
+        mimeType: "application/json",
+        text: JSON.stringify({ layer: layerName, nodes }, null, 2),
+      };
+    }
+
+    // Parse graph node URI (future extension)
+    const nodeMatch = uri.match(/^io\.modelcontextprotocol\/harness\/graph\/nodes\/(.+)$/);
+    if (nodeMatch) {
+      // Future: Implement per-node detail retrieval
+      return null;
+    }
+
+    return null;
+  } catch (err) {
+    console.error("Failed to read graph resource:", err.message);
+    return null;
+  }
+}
+
 function parseJsonIfPossible(value) {
   if (!value) return null;
   try {
@@ -658,6 +851,9 @@ function showTools() {
 }
 
 function createServer() {
+  // Initialize cache (Phase 2a: TTL-based, 5-minute expiry)
+  const cache = new ResourceCache(5 * 60 * 1000);
+
   const server = new Server(
     {
       name: "sc-fleet-harness-mcp",
@@ -666,12 +862,14 @@ function createServer() {
     {
       capabilities: {
         tools: {},
+        resources: {},
       },
       instructions:
-        "Use harness graph, memory, and vector tools to query architecture context, dependency paths, and semantic retrieval over committed lessons/briefs/graph nodes.",
+        "Use harness graph, memory, and vector tools to query architecture context, dependency paths, and semantic retrieval over committed lessons/briefs/graph nodes. Browse memory resources (briefs/lessons) via the Resources API for direct access without tool invocation.",
     },
   );
 
+  // ListToolsRequestSchema handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: toolSpecs.map((spec) => ({
@@ -682,41 +880,146 @@ function createServer() {
     };
   });
 
+  // ListResourcesRequestSchema handler (Phase 2a: memory + graph resources with streaming support)
+  server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+    try {
+      // Phase 2a: Support streaming request from client
+      const wantsStreaming = request.params?.streaming === true;
+
+      // Build all resources (memory + graph) with cache
+      const resources = await buildAllResources(cache);
+
+      // If client supports streaming, use chunked response
+      if (wantsStreaming && server.notification) {
+        // Emit chunks of 50 items per request.params.chunkSize (default 50)
+        const chunkSize = request.params?.chunkSize || 50;
+        for (let i = 0; i < resources.length; i += chunkSize) {
+          const chunk = resources.slice(i, i + chunkSize);
+          server.notification({
+            jsonrpc: "2.0",
+            method: "resource_chunk",
+            params: {
+              uri: "io.modelcontextprotocol/harness",
+              chunks: chunk.map(r => ({
+                uri: r.uri,
+                mimeType: r.mimeType,
+              })),
+              nextChunk: (i + chunkSize) < resources.length ? i + chunkSize : null,
+            },
+          });
+        }
+        // Return streaming acknowledgment (MCP 1.29.0 protocol)
+        return {
+          resources: [], // Streamed via notifications
+          streaming: true,
+        };
+      }
+
+      // Fallback to buffered response (Phase 1 compatibility)
+      return { resources };
+    } catch (error) {
+      console.error("ListResources error:", error.message);
+      // Graceful degradation: return empty list
+      return { resources: [] };
+    }
+  });
+
+  // ReadResourceRequestSchema handler (Phase 2a: memory + graph resources)
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const uri = request.params.uri;
+
+    try {
+      // Validate URI format
+      if (!uri || typeof uri !== "string") {
+        return {
+          error: {
+            code: -32602, // INVALID_ARGUMENTS
+            message: "Invalid URI: must be a string",
+          },
+        };
+      }
+
+      // Try memory resource first (Phase 1)
+      const memoryPattern = /^io\.modelcontextprotocol\/harness\/memory\/(\w+)\/(.+)$/;
+      if (memoryPattern.test(uri)) {
+        const resource = readResource(uri);
+        if (resource) {
+          return {
+            contents: [
+              {
+                uri: resource.uri,
+                mimeType: resource.mimeType,
+                text: resource.text,
+              },
+            ],
+          };
+        }
+      }
+
+      // Try graph resource (Phase 2a)
+      const graphPattern = /^io\.modelcontextprotocol\/harness\/graph\//;
+      if (graphPattern.test(uri)) {
+        const resource = await readGraphResource(uri);
+        if (resource) {
+          return {
+            contents: [
+              {
+                uri: resource.uri,
+                mimeType: resource.mimeType,
+                text: resource.text,
+              },
+            ],
+          };
+        }
+      }
+
+      // If neither pattern matched or resource not found
+      if (!memoryPattern.test(uri) && !graphPattern.test(uri)) {
+        return {
+          error: {
+            code: -32602, // INVALID_ARGUMENTS
+            message: `Invalid URI format: ${uri}. Expected io.modelcontextprotocol/harness/{memory|graph}/...`,
+          },
+        };
+      }
+
+      // Resource not found
+      return {
+        error: {
+          code: -32603, // NOT_FOUND (mapped to INTERNAL in JSON-RPC)
+          message: `Resource not found: ${uri}`,
+        },
+      };
+    } catch (error) {
+      console.error("ReadResource error:", error.message);
+      return {
+        error: {
+          code: -32603, // INTERNAL
+          message: `Failed to read resource: ${error.message}`,
+        },
+      };
+    }
+  });
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
     const spec = toolByName.get(toolName);
 
     if (!spec) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: textPayload({
-              ok: false,
-              error: `Unknown tool: ${toolName}`,
-            }),
-          },
-        ],
-      };
+      return createErrorResponse(
+        ErrorCode.NOT_FOUND,
+        `Unknown tool: ${toolName}`
+      );
     }
 
     let cliArgs;
     try {
       cliArgs = spec.toCliArgs(parseArguments(request.params.arguments));
     } catch (error) {
-      return {
-        isError: true,
-        content: [
-          {
-            type: "text",
-            text: textPayload({
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          },
-        ],
-      };
+      return createErrorResponse(
+        ErrorCode.INVALID_ARGUMENTS,
+        error instanceof Error ? error.message : String(error)
+      );
     }
 
     const result = runWrapper(toolName, cliArgs);
