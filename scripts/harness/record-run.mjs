@@ -30,6 +30,14 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const loopsDir = join(repoRoot, ".github", "harness", "loops");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const TERMINAL_STATES = ["converged", "exhausted", "stuck", "blocked"];
+const RUN_STATUSES = new Set([
+  "draft",
+  "ready-for-dev",
+  "in-progress",
+  "in-review",
+  "done",
+  "blocked",
+]);
 const APPROVAL_STATUSES = new Set([
   "pending",
   "approved",
@@ -50,6 +58,9 @@ function printHelp() {
       "Pipe a JSON spec on stdin, or use flags:",
       "  --loop <name>     loop or stage name (e.g. review-fix, feature-cycle, architect)",
       "  --state <state>   terminal state: converged | exhausted | stuck | blocked",
+      "  --run-status <status>  draft | ready-for-dev | in-progress | in-review | done | blocked",
+      "  --baseline-revision <rev>  git baseline revision (or NO_VCS)",
+      "  --final-revision <rev>     git final revision (or NO_VCS)",
       "  --approval-status <status>  pending | approved | rejected | not-required",
       "  --approval-required         mark this run as requiring approval",
       '  --approval-note "<text>"    approval context note',
@@ -70,6 +81,9 @@ function parseArgs(argv) {
   const args = {
     loop: undefined,
     state: undefined,
+    runStatus: undefined,
+    baselineRevision: undefined,
+    finalRevision: undefined,
     approvalStatus: undefined,
     approvalRequired: false,
     approvalNote: undefined,
@@ -82,6 +96,9 @@ function parseArgs(argv) {
     if (a === "--help" || a === "-h") args.help = true;
     else if (a === "--loop") args.loop = argv[++i];
     else if (a === "--state") args.state = argv[++i];
+    else if (a === "--run-status") args.runStatus = argv[++i];
+    else if (a === "--baseline-revision") args.baselineRevision = argv[++i];
+    else if (a === "--final-revision") args.finalRevision = argv[++i];
     else if (a === "--approval-status") args.approvalStatus = argv[++i];
     else if (a === "--approval-required") args.approvalRequired = true;
     else if (a === "--approval-note") args.approvalNote = argv[++i];
@@ -219,6 +236,9 @@ function buildSpec(stdinText, args) {
   // Flag overrides / convenience construction.
   if (args.loop) spec.loop = args.loop;
   if (args.state) spec.terminalState = args.state;
+  if (args.runStatus) spec.runStatus = args.runStatus;
+  if (args.baselineRevision) spec.baselineRevision = args.baselineRevision;
+  if (args.finalRevision) spec.finalRevision = args.finalRevision;
   if (args.pass.length || args.fail.length) {
     const flagRubric = [
       ...args.pass.map((item) => ({ item, pass: true })),
@@ -230,6 +250,40 @@ function buildSpec(stdinText, args) {
     ];
   }
   return spec;
+}
+
+function defaultRunStatus(terminalState) {
+  if (terminalState === "converged") return "done";
+  if (terminalState === "blocked") return "blocked";
+  return "in-review";
+}
+
+function resolveRunStatus(rawStatus, terminalState) {
+  if (typeof rawStatus === "string") {
+    const candidate = rawStatus.trim();
+    if (RUN_STATUSES.has(candidate)) return candidate;
+  }
+  return defaultRunStatus(terminalState);
+}
+
+function normalizeRevision(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function resolveProvenance(spec, baseline) {
+  const providedBaseline = normalizeRevision(spec.baselineRevision);
+  const providedFinal = normalizeRevision(spec.finalRevision);
+
+  const fallback = baseline.commit ? baseline.commit : "NO_VCS";
+  const baselineRevision = providedBaseline ?? fallback;
+  const finalRevision = providedFinal ?? baselineRevision;
+
+  return {
+    baselineRevision,
+    finalRevision,
+  };
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -327,12 +381,19 @@ const startedAt =
   typeof spec.startedAt === "string"
     ? spec.startedAt
     : (iterations[0]?.at ?? nowIso);
+const baseline = gitBaseline();
+const runStatus = resolveRunStatus(spec.runStatus, spec.terminalState);
+const provenance = resolveProvenance(spec, baseline);
 const record = {
   loop: loopName,
   kind: "workflow",
   startedAt,
   finishedAt: nowIso,
-  baseline: gitBaseline(),
+  baseline,
+  runStatus,
+  baselineRevision: provenance.baselineRevision,
+  finalRevision: provenance.finalRevision,
+  provenance,
   approval,
   terminalState: spec.terminalState,
   iterations,

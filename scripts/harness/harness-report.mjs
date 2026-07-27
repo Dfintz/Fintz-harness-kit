@@ -41,6 +41,15 @@ const TERMINAL_STATES = [
   "blocked",
   "incomplete",
 ];
+const RUN_STATUSES = new Set([
+  "draft",
+  "ready-for-dev",
+  "in-progress",
+  "in-review",
+  "done",
+  "blocked",
+  "unknown",
+]);
 const APPROVAL_STATUSES = new Set([
   "pending",
   "approved",
@@ -360,6 +369,39 @@ function kindOf(journal) {
     : "convergence";
 }
 
+function runStatusOf(journal) {
+  if (RUN_STATUSES.has(journal?.runStatus)) return journal.runStatus;
+  if (journal?.terminalState === "converged") return "done";
+  if (journal?.terminalState === "blocked") return "blocked";
+  if (journal?.terminalState === "exhausted" || journal?.terminalState === "stuck") {
+    return "in-review";
+  }
+  return "unknown";
+}
+
+function revisionsOf(journal) {
+  let baselineRevision = "NO_VCS";
+  if (typeof journal?.baselineRevision === "string") {
+    baselineRevision = journal.baselineRevision;
+  } else if (typeof journal?.provenance?.baselineRevision === "string") {
+    baselineRevision = journal.provenance.baselineRevision;
+  } else if (typeof journal?.baseline?.commit === "string") {
+    baselineRevision = journal.baseline.commit;
+  }
+
+  let finalRevision = baselineRevision;
+  if (typeof journal?.finalRevision === "string") {
+    finalRevision = journal.finalRevision;
+  } else if (typeof journal?.provenance?.finalRevision === "string") {
+    finalRevision = journal.provenance.finalRevision;
+  }
+
+  return {
+    baselineRevision,
+    finalRevision,
+  };
+}
+
 function durationMs(journal) {
   if (!journal.startedAt || !journal.finishedAt) return null;
   const ms = Date.parse(journal.finishedAt) - Date.parse(journal.startedAt);
@@ -522,8 +564,10 @@ function computeMetrics(journals) {
       durationMs: durationMs(j),
       iterations: j.iterations.length,
       state: stateOf(j),
+      runStatus: runStatusOf(j),
       approval: approvalOf(j),
-      baseline: j.baseline?.commit ? j.baseline.commit.slice(0, 12) : null,
+      baselineRevision: revisionsOf(j).baselineRevision,
+      finalRevision: revisionsOf(j).finalRevision,
       dirty: j.baseline?.dirty ?? null,
     }));
 
@@ -687,6 +731,14 @@ function printMemory(memory) {
 
 function stateBadge(state) {
   return `<span class="badge badge-${esc(state)}">${esc(state)}</span>`;
+}
+
+function runStatusBadge(status) {
+  let css = "badge-exhausted";
+  if (status === "done") css = "badge-converged";
+  else if (status === "blocked") css = "badge-blocked";
+  else if (status === "unknown") css = "badge-incomplete";
+  return `<span class="badge ${css}">${esc(status)}</span>`;
 }
 
 function bar(rate) {
@@ -979,7 +1031,9 @@ function renderHtml(metrics) {
         <td class="num">${esc(fmtDuration(r.durationMs))}</td>
         <td class="num">${r.iterations}</td>
         <td>${stateBadge(r.state)}</td>
-        <td class="mono muted">${esc(r.baseline ?? "—")}${r.dirty ? ' <span class="dirty">dirty</span>' : ""}</td>
+        <td>${runStatusBadge(r.runStatus)}</td>
+        <td class="mono muted">${esc(r.baselineRevision === "NO_VCS" ? "NO_VCS" : r.baselineRevision.slice(0, 12))}${r.dirty ? ' <span class="dirty">dirty</span>' : ""}</td>
+        <td class="mono muted">${esc(r.finalRevision === "NO_VCS" ? "NO_VCS" : r.finalRevision.slice(0, 12))}</td>
       </tr>`,
     )
     .join("");
@@ -1032,7 +1086,7 @@ function renderHtml(metrics) {
     <section class="panel">
       <h2>Recent runs <span class="subtitle">(latest 30)</span></h2>
       <table>
-        <thead><tr><th>Loop</th><th>Kind</th><th>Started</th><th class="num">Duration</th><th class="num">Iters</th><th>State</th><th>Baseline</th></tr></thead>
+        <thead><tr><th>Loop</th><th>Kind</th><th>Started</th><th class="num">Duration</th><th class="num">Iters</th><th>State</th><th>Run status</th><th>Baseline</th><th>Final</th></tr></thead>
         <tbody>${runRows}</tbody>
       </table>
     </section>`

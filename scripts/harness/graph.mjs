@@ -6,8 +6,8 @@
  *
  * Usage:
  *   node scripts/harness/graph.mjs status [--json]
- *   node scripts/harness/graph.mjs provider-status [--json]
- *   node scripts/harness/graph.mjs genui-status [--json]
+ *   node scripts/harness/graph.mjs provider-status [--json] [--compact]
+ *   node scripts/harness/graph.mjs genui-status [--json] [--compact]
  *   node scripts/harness/graph.mjs events [--limit N] [--json]
  *   node scripts/harness/graph.mjs banner
  *   node scripts/harness/graph.mjs neighbors <nodeId> [--depth N] [--type T] [--json]
@@ -76,6 +76,7 @@ function parseFlags(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") flags.json = true;
+    else if (a === "--compact") flags.compact = true;
     else if (a === "--provider") flags.provider = argv[++i];
     else if (a === "--depth") flags.depth = Number(argv[++i]);
     else if (a === "--type") flags.type = argv[++i];
@@ -725,6 +726,7 @@ function main() {
         configPath,
         overrideProvider:
           typeof flags.provider === "string" ? flags.provider : undefined,
+        compact: Boolean(flags.compact),
       });
     } catch (error) {
       die(error instanceof Error ? error.message : String(error), 1);
@@ -766,6 +768,7 @@ function main() {
         configPath,
         overrideProvider:
           typeof flags.provider === "string" ? flags.provider : undefined,
+        compact: Boolean(flags.compact),
       });
     } catch (error) {
       die(error instanceof Error ? error.message : String(error), 1);

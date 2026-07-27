@@ -680,7 +680,17 @@ export function resolveRefreshBackends(state) {
   return backends;
 }
 
-export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvider } = {}) {
+function summarizeEvent(event) {
+  if (!event || typeof event !== 'object') return null;
+  return {
+    timestamp: event.timestamp ?? null,
+    eventType: event.eventType ?? null,
+    provider: event.provider ?? null,
+    degradationReason: event.degradationReason ?? null,
+  };
+}
+
+export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvider, compact = false } = {}) {
   const core = buildGraphStatusCore({ repoRoot, configPath, overrideProvider, probe: true });
   const state = resolveGraphProviderState({
     repoRoot,
@@ -712,14 +722,24 @@ export function buildProviderStatusPayload({ repoRoot, configPath, overrideProvi
     };
   }
 
+  const observability = readGraphEvents({ repoRoot, configPath, limit: 5 });
+  const compactObservability = {
+    exists: observability.exists,
+    path: observability.path,
+    count: observability.count ?? observability.events?.length ?? 0,
+    events: Array.isArray(observability.events)
+      ? observability.events.map(summarizeEvent).filter(Boolean)
+      : [],
+  };
+
   return {
     ...core,
     active,
-    observability: readGraphEvents({ repoRoot, configPath, limit: 5 }),
+    observability: compact ? compactObservability : observability,
   };
 }
 
-export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider } = {}) {
+export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider, compact = false } = {}) {
   const core = buildGraphStatusCore({ repoRoot, configPath, overrideProvider, probe: true });
   const state = resolveGraphProviderState({
     repoRoot,
@@ -733,6 +753,15 @@ export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider 
   const htmlWithinRepo = isPathWithinRoot(repoRoot, htmlAbsolutePath);
   const htmlExists = existsSync(htmlAbsolutePath);
   const httpPath = htmlWithinRepo ? '/graph.html' : null;
+  const observability = readGraphEvents({ repoRoot, configPath, limit: 10 });
+  const compactObservability = {
+    exists: observability.exists,
+    path: observability.path,
+    count: observability.count ?? observability.events?.length ?? 0,
+    events: Array.isArray(observability.events)
+      ? observability.events.map(summarizeEvent).filter(Boolean)
+      : [],
+  };
   return {
     ok: true,
     ...core,
@@ -751,6 +780,6 @@ export function buildGraphGenUiPayload({ repoRoot, configPath, overrideProvider 
               ? 'Configured graphHtmlPath is outside repo root; report server will refuse to serve it.'
               : 'Configured graphHtmlPath does not exist yet; run graph refresh/export first.',
           ],
-    observability: readGraphEvents({ repoRoot, configPath, limit: 10 }),
+        observability: compact ? compactObservability : observability,
   };
 }

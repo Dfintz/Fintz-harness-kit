@@ -1,11 +1,36 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const providers = ['understand-anything', 'graphify', 'both'];
 const composeFile = resolve(repoRoot, 'docker-compose.harness.yml');
+
+const defaultDockerPaths = process.platform === 'win32'
+  ? [
+      'C:/Program Files/Docker/Docker/resources/bin/docker.exe',
+      'C:/ProgramData/DockerDesktop/version-bin/docker.exe',
+    ]
+  : ['/usr/bin/docker', '/usr/local/bin/docker'];
+
+function resolveDockerExecutable() {
+  const override =
+    typeof process.env.HARNESS_DOCKER_EXECUTABLE === 'string'
+      ? process.env.HARNESS_DOCKER_EXECUTABLE.trim()
+      : '';
+  if (override.length > 0) {
+    if (!isAbsolute(override)) return null;
+    return existsSync(override) ? override : null;
+  }
+  for (const candidate of defaultDockerPaths) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+const dockerExecutable = resolveDockerExecutable();
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -22,12 +47,22 @@ function runNode(args, env = {}) {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    maxBuffer: 20 * 1024 * 1024,
     env: { ...process.env, ...env },
   });
 }
 
 function runDocker(args) {
-  return spawnSync('docker', args, {
+  if (!dockerExecutable) {
+    return {
+      status: 1,
+      stdout: '',
+      stderr:
+        'docker executable is not configured. Set HARNESS_DOCKER_EXECUTABLE to an absolute docker path or install docker in a standard absolute location.',
+    };
+  }
+
+  return spawnSync(dockerExecutable, args, {
     cwd: repoRoot,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -47,16 +82,23 @@ function validateCorePayload(payload) {
   if (!payload || typeof payload !== 'object') return 'payload is not an object';
   if (typeof payload.provider !== 'string') return 'missing provider';
   if (!Array.isArray(payload.activeProviders)) return 'missing activeProviders';
-  if (!Object.prototype.hasOwnProperty.call(payload, 'queryGraphPath')) return 'missing queryGraphPath';
-  if (!Object.prototype.hasOwnProperty.call(payload, 'refreshReadiness')) return 'missing refreshReadiness';
-  if (!Object.prototype.hasOwnProperty.call(payload, 'degradationReason')) return 'missing degradationReason';
+  if (!Object.hasOwn(payload, 'queryGraphPath')) return 'missing queryGraphPath';
+  if (!Object.hasOwn(payload, 'refreshReadiness')) return 'missing refreshReadiness';
+  if (!Object.hasOwn(payload, 'degradationReason')) return 'missing degradationReason';
   return null;
 }
 
 function runLocalMatrix(results) {
   for (const provider of providers) {
     for (const command of ['provider-status', 'genui-status']) {
-      const run = runNode(['scripts/harness/graph.mjs', command, '--provider', provider, '--json']);
+      const run = runNode([
+        'scripts/harness/graph.mjs',
+        command,
+        '--provider',
+        provider,
+        '--json',
+        '--compact',
+      ]);
       const payload = parseJson(run.stdout);
       const coreError = payload ? validateCorePayload(payload) : 'output is not JSON';
       results.push({
@@ -104,6 +146,7 @@ function runDockerMatrix(results) {
       'scripts/harness/graph.mjs',
       'genui-status',
       '--json',
+      '--compact',
     ]);
     const payload = parseJson(run.stdout);
     const coreError = payload ? validateCorePayload(payload) : 'output is not JSON';

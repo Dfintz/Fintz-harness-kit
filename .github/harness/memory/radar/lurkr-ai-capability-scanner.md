@@ -42,3 +42,5 @@ The harness-kit has `git-guard.mjs` (prevents commits of secrets to dangerous pa
 |---|---|---|---|
 | 2026-07-24 | candidate | Initial capture from walkinglabs/awesome-harness-engineering | radar-pass |
 | 2026-07-24 | adopted | Fills confirmed security gap: no static analysis for AI-specific risks. The harness has runtime defenses (untrusted.mjs, git-guard.mjs) but no static pre-deploy scan. Lurkr is exactly this. | radar-pass |
+| 2026-07-26 | adopted | Reevaluation audit: integration verdict is partially integrated (guidance mentions exist), but CI/setup wiring and enforceable checks are still missing. Keep adopted and queue implementation of optional CI integration. | radar-reevaluation |
+| 2026-07-26 | adopted | Integration pass completed optional executable wiring: added scripts/harness/lurkr-check.mjs, npm run harness:security:lurkr, and setup/review guidance. Integration verdict updated to integrated (optional-by-design). | implement-pass |

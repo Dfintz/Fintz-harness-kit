@@ -35,3 +35,5 @@ A `.coderabbit.yaml` config could encode the harness's own review criteria (Brie
 |---|---|---|---|
 | 2026-07-24 | candidate | Initial capture — SkillSpector waiver recorded above | radar-pass |
 | 2026-07-24 | adopted | Adoption gates pass: problem is clear (no automated first-pass review on kit PRs), target is a new .coderabbit.yaml + HARNESS.md doc update, SkillSpector waiver recorded (read-only service). Blocked on human action: GitHub App installation required first. Next: human approves App install, then Implement stage for .coderabbit.yaml. | radar-pass |
+| 2026-07-26 | adopted | Reevaluation audit: integration verdict is not integrated because repository lacks .coderabbit.yaml and GitHub App prerequisite remains unresolved; keep adopted and blocked until prerequisite is satisfied. | radar-reevaluation |
+| 2026-07-26 | adopted | Follow-up gap brief created: .github/harness/memory/briefs/coderabbit-pr-review-gap-implementation-brief-2026-07-26.md. Status remains blocked until human prerequisite (GitHub App install) is satisfied. | implement-pass |

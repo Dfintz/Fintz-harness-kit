@@ -9,22 +9,29 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
+  realpathSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
   getStageContractMetadata,
   getStagePromptPackMetadata,
 } from "./registry.mjs";
+import { buildGraphStatusCore } from "./graph-provider.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const require = createRequire(import.meta.url);
 const configPath = join(repoRoot, "harness.config.json");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const handoffLogPath = join(runsDir, "handoffs.jsonl");
+const preflightOverrideLogPath = join(runsDir, "preflight-overrides.jsonl");
 const promptPacksDir = join(runsDir, "prompt-packs");
 
 const DEFAULT_STAGE_PROMPT_METADATA = {
@@ -194,6 +201,8 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg === "--json" || arg === "--stdin" || arg === "--help") {
       flags[arg.slice(2)] = true;
+    } else if (arg === "--allow-degraded-preflight") {
+      flags.allowDegradedPreflight = true;
     } else if (arg === "--out") {
       flags.out = argv[++i];
     } else if (arg === "--profile") {
@@ -202,6 +211,10 @@ function parseArgs(argv) {
       flags.task = argv[++i];
     } else if (arg === "--intent") {
       flags.intent = argv[++i];
+    } else if (arg === "--pack") {
+      flags.pack = argv[++i];
+    } else if (arg === "--pack-latest") {
+      flags.packLatest = true;
     } else {
       flags._.push(arg);
     }
@@ -230,13 +243,60 @@ function ensureSafeSegment(value, label) {
   if (typeof value !== "string" || !/^[A-Za-z0-9._-]+$/.test(value)) {
     fail(`invalid ${label}: ${JSON.stringify(value)}`);
   }
+  if (value === "." || value === "..") {
+    fail(`invalid ${label}: ${JSON.stringify(value)}`);
+  }
   return value;
+}
+
+function normalizePathForCompare(pathValue) {
+  return process.platform === "win32"
+    ? pathValue.toLowerCase()
+    : pathValue;
+}
+
+function isPathInside(rootDir, candidatePath) {
+  const rootWithSep = rootDir.endsWith(sep) ? rootDir : `${rootDir}${sep}`;
+  const normalizedRoot = normalizePathForCompare(rootDir);
+  const normalizedRootWithSep = normalizePathForCompare(rootWithSep);
+  const normalizedCandidate = normalizePathForCompare(candidatePath);
+  return (
+    normalizedCandidate === normalizedRoot ||
+    normalizedCandidate.startsWith(normalizedRootWithSep)
+  );
+}
+
+function assertContainedPath(rootDir, candidatePath, label) {
+  if (!isPathInside(rootDir, candidatePath)) {
+    fail(
+      `invalid ${label}: resolved path escaped root ${rootDir} -> ${candidatePath}`,
+      1,
+    );
+  }
+
+  if (existsSync(rootDir) && existsSync(candidatePath)) {
+    try {
+      const rootReal = realpathSync(rootDir);
+      const candidateReal = realpathSync(candidatePath);
+      if (!isPathInside(rootReal, candidateReal)) {
+        fail(
+          `invalid ${label}: canonical path escaped root ${rootDir} -> ${candidatePath}`,
+          1,
+        );
+      }
+    } catch {
+      // If canonicalization is unavailable for this path, keep the resolved-path guardrail.
+    }
+  }
+
+  return candidatePath;
 }
 
 function safeJoinUnder(baseDir, segment, label) {
   const safeSegment = ensureSafeSegment(segment, label);
-  const separator = baseDir.endsWith("/") || baseDir.endsWith("\\") ? "" : "/";
-  return `${baseDir}${separator}${safeSegment}`;
+  const separator = baseDir.endsWith("/") || baseDir.endsWith("\\") ? "" : sep;
+  const joined = `${baseDir}${separator}${safeSegment}`;
+  return assertContainedPath(baseDir, joined, label);
 }
 
 function getModelAssignments(config) {
@@ -902,7 +962,11 @@ function showHelp() {
           'node scripts/harness/prompt-router.mjs pick-profile --task "design multi-agent orchestration"',
           'node scripts/harness/prompt-router.mjs handoff --profile feature --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs handoff --profile review --task "review auth audit"',
+          'node scripts/harness/prompt-router.mjs route --task "ship auth audit" --allow-degraded-preflight',
           'node scripts/harness/prompt-router.mjs prompt-pack --profile feature --task "ship auth audit"',
+          'node scripts/harness/prompt-router.mjs next-actions --task "ship auth audit"',
+          'node scripts/harness/prompt-router.mjs next-actions --pack ship-auth-audit --profile feature',
+          'node scripts/harness/prompt-router.mjs next-actions --pack-latest',
           'echo "typo in README" | node scripts/harness/prompt-router.mjs route --stdin --json',
         ],
         note: "Deterministic repo policy helper. It does not intercept editor prompts by itself; use it via session hooks and repo instructions.",
@@ -921,11 +985,327 @@ function resolveCommand(flags) {
     command !== "route" &&
     command !== "handoff" &&
     command !== "prompt-pack" &&
-    command !== "pick-profile"
+    command !== "pick-profile" &&
+    command !== "next-actions"
   ) {
     fail(`unknown command: ${command}`);
   }
   return command;
+}
+
+function isNonEmptyFileUnderRoot(rootDir, fileName, label) {
+  const safePath = safeJoinUnder(rootDir, fileName, label);
+  if (!existsSync(safePath)) return false;
+  try {
+    return statSync(safePath).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+function listPromptPackDirs() {
+  if (!existsSync(promptPacksDir)) return [];
+  const entries = readdirSync(promptPacksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const dir = safeJoinUnder(
+        promptPacksDir,
+        entry.name,
+        "prompt pack directory name",
+      );
+      let mtimeMs = 0;
+      try {
+        mtimeMs = statSync(dir).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { dir, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return entries.map((entry) => entry.dir);
+}
+
+function enforceNextActionSelectors(flags) {
+  if (flags.pack && flags.packLatest) {
+    fail('next-actions: --pack and --pack-latest cannot be used together.', 1);
+  }
+}
+
+function packDirFromSlug(slug) {
+  return safeJoinUnder(promptPacksDir, slug, "prompt pack slug");
+}
+
+function selectPackByFlags(flags) {
+  if (flags.pack) {
+    const dir = packDirFromSlug(flags.pack);
+    if (!existsSync(dir)) {
+      fail(`next-actions: prompt pack "${flags.pack}" was not found under ${promptPacksDir}.`, 1);
+    }
+    return dir;
+  }
+  if (flags.packLatest) {
+    const dirs = listPromptPackDirs();
+    if (dirs.length === 0) {
+      fail("next-actions: no prompt packs are available for --pack-latest.", 1);
+    }
+    return dirs[0];
+  }
+  return null;
+}
+
+function matchesProfile(manifest, expectedProfile) {
+  if (!expectedProfile) return true;
+  return manifest?.profile === expectedProfile;
+}
+
+function readJsonFileOrNull(rootDir, fileName, label) {
+  const safePath = safeJoinUnder(rootDir, fileName, label);
+  if (!existsSync(safePath)) return null;
+  try {
+    return require(safePath);
+  } catch {
+    return null;
+  }
+}
+
+function findLatestBrief() {
+  const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
+  if (!existsSync(briefsDir)) return null;
+  const files = readdirSync(briefsDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => {
+      const path = safeJoinUnder(briefsDir, entry.name, "brief file name");
+      let mtimeMs = 0;
+      try {
+        mtimeMs = statSync(path).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      return { path, mtimeMs };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return files[0]?.path ?? null;
+}
+
+function pendingStageHint(stage) {
+  if (stage === "understand") {
+    return "Run npm run harness:graph -- status and record freshness caveats in understand notes.";
+  }
+  if (stage === "architect-challenge") {
+    return "Run an independent architect challenge pass and resolve REVISE/BLOCKED concerns before implement.";
+  }
+  if (stage === "implement") {
+    return "Execute only the file changes declared in the Architecture Brief, then capture validation evidence.";
+  }
+  return null;
+}
+
+function nextActionSelectorLabel(flags) {
+  if (flags.pack) return `--pack ${flags.pack}`;
+  if (flags.packLatest) return "--pack-latest";
+  return "task-match";
+}
+
+function manifestMatchesTask(manifest, normalizedTask, explicitPackDir) {
+  if (explicitPackDir) return true;
+  if (!normalizedTask) return true;
+  const manifestTask = normalizeText(manifest?.task ?? "");
+  return (
+    manifestTask.length > 0 &&
+    (manifestTask.includes(normalizedTask) ||
+      normalizedTask.includes(manifestTask))
+  );
+}
+
+function selectManifestForNextActions(packDirs, normalizedTask, flags, explicitPackDir) {
+  for (const packDir of packDirs) {
+    const manifest = readJsonFileOrNull(
+      packDir,
+      "manifest.json",
+      "prompt pack manifest file",
+    );
+    if (!manifest) continue;
+    if (!matchesProfile(manifest, flags.profile)) continue;
+    if (!manifestMatchesTask(manifest, normalizedTask, explicitPackDir)) {
+      continue;
+    }
+    return { selectedPackDir: packDir, selectedManifest: manifest };
+  }
+  return { selectedPackDir: null, selectedManifest: null };
+}
+
+function findPendingStage(stagePrompts, packDir) {
+  return stagePrompts.find((stage) => {
+    const outputFile = stage?.outputFile;
+    if (typeof outputFile !== "string" || outputFile.trim().length === 0) {
+      return true;
+    }
+    return !isNonEmptyFileUnderRoot(packDir, outputFile, "stage output file name");
+  });
+}
+
+function nextStepsFileName(manifest) {
+  if (typeof manifest?.files?.nextSteps !== "string") {
+    return "next-steps.md";
+  }
+  return ensureSafeSegment(manifest.files.nextSteps, "next-steps file name");
+}
+
+function validateManifestPathFields(manifest, packDir) {
+  const nextStepsFile = nextStepsFileName(manifest);
+  safeJoinUnder(packDir, nextStepsFile, "next-steps file name");
+
+  const stagePrompts = Array.isArray(manifest?.files?.stagePrompts)
+    ? manifest.files.stagePrompts
+    : [];
+
+  stagePrompts.forEach((stagePrompt, index) => {
+    const prefix = `stage prompt #${index + 1}`;
+    if (
+      typeof stagePrompt?.promptFile === "string" &&
+      stagePrompt.promptFile.trim().length > 0
+    ) {
+      const safePrompt = ensureSafeSegment(
+        stagePrompt.promptFile,
+        `${prefix} prompt file name`,
+      );
+      safeJoinUnder(packDir, safePrompt, `${prefix} prompt file name`);
+    }
+    if (
+      typeof stagePrompt?.outputFile === "string" &&
+      stagePrompt.outputFile.trim().length > 0
+    ) {
+      const safeOutput = ensureSafeSegment(
+        stagePrompt.outputFile,
+        `${prefix} output file name`,
+      );
+      safeJoinUnder(packDir, safeOutput, `${prefix} output file name`);
+    }
+  });
+
+  return { nextStepsFile, stagePrompts };
+}
+
+function buildPendingActions(pending, selectedPackDir, nextStepsFile) {
+  const pendingPrompt =
+    typeof pending.promptFile === "string"
+      ? ensureSafeSegment(pending.promptFile, "stage prompt file name")
+      : null;
+  const pendingOutput =
+    typeof pending.outputFile === "string"
+      ? ensureSafeSegment(pending.outputFile, "stage output file name")
+      : null;
+  const stageHint = pendingStageHint(pending?.stage);
+  return [
+    pendingPrompt && pendingOutput
+      ? `Run ${pendingPrompt} in ${selectedPackDir} and write ${pendingOutput}.`
+      : null,
+    stageHint,
+    `Update ${nextStepsFile} with the latest status and top 3 actions.`,
+  ].filter(Boolean);
+}
+
+function buildCompletedActions() {
+  return [
+    "All staged outputs appear present in the selected prompt pack.",
+    "Run Feedback-stage verification and confirm decision logs are updated.",
+    "Start the next loop by generating a fresh handoff for remaining gaps or follow-up tasks.",
+  ];
+}
+
+function buildFallbackActions(taskText, latestBrief) {
+  if (latestBrief) {
+    return [
+      `Use ${latestBrief} as the source brief and continue with Implement-stage scoped edits.`,
+      "Run npm run harness:docs:check after edits and capture proof notes.",
+      "Run breadth and depth review stages before final feedback verdict updates.",
+    ];
+  }
+
+  const fallbackTask = taskText || "Describe the feature task";
+  return [
+    `Run node scripts/harness/prompt-router.mjs handoff --task "${fallbackTask}".`,
+    `Run node scripts/harness/prompt-router.mjs prompt-pack --task "${fallbackTask}".`,
+    "Start with Understand and produce a brief before implementation.",
+  ];
+}
+
+function inferNextActions(taskText, config, flags = {}) {
+  enforceNextActionSelectors(flags);
+  const normalizedTask = normalizeText(taskText);
+  const explicitPackDir = selectPackByFlags(flags);
+  const packDirs = explicitPackDir ? [explicitPackDir] : listPromptPackDirs();
+  const { selectedPackDir, selectedManifest } = selectManifestForNextActions(
+    packDirs,
+    normalizedTask,
+    flags,
+    explicitPackDir,
+  );
+
+  if (flags.profile && !selectedManifest) {
+    const selector = nextActionSelectorLabel(flags);
+    fail(
+      `next-actions: no prompt pack matched profile "${flags.profile}" using selector ${selector}.`,
+      1,
+    );
+  }
+
+  const fallbackRoute = taskText ? planTask(taskText, config, {}) : null;
+
+  if (selectedPackDir && selectedManifest) {
+    const { nextStepsFile, stagePrompts } = validateManifestPathFields(
+      selectedManifest,
+      selectedPackDir,
+    );
+    const pending = findPendingStage(stagePrompts, selectedPackDir);
+    const actions = pending
+      ? buildPendingActions(pending, selectedPackDir, nextStepsFile)
+      : buildCompletedActions();
+
+    return {
+      source: "prompt-pack",
+      packDir: selectedPackDir,
+      task: selectedManifest.task ?? taskText ?? "",
+      route: selectedManifest.stages ?? fallbackRoute?.stages ?? [],
+      pendingStage: pending?.stage ?? null,
+      actions: actions.slice(0, 3),
+    };
+  }
+
+  const latestBrief = taskText ? null : findLatestBrief();
+  const actions = buildFallbackActions(taskText, latestBrief);
+
+  return {
+    source: latestBrief ? "brief-fallback" : "route-fallback",
+    packDir: null,
+    task: taskText || "",
+    route: fallbackRoute?.stages ?? [],
+    pendingStage: latestBrief ? "implement" : "understand",
+    actions: actions.slice(0, 3),
+  };
+}
+
+function printNextActions(task, flags, config) {
+  const payload = inferNextActions(task, config, flags);
+  if (flags.json) {
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return;
+  }
+
+  const lines = [
+    `[prompt-router] next actions source: ${payload.source}`,
+    `[prompt-router] task: ${payload.task || "<none>"}`,
+  ];
+  if (payload.packDir) {
+    lines.push(`[prompt-router] prompt pack: ${payload.packDir}`);
+  }
+  if (payload.pendingStage) {
+    lines.push(`[prompt-router] pending stage: ${payload.pendingStage}`);
+  }
+  payload.actions.forEach((action, index) => {
+    lines.push(`[prompt-router] ${index + 1}. ${action}`);
+  });
+  process.stdout.write(`${lines.join("\n")}\n`);
 }
 
 function printPickProfile(route, asJson) {
@@ -992,6 +1372,82 @@ function printRouteOutput(command, route, flags) {
   );
 }
 
+function buildPreflightOverrideTelemetry({ route, command, reason, source }) {
+  return {
+    id: `pfo-${Date.now()}-${randomUUID().slice(0, 8)}`,
+    at: new Date().toISOString(),
+    command,
+    task: route?.task ?? "",
+    profile: route?.profile ?? null,
+    intent: route?.intent ?? null,
+    mode: route?.mode ?? null,
+    source,
+    reason,
+    user: process.env.USERNAME ?? process.env.USER ?? null,
+  };
+}
+
+function recordPreflightOverride(route, command, reason, source = "--allow-degraded-preflight") {
+  const payload = buildPreflightOverrideTelemetry({
+    route,
+    command,
+    reason,
+    source,
+  });
+  try {
+    mkdirSync(runsDir, { recursive: true });
+    appendFileSync(preflightOverrideLogPath, `${JSON.stringify(payload)}\n`, "utf8");
+    return { ok: true, path: preflightOverrideLogPath, payload };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      payload,
+    };
+  }
+}
+
+function enforceNonTrivialGraphPreflight(route, command, flags) {
+  if (route?.mode !== "non-trivial") {
+    return;
+  }
+
+  const coreStatus = buildGraphStatusCore({
+    repoRoot,
+    configPath,
+    probe: true,
+  });
+
+  if (coreStatus?.refreshReadiness?.ready) {
+    return;
+  }
+
+  const reason =
+    coreStatus?.degradationReason ||
+    coreStatus?.refreshReadiness?.reason ||
+    "unknown graph refresh degradation";
+
+  if (flags?.allowDegradedPreflight) {
+    const telemetry = recordPreflightOverride(route, command, reason);
+    if (!telemetry.ok) {
+      fail(
+        `${command} bypass denied: degraded preflight override audit logging failed (${telemetry.error}).`,
+        1,
+      );
+    }
+    process.stderr.write(
+      `[prompt-router] WARNING: bypassing degraded preflight via --allow-degraded-preflight. reason=${reason}; audit=${telemetry.path}\n`,
+    );
+    return;
+  }
+
+  fail(
+    `${command} blocked: non-trivial routes require graph refresh readiness, but readiness is degraded (${reason}). ` +
+      `Run "npm run harness:graph -- status" and configure the required refresh prerequisites (for understand-anything, set graph.pluginRoot/UNDERSTAND_PLUGIN_ROOT).`,
+    1,
+  );
+}
+
 function maybeRecordHandoff(route, command, config) {
   if (command !== "handoff") {
     return;
@@ -1025,14 +1481,21 @@ async function main() {
   }
 
   const task = flags.stdin ? await readStdin() : resolveTaskText(flags);
-  if (!task || !String(task).trim()) {
+  if (command !== "next-actions" && (!task || !String(task).trim())) {
     fail(`${command} requires --task "..." or --stdin`);
+  }
+
+  if (command === "next-actions") {
+    printNextActions(String(task ?? "").trim(), flags, config);
+    return;
   }
 
   const route = planTask(task, config, {
     profile: flags.profile,
     intent: flags.intent,
   });
+
+  enforceNonTrivialGraphPreflight(route, command, flags);
 
   maybeRecordHandoff(route, command, config);
 

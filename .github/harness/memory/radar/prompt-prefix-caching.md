@@ -35,4 +35,6 @@ The `llm-provider.mjs` module centralises all LLM calls. Adding a `cache_control
 | 2026-07-24 | candidate | Initial capture | radar-pass |
 | 2026-07-24 | adopted | Adoption gates pass: 1-file change to llm-provider.mjs, clear cost problem, no breaking risk, prefix is already stable across loop iterations. Next: Implement stage — add cache_control header for Anthropic provider. | radar-pass |
 | 2026-07-24 | parked | Prerequisite missing: llm-provider.mjs only supports local providers (Ollama/LM Studio). Cloud calls go through the DSPy Python bridge. Adding cache_control requires adding Anthropic SDK to the JS layer first — that is a larger change than assessed. Revisit when cloud provider support is added to llm-provider.mjs. | implement-pass |
+| 2026-07-26 | parked | Reevaluation audit: keep parked. Integration remains not applicable until cloud-provider support is added to the JS provider layer or equivalent cache controls are exposed through the active cloud path. | radar-reevaluation |
+| 2026-07-26 | parked | Follow-up prerequisite brief created: .github/harness/memory/briefs/prompt-prefix-caching-prerequisite-brief-2026-07-26.md. Entry remains parked pending cloud-path ownership and cache-control support. | implement-pass |
 

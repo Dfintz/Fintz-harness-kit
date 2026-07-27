@@ -154,6 +154,8 @@ warning, so partial configs degrade gracefully.
 ```bash
 node -e "JSON.parse(require('fs').readFileSync('harness.config.json','utf8'))"   # valid JSON
 npm run harness:loops                                                            # lists loops
+npm run harness:health -- --fast                                                 # quick required preflight
+npm run harness:health -- --json                                                 # full machine-readable health report
 node scripts/harness/run-experiment.mjs lint-debt-experiment --measure-only      # measures baseline
 npm run harness:report                                                           # builds the dashboard
 ```
@@ -225,6 +227,67 @@ For Claude Code or Cursor, add the same stdio entry to their MCP config:
 Verify the catalog with `node scripts/harness/mcp-tools.mjs list-tools`. The server is read-only
 (graph/memory/vector + routing/catalog discovery tools like `harness-pick-profile`,
 `harness-tool-discover`, `harness-catalog`); run loops from the CLI.
+
+### Optional security scan: Lurkr
+
+Use Lurkr as an opt-in static capability-risk scan in local checks or CI:
+
+- Wrapper script: `scripts/harness/lurkr-check.mjs`
+
+```bash
+# Configure your scanner command once (example):
+export HARNESS_LURKR_COMMAND="npx lurkr scan ."
+
+# Warning-mode run (never fails if scanner is missing/unconfigured):
+npm run harness:security:lurkr
+
+# Required mode (fails on missing config or scan failure):
+node scripts/harness/lurkr-check.mjs --required
+```
+
+Lurkr remains optional and is not required for baseline harness commands.
+
+### Optional docs drift check for changed capability surfaces
+
+Run warning-mode checks to detect changed capability surfaces that lack citations in harness docs:
+
+- Validator script: `scripts/harness/validate-doc-contracts.mjs`
+
+```bash
+npm run harness:docs:check:changed-surfaces
+```
+
+This mode adds warnings only and does not change default `harness:docs:check` pass/fail semantics.
+
+Resolver notes:
+- Token/config resolution is implemented in `scripts/harness/config.mjs`.
+
+### Next-actions command (formal subcommand)
+
+Use profile-aware and explicit prompt-pack selectors with `next-actions`:
+
+```bash
+# task-matching mode
+npm run harness:next-actions -- --task "ship auth audit"
+
+# explicit pack slug mode
+npm run harness:next-actions -- --pack review-auth-audit
+
+# latest pack mode
+npm run harness:next-actions -- --pack-latest
+
+# fail-closed profile filter
+npm run harness:next-actions -- --pack-latest --profile feature
+```
+
+Selector precedence is deterministic: `--pack` > `--pack-latest` > task-match > fallback.
+Invalid selector combination (`--pack` + `--pack-latest`) fails non-zero.
+
+### Example CI workflow for optional security gates
+
+- Example file: `.github/workflows/harness-optional-security-gates.example.yml`
+- Toggle semantics: optional checks run only when `HARNESS_ENABLE_OPTIONAL_SECURITY_GATES == 'true'`.
+- Changed-surface warning run includes explicit base ref using `--changed-surface-base`.
 
 Publish machine-readable capability artifacts for external recommenders:
 

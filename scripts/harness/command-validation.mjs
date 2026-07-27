@@ -99,13 +99,75 @@ function parseArgs(argv) {
     if (argv[i] === '--command' && argv[i + 1]) {
       flags.command = argv[i + 1];
       i += 1;
+      continue;
+    }
+    if (argv[i] === '--self-test') {
+      flags.selfTest = true;
     }
   }
   return flags;
 }
 
+function runSelfTest() {
+  const checks = [
+    {
+      name: 'accepts allowlisted executable',
+      run: () => validateAgentCommand('node scripts/harness/plan-review.mjs').ok === true,
+    },
+    {
+      name: 'rejects semicolon chaining',
+      run: () => {
+        const verdict = validateAgentCommand('node ok.mjs; rm -rf /');
+        return verdict.ok === false && /semicolon/.test(verdict.reason || '');
+      },
+    },
+    {
+      name: 'rejects empty command',
+      run: () => {
+        const verdict = validateAgentCommand('   ');
+        return verdict.ok === false && /empty/.test(verdict.reason || '');
+      },
+    },
+    {
+      name: 'respects custom allowlist',
+      run: () => validateAgentCommand('mytool --version', { allowedExecutables: ['mytool'] }).ok === true,
+    },
+    {
+      name: 'aliases mirror validator result',
+      run: () => {
+        const verdict = validateCliCommand('node -v');
+        return verdict.ok === true && verdict.executable === 'node';
+      },
+    },
+  ];
+
+  process.stdout.write(`[command-validation] self-test - ${checks.length} check(s)\n`);
+  let failed = 0;
+  for (const check of checks) {
+    let pass = false;
+    try {
+      pass = Boolean(check.run());
+    } catch {
+      pass = false;
+    }
+    process.stdout.write(`  ${pass ? 'PASS' : 'FAIL'}  ${check.name}\n`);
+    if (!pass) failed += 1;
+  }
+
+  if (failed > 0) {
+    process.stdout.write(`[command-validation] self-test FAILED (${failed} failing check(s))\n`);
+    process.exit(1);
+  }
+
+  process.stdout.write('[command-validation] self-test PASSED\n');
+  process.exit(0);
+}
+
 if (process.argv[1]?.endsWith('command-validation.mjs')) {
   const flags = parseArgs(process.argv.slice(2));
+  if (flags.selfTest) {
+    runSelfTest();
+  }
   const command = flags.command || process.env.HARNESS_AGENT_CMD || '';
   const verdict = validateAgentCommand(command);
   process.stdout.write(`${JSON.stringify({ command, ...verdict }, null, 2)}\n`);

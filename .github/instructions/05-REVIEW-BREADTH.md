@@ -105,6 +105,13 @@ Run all lanes that apply to the change. Report failures only.
     [Lurkr](https://github.com/agentveil-protocol/lurkr) to catch: shadow capabilities, credentials
     flowing into LLM context, eval/subprocess in tool handlers, direct prompt interpolation, and
     unverified MCP endpoints.
+    - Repo invocation path: `npm run harness:security:lurkr` (optional; configure scanner command via
+      `HARNESS_LURKR_COMMAND`).
+    - Wrapper implementation path: `scripts/harness/lurkr-check.mjs`.
+  - For capability-surface documentation drift checks, use `npm run harness:docs:check:changed-surfaces`
+    (implemented in `scripts/harness/validate-doc-contracts.mjs`).
+  - Config-token resolution boundaries are implemented in `scripts/harness/config.mjs`; review docs
+    that reference tokenized commands when this surface changes.
 
 ### Lane 3b - Spec conformance
 

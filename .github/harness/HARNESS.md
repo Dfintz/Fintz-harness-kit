@@ -35,6 +35,15 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 - `npm run harness:docs:check` validates registry stage contracts, loop references, skill metadata, and cited script or npm command paths across the harness docs surfaces.
 - `npm run harness:catalog:sync` publishes machine-readable capability artifacts (`llms.txt` + `.github/harness/catalog/harness-profile.json`).
 
+### Degraded preflight bypass (operator note)
+
+When non-trivial route or handoff preflight is degraded, treat `--allow-degraded-preflight` as an emergency override only (for example, incident response or urgent unblock where waiting for graph refresh is riskier).
+
+- Prefer fixing readiness first (for understand-anything, restore `graph.pluginRoot` and refresh graph).
+- If bypass is used, record the reason in the command context and review `.github/harness/runs/preflight-overrides.jsonl` after execution.
+- Audit review should verify: timestamp, command (`route` or `handoff`), task summary, and degraded reason match operator intent.
+- Follow-up action is required: remediate readiness and return to normal hard-fail behavior.
+
 ### Model Roles In The Shipped Environment Policy
 
 The harness applies a **three-tier capability model**. Copilot Auto is the recommended default for

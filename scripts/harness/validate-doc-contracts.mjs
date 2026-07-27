@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, relative, resolve } from "node:path";
 
 import { repoRoot } from "./config.mjs";
@@ -295,6 +296,107 @@ function validateCitedScripts(findings) {
   }
 }
 
+function parseArgs(argv) {
+  const flags = {
+    changedSurfaceWarnings: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--changed-surface-warnings") {
+      flags.changedSurfaceWarnings = true;
+    } else if (arg === "--changed-surface-base") {
+      flags.changedSurfaceBase = argv[i + 1];
+      i += 1;
+    }
+  }
+  return flags;
+}
+
+function listChangedFiles(baseRef) {
+  const relPaths = new Set();
+  const collect = (args) => {
+    const output = execFileSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    for (const line of output.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) relPaths.add(trimmed.replace(/\\/g, "/"));
+    }
+  };
+
+  if (baseRef && String(baseRef).trim().length > 0) {
+    collect(["diff", "--name-only", "--diff-filter=ACMR", `${baseRef}...HEAD`]);
+    return [...relPaths];
+  }
+
+  collect(["diff", "--name-only", "--diff-filter=ACMR"]);
+  collect(["diff", "--cached", "--name-only", "--diff-filter=ACMR"]);
+  collect(["ls-files", "--others", "--exclude-standard"]);
+  return [...relPaths];
+}
+
+function looksLikeCapabilitySurface(relPath) {
+  return (
+    relPath === ".github/harness/registry.json" ||
+    relPath.startsWith("scripts/harness/") ||
+    relPath.startsWith(".github/instructions/") ||
+    relPath.startsWith(".github/skills/") ||
+    relPath.startsWith(".claude/skills/")
+  );
+}
+
+function collectMarkdownTextMap() {
+  const map = new Map();
+  for (const markdownPath of collectMarkdownFiles()) {
+    map.set(relativePath(markdownPath), readFileSync(markdownPath, "utf8"));
+  }
+  return map;
+}
+
+function hasCitation(markdownTextMap, surfacePath) {
+  const surfaceBasename = surfacePath.split("/").pop() ?? surfacePath;
+  for (const text of markdownTextMap.values()) {
+    if (text.includes(surfacePath) || text.includes(surfaceBasename)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function validateChangedSurfaceCitations(findings, options = {}) {
+  let changedFiles;
+  try {
+    changedFiles = listChangedFiles(options.baseRef);
+  } catch (error) {
+    addWarning(
+      findings,
+      "changed-surface-scan-failed",
+      "git",
+      `Unable to inspect changed files for warning-mode surface checks: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+
+  const surfaces = changedFiles.filter(looksLikeCapabilitySurface);
+  if (surfaces.length === 0) {
+    return;
+  }
+
+  const markdownTextMap = collectMarkdownTextMap();
+  for (const surface of surfaces) {
+    if (!hasCitation(markdownTextMap, surface)) {
+      addWarning(
+        findings,
+        "missing-surface-citation",
+        surface,
+        "Changed capability surface has no citation in checked harness markdown docs (warning mode).",
+      );
+    }
+  }
+}
+
 function renderFindings(findings) {
   if (findings.length === 0) {
     return "[docs-contracts] OK\n";
@@ -307,6 +409,7 @@ function renderFindings(findings) {
 }
 
 function main() {
+  const flags = parseArgs(process.argv.slice(2));
   const registry = loadRegistry();
   const findings = [];
   validateWorkflowStages(registry, findings);
@@ -314,6 +417,11 @@ function main() {
   validateRegistryTooling(registry, findings);
   validateSkillEntries(registry, findings);
   validateCitedScripts(findings);
+  if (flags.changedSurfaceWarnings) {
+    validateChangedSurfaceCitations(findings, {
+      baseRef: flags.changedSurfaceBase,
+    });
+  }
 
   process.stdout.write(renderFindings(findings));
   if (findings.some((finding) => finding.level === "error")) {
