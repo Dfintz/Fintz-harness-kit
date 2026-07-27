@@ -1,4 +1,4 @@
-# Brief: Harness Consistency Review — Registry Gap, Package Version, llms.txt
+# Brief: Harness Consistency Review (Registry Gap, Package Version, llms.txt) — implemented
 
 resource: .github/harness/registry.json, package.json, llms.txt, harness.config.json
 
@@ -17,7 +17,7 @@ cosmetic — no behavioral regressions expected.
 ## Gaps and Fixes
 
 | # | Gap | Fix | File |
-|---|-----|-----|------|
+| --- | --- | --- | --- |
 | 1 | `prototype` skill missing from registry (19/20) | Add entry matching `.github/skills/prototype/SKILL.md` | `.github/harness/registry.json` |
 | 2 | `technique-triage.json` loop missing from registry (10/12) | Add entry | `.github/harness/registry.json` |
 | 3 | `package.json` version `1.0.0` (repo is at v2.0.0) | Bump to `2.0.0` | `package.json` |

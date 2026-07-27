@@ -287,6 +287,8 @@ Invalid selector combination (`--pack` + `--pack-latest`) fails non-zero.
 
 - Example file: `.github/workflows/harness-optional-security-gates.example.yml`
 - Toggle semantics: optional checks run only when `HARNESS_ENABLE_OPTIONAL_SECURITY_GATES == 'true'`.
+- Optional targeted OKF strict gate: set `HARNESS_ENABLE_OPTIONAL_OKF_STRICT_TARGETED='true'` to enforce strict OKF only on changed memory markdown files.
+- Optional changed-brief policy gate: set `HARNESS_ENABLE_OPTIONAL_MEMORY_BRIEF_POLICY='true'` to fail only when changed briefs violate strict status rules (`malformed-status`, `superseded-no-pointer`) or strict OKF conformance.
 - Changed-surface warning run includes explicit base ref using `--changed-surface-base`.
 
 Publish machine-readable capability artifacts for external recommenders:

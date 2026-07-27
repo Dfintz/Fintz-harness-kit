@@ -1,5 +1,5 @@
 ---
-# Optional OKF-compatible frontmatter (Open Knowledge Format v0.1: Markdown + YAML).
+# Optional OKF-compatible frontmatter (Open Knowledge Format v0.2: Markdown + YAML).
 # Additive — agents that ignore frontmatter still read the body unchanged. When present,
 # `summary` is the scannable line future sessions read instead of the H1.
 summary: <one-line summary of the lesson>

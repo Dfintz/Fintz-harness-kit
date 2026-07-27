@@ -138,6 +138,7 @@ This migration only updates loop journals missing the `approval` object, default
 `required=false` and `status=not-required`.
 
 Full adoption guide: [`SETUP.md`](SETUP.md). Loop protocol: [`.github/harness/LOOPS.md`](.github/harness/LOOPS.md).
+For optional CI gate toggles (including targeted OKF and changed-brief policy checks), see [`SETUP.md#example-ci-workflow-for-optional-security-gates`](SETUP.md#example-ci-workflow-for-optional-security-gates).
 
 ## Prompt routing policy
 
