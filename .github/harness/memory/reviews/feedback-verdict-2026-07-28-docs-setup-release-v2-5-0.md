@@ -7,7 +7,8 @@
 | 1 | Make docs/setup easier to use | Accepted and implemented | README install concrete examples + first-run checklist; SETUP quick onboarding + maintainer release checklist | HIGH | Closed |
 | 2 | Prepare release above v2.4.0 | Accepted and implemented | Version bumped to 2.5.0 in package surfaces and release notes created | HIGH | Closed |
 | 3 | Ensure release safety in dirty workspace | Challenge upheld then resolved | Revised architecture brief with preflight checks and partial-state handling policy | HIGH | Closed |
-| 4 | Commit, push, and create tag | In progress in release step | Preflight checks passed; commit/push/tag executed after validations | HIGH | Closed after command confirmation |
+| 4 | Commit, push, and create tag | Accepted and completed | Commit `2e54369` pushed to `origin/main`; tag `v2.5.0` created and pushed | HIGH | Closed |
+| 5 | Publish GitHub Release entry | Blocked by environment credential | `scripts/create-release.ps1` requires `GITHUB_TOKEN`; push/tag already completed | HIGH | Action required |
 
 ## Accepted changes
 - Documentation usability refresh in README and SETUP.
@@ -18,7 +19,7 @@
 - None.
 
 ## Deferred points
-- None.
+- GitHub Release publishing is pending token availability in this environment.
 
 ## Brief updates
 - `docs-setup-usability-and-release-v2-5-0-2026-07-28.md` updated after architect-challenge to add release safety preflight and bounded validation.
