@@ -1,50 +1,53 @@
 #!/usr/bin/env pwsh
-# Create GitHub Release for v2.2.1 using GitHub API
+# Create GitHub Release for v2.5.0 using GitHub API
 #
 # Prerequisites: GITHUB_TOKEN environment variable or git credential
 
 $owner = "Dfintz"
 $repo = "Fintz-harness-kit"
-$tag = "v2.2.1"
-$title = "v2.2.1 - Phase 5c Validation & Monitoring Suite"
+$tag = if ($env:HARNESS_RELEASE_TAG) { $env:HARNESS_RELEASE_TAG } else { "v2.5.0" }
+$title = if ($env:HARNESS_RELEASE_TITLE) { $env:HARNESS_RELEASE_TITLE } else { "v2.5.0 - Docs & Setup Usability Refresh" }
 $body = @"
-## Phase 5c Validation & Monitoring Suite
+## Docs & Setup Usability Refresh
 
 ### What's New
-- ✅ **Phase 5c Cascade Health Check** - Comprehensive 120-run validation confirming +3.4% quality improvement
-- ✅ **Live Monitoring Dashboard** - Real-time performance tracking for all 20 skills with tier-based grouping
-- ✅ **Regression Alerting** - Automatic alerts when any skill quality drops >5%
-- ✅ **Documentation Sync** - Updated llms.txt with Phase 5c model assignments
-- ✅ **Complete Deployment Summary** - Full documentation of Phase 5c workflow and sign-off
+- ✅ **Install commands made concrete** in README
+- ✅ **Fast onboarding checklists** in README and SETUP
+- ✅ **Maintainer release checklist** added to SETUP
+- ✅ **Internal versioning updated** to 2.5.0
+- ✅ **Historical command normalization** completed in memory artifacts
 
-### Validation Results
+### Validation Summary
 | Metric | Result |
 |--------|--------|
-| **Success Rate** | 100% ✅ |
-| **Avg Quality** | 0.817 (+3.4% vs Phase 5b) ✅ |
-| **Cascade Health** | HEALTHY ✅ |
-| **Regressions** | 0 ✅ |
-| **Production Ready** | YES ✅ |
+| **Docs Contract Check** | PASS ✅ |
+| **Fast Health Check** | PASS ✅ |
+| **Release Version** | v2.5.0 ✅ |
+| **Tag Target** | above v2.4.0 ✅ |
+| **Release Ready** | YES ✅ |
 
 ### Key Components
-- `scripts/harness/phase5c-cascade-health-check.mjs` - Validation engine
-- `scripts/harness/phase5c-live-monitor.mjs` - Live dashboard
-- `harness.config.json` - Phase 5c model routing (11 upgrades)
-- `llms.txt` - Updated model discovery metadata
+- `README.md` - usability and first-run updates
+- `SETUP.md` - onboarding and maintainer release checklist
+- `package.json` - version bump to 2.5.0
+- `package-lock.json` - aligned root package version
+- `RELEASE_NOTES_v2.5.0.md` - release notes source
 
 ### Getting Started
 \`\`\`bash
-npm run harness:phase5c:monitor       # Start live monitoring
-npm run harness:phase5c:cascade-health # Run validation
+npm run harness:health -- --fast
+npm run harness:docs:check
 \`\`\`
 
 ### Release History
 - v2.0.0 - Phase 5 GA
 - v2.1.0 - Project adoption template
 - v2.2.0 - Phase 5 Multi-Model Optimizer
-- **v2.2.1 - Phase 5c Validation & Monitoring Suite** ← Current
+- v2.3.0 - Phase 5c real measurement and Copilot integration
+- v2.4.0 - Prior stable release
+- **v2.5.0 - Docs & Setup Usability Refresh** ← Current
 
-**Status**: 🟢 Production-Ready | **Validated**: 2026-07-25
+**Status**: 🟢 Release-Ready | **Validated**: 2026-07-28
 "@
 
 $token = $env:GITHUB_TOKEN

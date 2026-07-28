@@ -23,7 +23,7 @@ resource: AGENTS.md, .github/harness/HARNESS.md, .github/harness/LOOPS.md, .gith
 
 ### Key decisions
 - Decision: Continue despite failed graph freshness gate, with explicit reduced-confidence annotation.
-  - Evidence: `npm run harness:graph -- status` and `graph genui-status` show missing `.understand-anything/knowledge-graph.json` and pluginRoot requirement.
+  - Evidence: `npm run harness:graph status` and `graph genui-status` show missing `.understand-anything/knowledge-graph.json` and pluginRoot requirement.
 - Decision: Use deterministic repository checks (`harness:docs:check`, `harness:report`, `harness:loops`) as primary evidence surfaces.
 - Decision: Treat stale generated artifacts under `.github/harness/optimized-skills/` as separate from core runtime script correctness, unless they pollute validation signal.
 
@@ -37,7 +37,7 @@ resource: AGENTS.md, .github/harness/HARNESS.md, .github/harness/LOOPS.md, .gith
   - `node scripts/harness/prompt-router.mjs route --task "..." --json`
   - `node scripts/harness/prompt-router.mjs handoff --task "..."`
 - Understand evidence:
-  - `npm run harness:graph -- status`
+  - `npm run harness:graph status`
   - `npm run harness:graph -- provider-status`
   - `node scripts/harness/graph.mjs genui-status --json`
 - Review evidence:

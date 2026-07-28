@@ -12,9 +12,8 @@
 
 import assert from "node:assert";
 import { execSync } from "node:child_process";
-import { writeFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const __dirname = import.meta.dirname;
 const repoRoot = join(__dirname, "..", "..", "..");
@@ -46,10 +45,14 @@ function runMcpTool(toolName, args) {
 function createTestConfig(overrides = {}) {
   const testConfigPath = join(repoRoot, ".harness-test-config.json");
   const config = {
+    project: {
+      name: "harness-test",
+      description: "Temporary config for command-dispatch unit tests",
+    },
     commands: {
-      "test-success": "echo 'Success'",
-      "test-failure": "exit 1",
-      "test-slow": "sleep 2 && echo 'Done'",
+      "test-success": "node -e \"console.log('Success')\"",
+      "test-failure": "node -e \"process.exit(1)\"",
+      "test-slow": "node -e \"setTimeout(() => console.log('Done'), 2000)\"",
       ...overrides.commands,
     },
     commandDispatch: {
@@ -149,10 +152,9 @@ function testEmptyCommand() {
 
   assert.strictEqual(result.ok, false, "Empty command should be rejected");
   assert.strictEqual(result.status, "error", "Status should be 'error'");
-  assert(result.error.includes("not found"), "Empty command should be treated as not found");
-  assert(Array.isArray(result.availableCommands), "availableCommands should still be returned");
+  assert(result.error.includes("empty string"), "Error should report empty command resolution");
 
-  console.log("  ✓ PASS: Empty command treated as not found with availableCommands");
+  console.log("  ✓ PASS: Empty command is rejected after resolution");
   rmSync(configPath);
   delete process.env.HARNESS_CONFIG_PATH;
 }

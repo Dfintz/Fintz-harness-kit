@@ -1,5 +1,45 @@
 #!/usr/bin/env node
+import { spawnSync } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { executeMcpTool } from './mcp-tools.mjs';
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const memoryLinkCliPath = resolve(scriptDir, 'memory-link-index.mjs');
+
+function shouldAttemptMemoryLinkBuild(memoryLinkResult) {
+  const errorText =
+    String(memoryLinkResult?.error ?? '') +
+    ' ' +
+    String(memoryLinkResult?.data?.error ?? '') +
+    ' ' +
+    String(memoryLinkResult?.stdout ?? '');
+  return /memory-link index not found/i.test(errorText);
+}
+
+function runMemoryLinkBuild() {
+  const run = spawnSync(process.execPath, [memoryLinkCliPath, 'build', '--force'], {
+    encoding: 'utf-8',
+    cwd: process.cwd(),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let data;
+  try {
+    data = run.stdout ? JSON.parse(run.stdout) : null;
+  } catch {
+    data = null;
+  }
+
+  return {
+    ok: run.status === 0 && Boolean(data?.ok),
+    exitCode: run.status,
+    data,
+    stdout: run.stdout || '',
+    stderr: run.stderr || '',
+    command: `${process.execPath} ${memoryLinkCliPath} build --force`,
+  };
+}
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -85,10 +125,23 @@ function cmdFind(flags) {
     top,
   });
 
-  const memoryLink = executeMcpTool('memory-link-search', {
+  let memoryLink = executeMcpTool('memory-link-search', {
     query,
     top,
   });
+
+  if (!memoryLink.ok && shouldAttemptMemoryLinkBuild(memoryLink)) {
+    const build = runMemoryLinkBuild();
+    memoryLink = executeMcpTool('memory-link-search', {
+      query,
+      top,
+    });
+    memoryLink = {
+      ...memoryLink,
+      autoBuilt: build.ok,
+      build,
+    };
+  }
 
   return {
     ok: memory.ok && vector.ok,

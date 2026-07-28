@@ -52,7 +52,7 @@ resource: package.json, scripts/harness/config-self-test.mjs, scripts/harness/gr
 | `--fast` | `npm run harness:config:self-test` | required | exit code `0` => pass, non-zero => fail |
 | default | `npm run harness:docs:check` | required | exit code `0` => pass, non-zero => fail |
 | default | `npm run harness:config:self-test` | required | exit code `0` => pass, non-zero => fail |
-| default | `npm run harness:graph -- status` | warning | always recorded; stale/degraded/non-zero is warning, not hard failure |
+| default | `npm run harness:graph status` | warning | always recorded; stale/degraded/non-zero is warning, not hard failure |
 
 Overall exit rule:
 - Exit non-zero only when one or more required checks fail.

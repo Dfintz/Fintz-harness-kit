@@ -48,7 +48,7 @@ resource: .github/harness/pilot/INTEGRATION-PLAN.md, .github/harness/pilot/QUICK
 ### Validation plan
 - `npm run harness:docs:check`
 - `npm run harness:route -- --task "fix all findings" --json` (sanity)
-- `npm run harness:graph -- status` (expected degraded warning retained, now documented with fallback)
+- `npm run harness:graph status` (expected degraded warning retained, now documented with fallback)
 - Targeted grep checks for removed missing script names in pilot docs.
 - `node scripts/harness/phase5/validate-skills.mjs --dry-run` to confirm canonicalized skill slug map still enumerates 20 skills and shifted set.
 - `node scripts/harness/measure-phase5c-real.mjs --provider local --dry-run` to verify understand-process prompt-packaging edits are loaded without runtime failures.

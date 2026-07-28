@@ -31,7 +31,7 @@ resource: .github/harness/HARNESS.md,.github/harness/LOOPS.md,.github/instructio
 - Keep review artifacts concise, severity-ranked, and evidence-cited.
 
 ### Validation plan
-- `npm run harness:graph -- status`
+- `npm run harness:graph status`
 - `npm run harness:graph -- provider-status`
 - `npm run harness:graph -- layers`
 - `npm run harness:graph -- hubs`

@@ -16,10 +16,10 @@ without copying folders by hand.
 
 ```bash
 # Any of 70+ agents, via the open Agent Skills CLI (-g installs globally for your user):
-npx skills add <owner>/harness-kit -g
+npx skills add Dfintz/harness-kit -g
 
 # A specific agent (or several):
-npx skills add <owner>/harness-kit -g -a github-copilot -a claude-code
+npx skills add Dfintz/harness-kit -g -a github-copilot -a claude-code
 
 # Or from a local checkout of this kit:
 npx skills add ./harness-kit --list      # discover, then add --skill harness to install
@@ -27,7 +27,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 
 ```text
 # Claude Code, via the native plugin marketplace (auto-updates):
-/plugin marketplace add <owner>/harness-kit
+/plugin marketplace add Dfintz/harness-kit
 /plugin install harness-kit
 ```
 
@@ -35,8 +35,7 @@ npx skills add ./harness-kit --list      # discover, then add --skill harness to
 contract (stages, gates, loops, memory) and is enough for guidance in any repo. The **runnable
 engine** (the `scripts/harness/*.mjs` loop runners, dashboard, and MCP server) ships with the kit
 files; get it by either installing the Claude Code **plugin** (bundles everything) or adopting the
-kit scaffold per [`SETUP.md`](SETUP.md). Replace `<owner>/harness-kit` with wherever you publish this
-kit.
+kit scaffold per [`SETUP.md`](SETUP.md).
 
 For the **GitHub Copilot App inside a repository**, the scaffold also ships
 `.github/copilot-instructions.md`. Once the kit is present in a repo, Copilot can load the harness
@@ -113,6 +112,16 @@ npm run harness:workspace-memory -- list --last 20
 # Optional: record a workflow run with explicit pending approval marker
 node scripts/harness/record-run.mjs --loop review-fix --state blocked --approval-required --approval-status pending --approval-note "Awaiting reviewer sign-off" --fail "Gate 3 ownership unresolved"
 ```
+
+### Fastest path to first successful run
+
+If you want the shortest onboarding route, do this in order:
+
+1. Edit `harness.config.json` and set your real `commands.lint`, `commands.typeCheck`, `commands.build`, and `commands.test`.
+2. Run `npm run harness:health -- --fast` and fix any required failures.
+3. Run `npm run harness:loops` to confirm loops are discoverable.
+4. Run one bounded loop: `node scripts/harness/run-loop.mjs build-fix --agent "<your agent CLI>"`.
+5. Generate operator outputs: `npm run harness:report` and `npm run harness:catalog:sync`.
 
 The dashboard's Pending approvals section is strict: it only shows runs with explicit journal markers
 (`approval.required=true` and `approval.status=pending`). It does not infer pending approvals from

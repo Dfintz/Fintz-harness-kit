@@ -40,7 +40,7 @@ resource: .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-feedba
 - Keep the pass evidence-driven with command outputs and diagnostics.
 
 ### Validation plan
-- npm run harness:graph -- status
+- npm run harness:graph status
 - mcp_snyk_mcp_serv_snyk_auth_status
 - mcp_snyk_mcp_serv_snyk_trust (repo root)
 - mcp_snyk_mcp_serv_snyk_code_scan (absolute path to scripts/harness/prompt-router.mjs)

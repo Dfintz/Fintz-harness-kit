@@ -6,15 +6,22 @@ APPROVED
 
 ## Evidence
 
-- Objective aligns to the prior deferred item exactly: the only missing evidence from [p1-2 feedback](.github/harness/memory/briefs/p1-2-prompt-router-path-hardening-feedback-2026-07-27.md) is the trusted-folder precondition for Snyk scan.
-- Scope is bounded and ownership is clear: no functional code changes are introduced; actions are operational (`auth_status` -> `snyk_trust` -> targeted `snyk_code_scan` -> diagnostics capture).
-- Approval boundary is explicit in the brief constraints and matches the current task request: run `snyk_trust` only with explicit user approval.
-- Validation is deterministic: the plan names concrete commands and a single absolute scan target tied to deferred evidence closure.
-
-## Remaining Blockers
-
-- None.
+- Challenged brief: `.github/harness/memory/briefs/docs-setup-usability-and-release-v2-5-0-2026-07-28.md` (revised).
+- Prior blocker package **is now explicitly present** as a mandatory preflight:
+  - Commit-scope confirmation via `git status --short` review.
+  - Local + remote tag-collision checks for `v2.5.0`.
+  - Version-coherence constraint across `package.json`, release notes, tag, and release helpers.
+  - Explicit partial-state handling if remote publish fails after local commit/tag.
+- Gate coverage is now acceptable for implementation start:
+  - Gate 1/3: domain and ownership remain limited to docs/setup/release metadata surfaces.
+  - Gate 4/4b: safety constraints prohibit destructive git behavior and require evidence-backed push/tag outcomes.
+  - Gate 5: reuse of existing harness commands is required; no parallel command surface introduced.
+- Validation plan includes concrete preflight/proof commands and release ordering suitable for an implementation-stage run.
 
 ## Required Revision Or Unblock Step
 
-- Proceed to implementation and execute the validation plan as written, recording command outputs in the listed stage artifacts.
+- None. Proceed to Implement with the brief as written.
+
+## Residual Risk Notes (Non-blocking)
+
+- `git push origin main` assumes direct-push policy; if branch protection requires PR flow, execution should stop and report that policy constraint as runtime context, not rewrite history.

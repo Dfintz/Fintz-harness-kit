@@ -23,7 +23,7 @@ resource: scripts/harness/prompt-router.mjs, scripts/harness/validate-doc-contra
 
 - Artifact: graph freshness checks
 - Finding: understand-anything refresh remains degraded without pluginRoot.
-- Evidence: npm run harness:graph -- status output during this run.
+- Evidence: npm run harness:graph status output during this run.
 - Impact: graph-derived impact mapping confidence remains reduced for cross-component claims.
 - Confidence: HIGH
 - Recommended fix: configure pluginRoot for graph refresh in environments that rely on full graph fidelity.

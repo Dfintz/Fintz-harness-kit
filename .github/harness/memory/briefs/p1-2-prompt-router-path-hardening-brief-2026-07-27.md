@@ -41,7 +41,7 @@ resource: scripts/harness/prompt-router.mjs, scripts/harness/mcp-tools.mjs, .git
 - Keep code style and module patterns consistent with nearby prompt-router helpers.
 
 ### Validation plan
-- npm run harness:graph -- status
+- npm run harness:graph status
 - node scripts/harness/prompt-router.mjs next-actions --task "ship auth audit" --json
 - node scripts/harness/prompt-router.mjs route --task "fix auth middleware race" --json
 - node scripts/harness/prompt-router.mjs next-actions --pack ".." (must fail non-zero)

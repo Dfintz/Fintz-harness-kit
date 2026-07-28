@@ -690,7 +690,7 @@ export function executeHarnessCommandDispatch(flags) {
 
     // Resolve command from config — supports string and object { command, vars } formats
     const commandEntry = commands[command];
-    if (!commandEntry) {
+    if (commandEntry === undefined) {
       const available = Object.keys(commands).filter(k => k !== '_note').sort();
       return {
         ok: false,

@@ -11,6 +11,17 @@ The harness has two distinct layers. **Never mix them into the same repo:**
 
 The engine is a tool. Your project repo holds only what is specific to your project.
 
+## Quick onboarding checklist
+
+Use this checklist if you want to get to a first valid harness run quickly.
+
+1. Choose Option A (overlay only) unless you explicitly need local engine execution inside the project repo.
+2. Fill `harness.config.json` first (`project.*` and all `commands.*` values).
+3. Run `npm run harness:health -- --fast` and resolve required failures.
+4. Run `npm run harness:loops` and then one loop (`build-fix`) with your agent command.
+5. Run `npm run harness:report` to produce `.github/harness/runs/report.html`.
+6. Run `npm run harness:catalog:sync` to publish `llms.txt` and catalog profile metadata.
+
 ---
 
 ## Option A — Project overlay only (recommended)
@@ -310,3 +321,13 @@ npm run harness:catalog:sync    # writes llms.txt + .github/harness/catalog/harn
 
 - Node.js ≥ 20 (core loops need nothing else).
 - Optional: Docker, Ollama or LM Studio (local-LLM loops), the Understand-Anything plugin.
+
+## Maintainer release checklist
+
+When preparing a new harness release:
+
+1. Update version surfaces consistently (`package.json`, release notes filename/title, git tag).
+2. Run `npm run harness:docs:check` and `npm run harness:health -- --fast`.
+3. Commit with a release-focused message that includes version.
+4. Push branch and tag (`git push origin <branch>` then `git push origin <tag>`).
+5. Publish GitHub release notes using the release note file for that version.

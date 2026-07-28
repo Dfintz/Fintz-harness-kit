@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Create GitHub Release for v2.2.1
+ * Create GitHub Release for v2.5.0
  * Uses GitHub API to create release from existing tag
  */
 
@@ -9,49 +9,50 @@ import fetch from 'node-fetch';
 
 const REPO_OWNER = 'Dfintz';
 const REPO_NAME = 'Fintz-harness-kit';
-const TAG = 'v2.2.1';
-const RELEASE_TITLE = 'v2.2.1 - Phase 5c Validation & Monitoring Suite';
-const RELEASE_BODY = `## Phase 5c Validation & Monitoring Suite
+const TAG = process.env.HARNESS_RELEASE_TAG || 'v2.5.0';
+const RELEASE_TITLE = process.env.HARNESS_RELEASE_TITLE || 'v2.5.0 - Docs & Setup Usability Refresh';
+const RELEASE_BODY = `## Docs & Setup Usability Refresh
 
 ### What's New
-- ✅ **Phase 5c Cascade Health Check** - Comprehensive 120-run validation confirming +3.4% quality improvement
-- ✅ **Live Monitoring Dashboard** - Real-time performance tracking for all 20 skills with tier-based grouping
-- ✅ **Regression Alerting** - Automatic alerts when any skill quality drops >5%
-- ✅ **Documentation Sync** - Updated llms.txt with Phase 5c model assignments
-- ✅ **Complete Deployment Summary** - Full documentation of Phase 5c workflow and sign-off
+- ✅ **Install commands made concrete** - README now uses direct install targets for faster first use
+- ✅ **Fast onboarding checklists** - Added short, ordered setup flow in README and SETUP
+- ✅ **Maintainer release checklist** - Added explicit release flow to reduce tag/version drift
+- ✅ **Version coherence update** - Internal package/lockfile version surfaces aligned to 2.5.0
+- ✅ **Historical command normalization** - Legacy memory artifacts now use a single canonical graph command form
 
-### Validation Results
+### Validation Summary
 | Metric | Result |
 |--------|--------|
-| **Success Rate** | 100% ✅ |
-| **Avg Quality** | 0.817 (+3.4% vs Phase 5b) ✅ |
-| **Cascade Health** | HEALTHY ✅ |
-| **Regressions** | 0 ✅ |
-| **Production Ready** | YES ✅ |
+| **Docs Contract Check** | PASS ✅ |
+| **Fast Health Check** | PASS ✅ |
+| **Release Version** | v2.5.0 ✅ |
+| **Tag Target** | above v2.4.0 ✅ |
+| **Release Ready** | YES ✅ |
 
 ### Key Components
-- \`scripts/harness/phase5c-cascade-health-check.mjs\` - Validation engine
-- \`scripts/harness/phase5c-live-monitor.mjs\` - Live dashboard
-- \`harness.config.json\` - Phase 5c model routing (11 upgrades)
-- \`llms.txt\` - Updated model discovery metadata
-- \`npm run harness:phase5c:monitor\` - Start live monitoring
-- \`npm run harness:phase5c:cascade-health\` - Run validation
+- \`README.md\` - usability and first-run updates
+- \`SETUP.md\` - onboarding and maintainer release checklist
+- \`package.json\` - version bump to 2.5.0
+- \`package-lock.json\` - aligned root package version
+- \`RELEASE_NOTES_v2.5.0.md\` - release notes source
 
 ### Release History
 - v2.0.0 - Phase 5 GA (120/120 success, +12-19% quality)
 - v2.1.0 - Project adoption template + consistency fixes
 - v2.2.0 - Phase 5 Multi-Model Optimizer (360 runs, +3.5% quality)
-- **v2.2.1 - Phase 5c Validation & Monitoring Suite** ← Current
+- v2.3.0 - Phase 5c real measurement and Copilot integration
+- v2.4.0 - Prior stable release
+- **v2.5.0 - Docs & Setup Usability Refresh** ← Current
 
 ### Next Steps
-1. Run live monitoring: \`npm run harness:phase5c:monitor\`
-2. Weekly performance review
-3. Monthly model re-evaluation
-4. Quarterly optimization cycle
+1. Follow the new README first-run checklist
+2. Use SETUP release checklist for the next version cut
+3. Keep version/tag/release-note surfaces in sync each release
+4. Re-run `harness:docs:check` before every tag
 
 ---
 
-**Status**: 🟢 Production-Ready | **Validated**: 2026-07-25`;
+**Status**: 🟢 Release-Ready | **Validated**: 2026-07-28`;
 
 // Get GitHub token from git config
 let token = null;

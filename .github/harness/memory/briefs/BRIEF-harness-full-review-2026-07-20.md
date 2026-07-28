@@ -114,7 +114,7 @@ A wide-angle audit of the harness kit to identify issues, gaps, and improvements
 
 **Evidence:** `harness.config.json` has `"graph.enabled": false`. HARNESS.md and WORKFLOW.md reference graph commands as mandatory freshness gates without surfacing the disabled state.
 
-**Impact:** Operators running `npm run harness:graph -- status` get an error ("Graph file not found") but HARNESS.md doesn't explain that this is expected when graph is disabled. Session-0 agents will report reduced confidence on every run without knowing why.
+**Impact:** Operators running `npm run harness:graph status` get an error ("Graph file not found") but HARNESS.md doesn't explain that this is expected when graph is disabled. Session-0 agents will report reduced confidence on every run without knowing why.
 
 **Fix:** Add a note to the Graph Freshness Gate section of `02-UNDERSTAND-WORKFLOW.md` and WORKFLOW.md explaining that when `graph.enabled = false`, the gate degrades gracefully to direct file-reads with explicit reduced-confidence annotation.
 
