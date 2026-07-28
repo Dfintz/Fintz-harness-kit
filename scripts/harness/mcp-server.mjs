@@ -24,9 +24,10 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { harnessRuntimeRoot, repoRoot } from "./config.mjs";
+import { harnessRuntimeRoot, repoRoot, loadConfig } from "./config.mjs";
 import { ErrorCode, createErrorResponse, errorCodeToJsonRpcCode } from "./mcp-contracts.mjs";
 import { ResourceCache } from "./mcp-cache.mjs";
+import { logCommandDispatchAudit, buildCommandDispatchRecord } from "./mcp-audit.mjs";
 import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resources.mjs";
 
 const wrapperPath = join(
@@ -578,6 +579,24 @@ const toolSpecs = [
       return cliArgs;
     },
   },
+  {
+    name: "harness-command-dispatch",
+    description:
+      "Execute a harness command from the adopting project's harness.config.json.",
+    inputSchema: objectSchema(
+      {
+        command: {
+          type: "string",
+          description: "Command name to execute (e.g., 'lint', 'test', 'build')",
+        },
+      },
+      ["command"],
+    ),
+    toCliArgs: (args) => {
+      const command = readRequiredString(args, "command");
+      return ["--command", command];
+    },
+  },
 ];
 
 const toolByName = new Map(toolSpecs.map((spec) => [spec.name, spec]));
@@ -1024,6 +1043,38 @@ function createServer() {
 
     const result = runWrapper(toolName, cliArgs);
     const structuredContent = toStructuredContent(result.payload);
+
+    // Audit command dispatch invocations (immutable .jsonl)
+    // Note: Handler truncates output to 10KB for MCP response size limits;
+    // audit module truncates to 1KB to keep .jsonl file compact and queryable.
+    // Separate truncation strategies are intentional and correct.
+    if (toolName === "harness-command-dispatch" && result.payload) {
+      try {
+        const auditRecord = buildCommandDispatchRecord({
+          command: result.payload.command,
+          commandResolved: result.payload.commandResolved,
+          exitCode: result.payload.exitCode,
+          stdout: result.payload.stdout,
+          stderr: result.payload.stderr,
+          elapsedMs: result.payload.elapsedMs,
+          timeout: result.payload.timeout,
+          status: result.payload.status,
+          error: result.payload.error,
+        });
+        const config = loadConfig();
+        const auditPath = config?.commandDispatch?.auditPath;
+        if (auditPath) {
+          logCommandDispatchAudit(auditPath, auditRecord);
+        }
+      } catch (auditErr) {
+        console.error(
+          `[mcp-server] Audit logging failed: ${
+            auditErr instanceof Error ? auditErr.message : String(auditErr)
+          }`
+        );
+        // Continue anyway; audit failure should not block tool execution
+      }
+    }
 
     if (!result.ok) {
       const errorPayload = {
