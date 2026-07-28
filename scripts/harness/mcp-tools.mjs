@@ -15,6 +15,7 @@ import { buildCatalog } from "./harness-catalog.mjs";
 import { buildMcpListPayload, mcpToolSpecs } from "./mcp-contracts.mjs";
 import { loadConfig as loadRouterConfig, planTask } from "./prompt-router.mjs";
 import { loadConfig } from "./config.mjs";
+import { resolveTemplate } from "./mcp-template-resolver.mjs";
 
 const graphCliPath = join(
   harnessRuntimeRoot,
@@ -676,25 +677,89 @@ function executeMemoryLinkTool(toolName, flags) {
 }
 
 export function executeHarnessCommandDispatch(flags) {
-  const command = requireValue(
-    flags,
-    "command",
-    "harness-command-dispatch requires --command",
-  );
-
+  let command;
   try {
+    command = requireValue(
+      flags,
+      "command",
+      "harness-command-dispatch requires --command",
+    );
     // Load config from adopting project's harness.config.json
     const config = loadConfig();
     const commands = config?.commands || {};
 
-    // Resolve command from config
-    const commandStr = commands[command];
-    if (typeof commandStr !== "string" || !commandStr.trim()) {
-      const available = Object.keys(commands).sort();
+    // Resolve command from config — supports string and object { command, vars } formats
+    const commandEntry = commands[command];
+    if (!commandEntry) {
+      const available = Object.keys(commands).filter(k => k !== '_note').sort();
       return {
         ok: false,
-        error: `Command '${command}' not found or is not a string in harness.config.json`,
+        error: `Command '${command}' not found in harness.config.json`,
         availableCommands: available,
+        status: "error",
+      };
+    }
+
+    // Normalize to { commandStr, varSchema }
+    let commandStr;
+    let varSchema = null;
+    if (typeof commandEntry === "string") {
+      commandStr = commandEntry;
+    } else if (typeof commandEntry === "object" && typeof commandEntry.command === "string") {
+      commandStr = commandEntry.command;
+      varSchema = commandEntry.vars || null;
+    } else {
+      const available = Object.keys(commands).filter(k => k !== '_note').sort();
+      return {
+        ok: false,
+        error: `Command '${command}' has invalid format in harness.config.json (must be string or {command, vars} object)`,
+        availableCommands: available,
+        status: "error",
+      };
+    }
+
+    // Template expansion: resolve ${varName} placeholders if command has a vars schema
+    if (varSchema) {
+      // Parse --vars JSON string from flags
+      let requestVars = {};
+      if (flags.vars) {
+        try {
+          requestVars = typeof flags.vars === "string" ? JSON.parse(flags.vars) : flags.vars;
+        } catch {
+          return {
+            ok: false,
+            command,
+            exitCode: -1,
+            status: "error",
+            error: "--vars must be a valid JSON object",
+          };
+        }
+      }
+
+      const resolution = resolveTemplate(
+        commandStr,
+        requestVars,
+        varSchema,
+        config?.commandDispatch,
+      );
+
+      if (resolution.error) {
+        return {
+          ok: false,
+          command,
+          exitCode: -1,
+          status: "error",
+          error: `Template resolution failed: ${resolution.error}`,
+        };
+      }
+
+      commandStr = resolution.resolved;
+    }
+
+    if (!commandStr.trim()) {
+      return {
+        ok: false,
+        error: `Command '${command}' resolved to empty string`,
         status: "error",
       };
     }
@@ -762,7 +827,7 @@ export function executeHarnessCommandDispatch(flags) {
   } catch (error) {
     try {
       const config = loadConfig();
-      const available = Object.keys(config?.commands || {}).sort();
+      const available = Object.keys(config?.commands || {}).filter(k => k !== '_note').sort();
       return {
         ok: false,
         command,

@@ -56,6 +56,8 @@ export function buildCommandDispatchRecord({
   timeout = null,
   status = "success",
   error = null,
+  caller = null,
+  quota = null,
 }) {
   return {
     command,
@@ -67,6 +69,9 @@ export function buildCommandDispatchRecord({
     timeout,
     status, // "success" | "timeout" | "error"
     error,
+    // Phase 2a: caller + quota audit fields (null if not available)
+    ...(caller !== null && { caller }),
+    ...(quota !== null && { quota }),
   };
 }
 

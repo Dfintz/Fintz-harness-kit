@@ -29,6 +29,8 @@ import { ErrorCode, createErrorResponse, errorCodeToJsonRpcCode } from "./mcp-co
 import { ResourceCache } from "./mcp-cache.mjs";
 import { logCommandDispatchAudit, buildCommandDispatchRecord } from "./mcp-audit.mjs";
 import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resources.mjs";
+import { createRateLimiter } from "./mcp-rate-limiter.mjs";
+import { extractCallerIdentity, isAuthorized, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
 
 const wrapperPath = join(
   harnessRuntimeRoot,
@@ -589,12 +591,39 @@ const toolSpecs = [
           type: "string",
           description: "Command name to execute (e.g., 'lint', 'test', 'build')",
         },
+        context: {
+          type: "object",
+          description: "Optional MCP caller context for auth logging (Phase 2a).",
+          properties: {
+            caller: {
+              type: "object",
+              properties: {
+                token: { type: "string", description: "Caller auth token" },
+                role: {
+                  type: "string",
+                  enum: ["executor", "auditor", "restricted"],
+                  description: "Caller role",
+                },
+              },
+            },
+          },
+        },
+        vars: {
+          type: "object",
+          description: "Template variables for parameterized commands (Phase 2b — not yet enforced; declare here to reserve the field).",
+          additionalProperties: true,
+        },
       },
       ["command"],
     ),
     toCliArgs: (args) => {
       const command = readRequiredString(args, "command");
-      return ["--command", command];
+      const cliArgs = ["--command", command];
+      // Pass vars as JSON string when provided (template expansion in mcp-tools.mjs)
+      if (args.vars && typeof args.vars === "object" && Object.keys(args.vars).length > 0) {
+        cliArgs.push("--vars", JSON.stringify(args.vars));
+      }
+      return cliArgs;
     },
   },
 ];
@@ -873,6 +902,9 @@ function createServer() {
   // Initialize cache (Phase 2a: TTL-based, 5-minute expiry)
   const cache = new ResourceCache(5 * 60 * 1000);
 
+  // Server-scoped rate-limiter instance (isolated state per server; supports Phase 2c store injection)
+  const limiter = createRateLimiter();
+
   const server = new Server(
     {
       name: "sc-fleet-harness-mcp",
@@ -1020,6 +1052,35 @@ function createServer() {
     }
   });
 
+  /**
+   * Phase 2a governance guard for harness-command-dispatch tool.
+   * Extracted here to keep the CallToolRequestSchema handler as a thin dispatcher.
+   * Returns {allowed, callerInfo, quotaInfo, dispatchConfig} or {allowed: false, errorResponse}.
+   * Phase 2b/2c: add template resolution, role enforcement, persistent quota here.
+   */
+  function runDispatchGuard(params) {
+    const dispatchConfig = loadConfig();
+    const mcpContext = params?.context || {};
+    const callerInfo = extractCallerIdentity(mcpContext);
+
+    const rateLimitEnabled = dispatchConfig?.commandDispatch?.rateLimit?.enabled !== false;
+    if (rateLimitEnabled) {
+      const quotaInfo = limiter.checkQuota(callerInfo.callerId, dispatchConfig?.commandDispatch);
+      if (!quotaInfo.allowed) {
+        return {
+          allowed: false,
+          errorResponse: createErrorResponse(
+            ErrorCode.INVALID_ARGUMENTS,
+            `Rate limit exceeded. Retry after ${Math.ceil(quotaInfo.retryAfterMs / 1000)}s.`
+          ),
+        };
+      }
+      return { allowed: true, callerInfo, quotaInfo, dispatchConfig };
+    }
+
+    return { allowed: true, callerInfo, quotaInfo: null, dispatchConfig };
+  }
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
     const spec = toolByName.get(toolName);
@@ -1041,6 +1102,16 @@ function createServer() {
       );
     }
 
+    // Phase 2a: Governance guard for command dispatch (rate limiting + auth extraction)
+    let callerInfo = null;
+    let quotaInfo = null;
+    let dispatchConfig = null;
+    if (toolName === "harness-command-dispatch") {
+      const guard = runDispatchGuard(request.params);
+      if (!guard.allowed) return guard.errorResponse;
+      ({ callerInfo, quotaInfo, dispatchConfig } = guard);
+    }
+
     const result = runWrapper(toolName, cliArgs);
     const structuredContent = toStructuredContent(result.payload);
 
@@ -1050,6 +1121,12 @@ function createServer() {
     // Separate truncation strategies are intentional and correct.
     if (toolName === "harness-command-dispatch" && result.payload) {
       try {
+        // Reuse hoisted config (single loadConfig() read per request)
+        const config = dispatchConfig ?? loadConfig();
+        // Phase 2a: Enrich audit record with caller + quota info
+        const callerAudit = callerInfo
+          ? getCallerAuditInfo(callerInfo, result.payload.command, config)
+          : null;
         const auditRecord = buildCommandDispatchRecord({
           command: result.payload.command,
           commandResolved: result.payload.commandResolved,
@@ -1060,8 +1137,9 @@ function createServer() {
           timeout: result.payload.timeout,
           status: result.payload.status,
           error: result.payload.error,
+          caller: callerAudit,
+          quota: quotaInfo ? { remaining: quotaInfo.remaining } : null,
         });
-        const config = loadConfig();
         const auditPath = config?.commandDispatch?.auditPath;
         if (auditPath) {
           logCommandDispatchAudit(auditPath, auditRecord);
