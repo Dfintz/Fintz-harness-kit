@@ -14,6 +14,7 @@ import { harnessRuntimeRoot, repoRoot } from "./config.mjs";
 import { buildCatalog } from "./harness-catalog.mjs";
 import { buildMcpListPayload, mcpToolSpecs } from "./mcp-contracts.mjs";
 import { loadConfig as loadRouterConfig, planTask } from "./prompt-router.mjs";
+import { loadConfig } from "./config.mjs";
 
 const graphCliPath = join(
   harnessRuntimeRoot,
@@ -674,6 +675,114 @@ function executeMemoryLinkTool(toolName, flags) {
   return runCli(memoryLinkCliPath, handler());
 }
 
+export function executeHarnessCommandDispatch(flags) {
+  const command = requireValue(
+    flags,
+    "command",
+    "harness-command-dispatch requires --command",
+  );
+
+  try {
+    // Load config from adopting project's harness.config.json
+    const config = loadConfig();
+    const commands = config?.commands || {};
+
+    // Resolve command from config
+    const commandStr = commands[command];
+    if (typeof commandStr !== "string" || !commandStr.trim()) {
+      const available = Object.keys(commands).sort();
+      return {
+        ok: false,
+        error: `Command '${command}' not found or is not a string in harness.config.json`,
+        availableCommands: available,
+        status: "error",
+      };
+    }
+
+    // Truncate output to prevent MCP buffer bloat
+    const truncateOutput = (text, max) =>
+      text && text.length > max ? text.substring(0, max) + `\n... (${text.length - max} chars truncated)` : text || "";
+
+    // Execute command with timeout (default 30s)
+    const timeout = config?.commandDispatch?.timeoutMs || 30000;
+    const startTime = Date.now();
+
+    const result = spawnSync(commandStr, [], {
+      shell: true,
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const elapsedMs = Date.now() - startTime;
+    const timedOut = result.error?.code === "ETIMEDOUT";
+
+    if (timedOut) {
+      return {
+        ok: false,
+        command,
+        commandResolved: commandStr,
+        exitCode: -1,
+        stdout: result.stdout || "",
+        stderr: result.stderr || `Command timed out after ${timeout}ms`,
+        elapsedMs,
+        timeout,
+        status: "timeout",
+        error: `Command timed out after ${timeout}ms`,
+      };
+    }
+
+    if (result.error) {
+      return {
+        ok: false,
+        command,
+        commandResolved: commandStr,
+        exitCode: -1,
+        stdout: result.stdout || "",
+        stderr: result.stderr || result.error.message,
+        elapsedMs,
+        timeout,
+        status: "error",
+        error: result.error.message,
+      };
+    }
+
+    return {
+      ok: result.status === 0,
+      command,
+      commandResolved: commandStr,
+      exitCode: result.status ?? 0,
+      stdout: truncateOutput(result.stdout, 10000),
+      stderr: truncateOutput(result.stderr, 10000),
+      elapsedMs,
+      timeout,
+      status: result.status === 0 ? "success" : "exit-nonzero",
+    };
+  } catch (error) {
+    try {
+      const config = loadConfig();
+      const available = Object.keys(config?.commands || {}).sort();
+      return {
+        ok: false,
+        command,
+        exitCode: -1,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+        availableCommands: available,
+      };
+    } catch {
+      return {
+        ok: false,
+        command,
+        exitCode: -1,
+        status: "error",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+}
+
 function executeToolWithFlags(toolName, flags) {
   if (toolName.startsWith("graph-")) return executeGraphTool(toolName, flags);
   if (toolName === "memory-list") return executeMemoryList(flags);
@@ -689,6 +798,8 @@ function executeToolWithFlags(toolName, flags) {
     return executeHarnessPickProfile(flags);
   if (toolName === "harness-tool-discover")
     return executeHarnessToolDiscover(flags);
+  if (toolName === "harness-command-dispatch")
+    return executeHarnessCommandDispatch(flags);
   throw new Error(`Unknown tool: ${toolName}`);
 }
 

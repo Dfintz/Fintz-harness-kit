@@ -545,6 +545,22 @@ export const mcpToolSpecs = [
       return cliArgs;
     },
   },
+  {
+    name: 'harness-command-dispatch',
+    description:
+      'Dispatch a harness command (lint, test, build, typeCheck, etc.) defined in the adopting project\'s harness.config.json. Returns exit code, stdout, stderr, and command execution metadata.',
+    inputSchema: objectSchema(
+      {
+        command: {
+          type: 'string',
+          description:
+            'Name of the command to dispatch (e.g., lint, test, build). Must exist in harness.config.json commands section.',
+        },
+      },
+      ['command']
+    ),
+    toCliArgs: args => ['--command', readRequiredString(args, 'command')],
+  },
 ];
 
 /**
