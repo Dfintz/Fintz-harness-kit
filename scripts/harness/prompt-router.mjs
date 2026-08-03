@@ -15,6 +15,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
@@ -33,6 +34,12 @@ const runsDir = join(repoRoot, ".github", "harness", "runs");
 const handoffLogPath = join(runsDir, "handoffs.jsonl");
 const preflightOverrideLogPath = join(runsDir, "preflight-overrides.jsonl");
 const promptPacksDir = join(runsDir, "prompt-packs");
+const featureRunsDir = join(runsDir, "feature-runs");
+const featureRunIndexPath = join(featureRunsDir, "index.json");
+const featureRunManifestAllowlist = createManifestAllowlist({
+  rootDir: featureRunsDir,
+  fail,
+});
 
 const DEFAULT_STAGE_PROMPT_METADATA = {
   understand: {
@@ -404,6 +411,7 @@ function buildHandoffTelemetry(route, command, config) {
     id: `hof-${Date.now()}-${randomUUID().slice(0, 8)}`,
     at: new Date().toISOString(),
     command,
+    runId: route.runId ?? null,
     task: route.task,
     profile: route.profile,
     intent: route.intent,
@@ -568,6 +576,268 @@ function summarizeCrossModelReview(stages, models) {
   return `${implementModel} -> [${distinctReviewModels.join(", ")}]`;
 }
 
+function normalizeTaskKey(taskText) {
+  return normalizeText(taskText).replace(/\s+/g, " ").trim();
+}
+
+function toRepoRelativePath(pathValue) {
+  if (typeof pathValue !== "string" || !pathValue.trim()) {
+    fail(`invalid repository path: ${JSON.stringify(pathValue)}`);
+  }
+  const repoRootNormalized = repoRoot.replaceAll("\\", "/");
+  const pathNormalized = pathValue.replaceAll("\\", "/");
+  const rootPrefix = repoRootNormalized.endsWith("/")
+    ? repoRootNormalized
+    : `${repoRootNormalized}/`;
+
+  if (pathNormalized !== repoRootNormalized && !pathNormalized.startsWith(rootPrefix)) {
+    fail(`invalid repository path: ${JSON.stringify(pathValue)}`);
+  }
+
+  const relative = pathNormalized.slice(repoRootNormalized.length);
+  return relative.startsWith("/") ? relative.slice(1) : relative;
+}
+
+function toFeatureRunRelativePath(pathValue, label) {
+  if (typeof pathValue !== "string" || !pathValue.trim()) {
+    fail(`invalid ${label}: ${JSON.stringify(pathValue)}`);
+  }
+  assertContainedPath(featureRunsDir, pathValue, label);
+
+  const rootNormalized = featureRunsDir.replaceAll("\\", "/");
+  const pathNormalized = pathValue.replaceAll("\\", "/");
+  const rootPrefix = rootNormalized.endsWith("/")
+    ? rootNormalized
+    : `${rootNormalized}/`;
+  const relative = pathNormalized.slice(rootPrefix.length).replace(/^\/+/, "");
+
+  if (!relative) {
+    fail(`invalid ${label}: ${JSON.stringify(pathValue)}`);
+  }
+
+  const segments = relative.split("/").filter(Boolean);
+  for (const segment of segments) {
+    ensureSafeSegment(segment, `${label} segment`);
+  }
+  return segments.join("/");
+}
+
+function buildFeatureRunFileManifest() {
+  if (!existsSync(featureRunsDir)) {
+    return new Map();
+  }
+  const map = new Map();
+  const queue = [{ absoluteDir: featureRunsDir, relativeDir: "" }];
+  while (queue.length > 0) {
+    const next = queue.pop();
+    const entries = readdirSync(next.absoluteDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const childRelative = next.relativeDir
+        ? `${next.relativeDir}/${entry.name}`
+        : entry.name;
+      const childAbsolute = join(next.absoluteDir, entry.name);
+      if (entry.isDirectory()) {
+        queue.push({ absoluteDir: childAbsolute, relativeDir: childRelative });
+        continue;
+      }
+      if (entry.isFile()) {
+        map.set(childRelative.replaceAll("\\", "/"), childAbsolute);
+      }
+    }
+  }
+  return map;
+}
+
+function selectFeatureRunManifestPath(relativePath, label) {
+  const selectedPath = buildFeatureRunFileManifest().get(relativePath);
+  if (!selectedPath) {
+    fail(`${label} not found in feature-runs manifest: ${relativePath}`);
+  }
+  return selectedPath;
+}
+
+function readJsonFileOrDefault(filePath, fallbackValue) {
+  const label = "feature run json file path";
+  const relativePath = toFeatureRunRelativePath(filePath, label);
+  if (!/(^|\/)(index|manifest)\.json$/i.test(relativePath)) {
+    fail(`invalid ${label}: ${JSON.stringify(filePath)}`);
+  }
+  if (!existsSync(filePath)) {
+    return fallbackValue;
+  }
+  try {
+    return JSON.parse(featureRunManifestAllowlist.readUtf8Relative(relativePath, label));
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function writeJsonFile(filePath, payload) {
+  assertContainedPath(featureRunsDir, filePath, "feature run json file path");
+  mkdirSync(dirname(filePath), { recursive: true });
+  writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+function mintFeatureRunId() {
+  const timestamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+  return `run-${timestamp}-${randomUUID().slice(0, 8)}`;
+}
+
+function loadFeatureRunIndex() {
+  const parsed = readJsonFileOrDefault(featureRunIndexPath, {
+    version: 1,
+    tasks: {},
+  });
+  if (!parsed || typeof parsed !== "object") {
+    return { version: 1, tasks: {} };
+  }
+  if (!parsed.tasks || typeof parsed.tasks !== "object") {
+    parsed.tasks = {};
+  }
+  return parsed;
+}
+
+function saveFeatureRunIndex(index) {
+  writeJsonFile(featureRunIndexPath, index);
+}
+
+function buildDefaultFeatureRunManifest(route, runId, runDir, taskKey) {
+  return {
+    schemaVersion: 1,
+    runId,
+    task: route.task,
+    taskKey,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    mode: route.mode,
+    profile: route.profile,
+    intent: route.intent,
+    intentSource: route.intentSource,
+    why: route.why,
+    stages: route.stages,
+    models: route.models,
+    crossModelReview: route.crossModelReview,
+    runDir: toRepoRelativePath(runDir),
+    artifacts: {
+      route: null,
+      handoff: null,
+      promptPackDir: null,
+      comparativeReviewLedger: null,
+      councilReviewEnvelope: null,
+      planReviewJournal: null,
+      comparativeReviewFinalLedger: null,
+      brief: null,
+      implementation: null,
+      reviewBreadth: null,
+      reviewDepth: null,
+      feedback: null,
+    },
+  };
+}
+
+function createOrReuseFeatureRun(route) {
+  const taskKey = normalizeTaskKey(route.task);
+  if (!taskKey) {
+    return null;
+  }
+
+  const index = loadFeatureRunIndex();
+  const existing = index.tasks[taskKey];
+  const candidateRunId =
+    existing && typeof existing.runId === "string" && /^[A-Za-z0-9._-]+$/.test(existing.runId)
+      ? existing.runId
+      : null;
+  const runId = candidateRunId ?? mintFeatureRunId();
+  const runDir = safeJoinUnder(featureRunsDir, runId, "feature run directory");
+  mkdirSync(runDir, { recursive: true });
+
+  const manifestPath = safeJoinUnder(runDir, "manifest.json", "feature run manifest");
+  const existingManifest = readJsonFileOrDefault(manifestPath, null);
+  const manifest =
+    existingManifest && typeof existingManifest === "object"
+      ? existingManifest
+      : buildDefaultFeatureRunManifest(route, runId, runDir, taskKey);
+
+  manifest.runId = runId;
+  manifest.task = route.task;
+  manifest.taskKey = taskKey;
+  manifest.mode = route.mode;
+  manifest.profile = route.profile;
+  manifest.intent = route.intent;
+  manifest.intentSource = route.intentSource;
+  manifest.why = route.why;
+  manifest.stages = route.stages;
+  manifest.models = route.models;
+  manifest.crossModelReview = route.crossModelReview;
+  manifest.runDir = toRepoRelativePath(runDir);
+  manifest.updatedAt = new Date().toISOString();
+  if (!manifest.createdAt) {
+    manifest.createdAt = manifest.updatedAt;
+  }
+  if (!manifest.artifacts || typeof manifest.artifacts !== "object") {
+    manifest.artifacts = buildDefaultFeatureRunManifest(route, runId, runDir, taskKey).artifacts;
+  }
+
+  index.tasks[taskKey] = {
+    runId,
+    updatedAt: manifest.updatedAt,
+    status: "active",
+  };
+
+  saveFeatureRunIndex(index);
+  writeJsonFile(manifestPath, manifest);
+
+  return {
+    runId,
+    runDir,
+    manifestPath,
+    taskKey,
+  };
+}
+
+function updateFeatureRunManifest(featureRunContext, mutate) {
+  if (!featureRunContext) {
+    return;
+  }
+  const manifest = readJsonFileOrDefault(featureRunContext.manifestPath, null);
+  if (!manifest || typeof manifest !== "object") {
+    return;
+  }
+  mutate(manifest);
+  manifest.updatedAt = new Date().toISOString();
+  writeJsonFile(featureRunContext.manifestPath, manifest);
+}
+
+function writeFeatureRunArtifact(featureRunContext, slot, fileName, contents) {
+  if (!featureRunContext) {
+    return;
+  }
+  const artifactPath = safeJoinUnder(featureRunContext.runDir, fileName, `feature run artifact ${slot}`);
+  writeFileSync(artifactPath, contents, "utf8");
+  updateFeatureRunManifest(featureRunContext, (manifest) => {
+    if (!manifest.artifacts || typeof manifest.artifacts !== "object") {
+      manifest.artifacts = {};
+    }
+    manifest.artifacts[slot] = toRepoRelativePath(artifactPath);
+  });
+}
+
+function recordPromptPackInFeatureRun(featureRunContext, packDir) {
+  if (!featureRunContext || !packDir) {
+    return;
+  }
+  updateFeatureRunManifest(featureRunContext, (manifest) => {
+    if (!manifest.artifacts || typeof manifest.artifacts !== "object") {
+      manifest.artifacts = {};
+    }
+    manifest.artifacts.promptPackDir = toRepoRelativePath(packDir);
+    const comparativeLedgerPath = toRepoRelativePath(
+      safeJoinUnder(packDir, "consensus-divergence-ledger.json", "comparative review ledger"),
+    );
+    manifest.artifacts.comparativeReviewLedger = comparativeLedgerPath;
+  });
+}
+
 function resolveTaskText(flags) {
   if (flags.task) {
     return flags.task;
@@ -706,6 +976,7 @@ function buildPromptPack(route, outDir) {
   return {
     slug,
     packDir,
+    runId: route.runId ?? null,
     route,
     stageFiles,
     sidecarFiles: Object.entries(SIDECAR_PROMPT_METADATA).map(
@@ -717,9 +988,35 @@ function buildPromptPack(route, outDir) {
     nextStepsFile: "next-steps.md",
     logFile: "orchestrator-log.md",
     manifestFile: "manifest.json",
+    comparativeReviewLedgerFile: "consensus-divergence-ledger.json",
     readmeFile: "README.md",
     orchestratorFile: "orchestrator.md",
   };
+}
+
+function renderComparativeReviewLedgerTemplate(pack) {
+  return `${JSON.stringify(
+    {
+      schemaVersion: 1,
+      status: "pending",
+      task: pack.route.task,
+      generatedAt: new Date().toISOString(),
+      consensus: null,
+      divergence: {
+        hasDivergence: false,
+        disagreements: [],
+      },
+      evidence: {
+        scoutNotes: pack.sidecarFiles.find((s) => s.key === "scout")?.outputFile ?? null,
+        challengerFindings: pack.sidecarFiles.find((s) => s.key === "challenger")?.outputFile ?? null,
+        councilEnvelope: null,
+        planReviewJournal: null,
+      },
+      notes: [],
+    },
+    null,
+    2,
+  )}\n`;
 }
 
 function renderPromptPackReadme(pack) {
@@ -806,6 +1103,7 @@ function writePromptPack(route, outDir) {
   mkdirSync(pack.packDir, { recursive: true });
 
   const manifest = {
+    runId: pack.runId,
     task: pack.route.task,
     profile: pack.route.profile ?? null,
     mode: pack.route.mode,
@@ -820,6 +1118,7 @@ function writePromptPack(route, outDir) {
       orchestrator: pack.orchestratorFile,
       nextSteps: pack.nextStepsFile,
       log: pack.logFile,
+      comparativeReviewLedger: pack.comparativeReviewLedgerFile,
       sidecars: pack.sidecarFiles.map((sidecar) => ({
         key: sidecar.key,
         promptFile: sidecar.promptFile,
@@ -852,6 +1151,11 @@ function writePromptPack(route, outDir) {
   writePackFile(pack.packDir, pack.logFile, renderOrchestratorLog(pack));
   writePackFile(
     pack.packDir,
+    pack.comparativeReviewLedgerFile,
+    renderComparativeReviewLedgerTemplate(pack),
+  );
+  writePackFile(
+    pack.packDir,
     pack.manifestFile,
     `${JSON.stringify(manifest, null, 2)}\n`,
   );
@@ -877,6 +1181,7 @@ function writePromptPack(route, outDir) {
 function renderPromptPackSummary(pack) {
   const lines = [
     `[prompt-router] prompt pack created`,
+    `[prompt-router] run-id: ${pack.runId ?? "none"}`,
     `[prompt-router] task: ${pack.route.task || "<stdin>"}`,
     `[prompt-router] output: ${pack.packDir}`,
     `[prompt-router] stages: ${pack.route.stages.join(" -> ")}`,
@@ -895,6 +1200,7 @@ function renderPromptPackSummary(pack) {
   lines.push(
     `[prompt-router] orchestrator: ${pack.orchestratorFile}`,
     `[prompt-router] memory: ${pack.nextStepsFile}`,
+    `[prompt-router] comparative-ledger: ${pack.comparativeReviewLedgerFile}`,
   );
   return `${lines.join("\n")}\n`;
 }
@@ -902,6 +1208,7 @@ function renderPromptPackSummary(pack) {
 export function renderCompactRoute(route) {
   return (
     `[prompt-router] ${route.mode.toUpperCase()} — ${route.why}\n` +
+    `[prompt-router] run-id: ${route.runId ?? "none"}\n` +
     `[prompt-router] stages: ${route.stages.join(" -> ")}\n` +
     `[prompt-router] models: ${Object.entries(route.models)
       .map(([stage, model]) => `${stage}=${model}`)
@@ -914,6 +1221,7 @@ export function renderHandoffPlan(route) {
   const profileSuffix = route.profile ? ` (${route.profile})` : "";
   const lines = [
     `[prompt-router] operator handoff plan${profileSuffix}`,
+    `[prompt-router] run-id: ${route.runId ?? "none"}`,
     `[prompt-router] task: ${route.task || "<stdin>"}`,
     `[prompt-router] rationale: ${route.why}`,
   ];
@@ -1335,6 +1643,7 @@ function printPromptPack(route, flags) {
     process.stdout.write(
       `${JSON.stringify(
         {
+          runId: pack.runId,
           task: pack.route.task,
           profile: pack.route.profile ?? null,
           output: pack.packDir,
@@ -1355,9 +1664,10 @@ function printPromptPack(route, flags) {
         2,
       )}\n`,
     );
-    return;
+    return pack;
   }
   process.stdout.write(renderPromptPackSummary(pack));
+  return pack;
 }
 
 function printRouteOutput(command, route, flags) {
@@ -1460,6 +1770,62 @@ function maybeRecordHandoff(route, command, config) {
   }
 }
 
+function createFeatureRunContext(route) {
+  try {
+    const featureRunContext = createOrReuseFeatureRun(route);
+    if (featureRunContext) {
+      route.runId = featureRunContext.runId;
+    }
+    return featureRunContext;
+  } catch (error) {
+    process.stderr.write(
+      `[prompt-router] warning: feature run bundle unavailable: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return null;
+  }
+}
+
+function recordPromptPackArtifact(featureRunContext, packDir) {
+  try {
+    if (featureRunContext) {
+      recordPromptPackInFeatureRun(featureRunContext, packDir);
+    }
+  } catch (error) {
+    process.stderr.write(
+      `[prompt-router] warning: could not update feature run prompt-pack artifact: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
+function recordCommandArtifacts(featureRunContext, command, route) {
+  if (!featureRunContext) {
+    return;
+  }
+  try {
+    if (command === "route") {
+      writeFeatureRunArtifact(
+        featureRunContext,
+        "route",
+        "route.json",
+        `${JSON.stringify(route, null, 2)}\n`,
+      );
+      return;
+    }
+    if (command === "handoff") {
+      writeFeatureRunArtifact(
+        featureRunContext,
+        "handoff",
+        "handoff.txt",
+        renderHandoffPlan(route),
+      );
+    }
+  } catch (error) {
+    process.stderr.write(
+      `[prompt-router] warning: could not update feature run artifacts: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
+
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
   if (flags.help) {
@@ -1494,6 +1860,7 @@ async function main() {
     profile: flags.profile,
     intent: flags.intent,
   });
+  const featureRunContext = createFeatureRunContext(route);
 
   enforceNonTrivialGraphPreflight(route, command, flags);
 
@@ -1505,9 +1872,12 @@ async function main() {
   }
 
   if (command === "prompt-pack") {
-    printPromptPack(route, flags);
+    const pack = printPromptPack(route, flags);
+    recordPromptPackArtifact(featureRunContext, pack?.packDir);
     return;
   }
+
+  recordCommandArtifacts(featureRunContext, command, route);
 
   printRouteOutput(command, route, flags);
 }

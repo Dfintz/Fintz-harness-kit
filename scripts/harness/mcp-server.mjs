@@ -15,6 +15,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
+import { randomUUID } from "node:crypto";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -24,13 +26,14 @@ import {
   ListResourcesRequestSchema,
   ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { harnessRuntimeRoot, repoRoot, loadConfig } from "./config.mjs";
-import { ErrorCode, createErrorResponse, errorCodeToJsonRpcCode } from "./mcp-contracts.mjs";
+import { CONFIG_PATH, harnessRuntimeRoot, repoRoot, loadConfig } from "./config.mjs";
+import { ErrorCode, createErrorResponse } from "./mcp-contracts.mjs";
 import { ResourceCache } from "./mcp-cache.mjs";
 import { logCommandDispatchAudit, buildCommandDispatchRecord } from "./mcp-audit.mjs";
 import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resources.mjs";
+import { readGraphEvents } from "./graph-provider.mjs";
 import { createRateLimiter } from "./mcp-rate-limiter.mjs";
-import { extractCallerIdentity, isAuthorized, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
+import { extractCallerIdentity, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
 
 const wrapperPath = join(
   harnessRuntimeRoot,
@@ -38,6 +41,32 @@ const wrapperPath = join(
   "harness",
   "mcp-tools.mjs",
 );
+
+const RESOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
+const RESOURCE_CACHE_SCOPE = "private";
+const SERVER_NAME = "sc-fleet-harness-mcp";
+const SERVER_VERSION = "1.0.0";
+const MRTR_PENDING_REQUESTS = new Map();
+const TASK_STORE = new Map();
+const TASK_MODE_ASYNC = "async";
+const SUBSCRIPTION_TOPIC_ALL = "all";
+const SUBSCRIPTION_TOPICS = new Set([
+  SUBSCRIPTION_TOPIC_ALL,
+  "graph.events",
+  "resources.stream",
+  "tasks.lifecycle",
+]);
+const SUBSCRIPTION_EVENTS = [];
+let SUBSCRIPTION_CURSOR = 0;
+const MAX_SUBSCRIPTION_EVENTS = 500;
+
+function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
 
 function objectSchema(properties = {}, required = []) {
   return {
@@ -626,9 +655,382 @@ const toolSpecs = [
       return cliArgs;
     },
   },
+  {
+    name: "tasks-get",
+    description: "Retrieve task state/result for an async MCP task by taskId.",
+    inputSchema: objectSchema(
+      {
+        taskId: {
+          type: "string",
+          description: "Task identifier returned by async tools/call execution.",
+        },
+      },
+      ["taskId"],
+    ),
+    toCliArgs: () => [],
+  },
+  {
+    name: "tasks-update",
+    description: "Update task state for an async MCP task (currently cancel only).",
+    inputSchema: objectSchema(
+      {
+        taskId: {
+          type: "string",
+          description: "Task identifier returned by async tools/call execution.",
+        },
+        status: {
+          type: "string",
+          enum: ["canceled"],
+          description: "Requested state transition.",
+        },
+      },
+      ["taskId", "status"],
+    ),
+    toCliArgs: () => [],
+  },
 ];
 
 const toolByName = new Map(toolSpecs.map((spec) => [spec.name, spec]));
+const SubscriptionsListenRequestSchema = { method: "subscriptions/listen" };
+
+export function buildServerDiscoverPayload(options = {}) {
+  const transport = typeof options.transport === "string" ? options.transport : "stdio";
+  let baseUrl;
+  if (typeof options.baseUrl === "string") {
+    const trimmed = options.baseUrl.trim();
+    if (trimmed) {
+      baseUrl = trimTrailingSlashes(trimmed);
+    }
+  }
+
+  return {
+    server: {
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+      transport,
+      baseUrl,
+    },
+    capabilities: {
+      tools: {
+        count: toolSpecs.length,
+      },
+      resources: {
+        namespaces: [
+          "io.modelcontextprotocol/harness/memory",
+          "io.modelcontextprotocol/harness/graph",
+        ],
+        cache: {
+          ttlMs: RESOURCE_CACHE_TTL_MS,
+          scope: RESOURCE_CACHE_SCOPE,
+        },
+      },
+    },
+    extensions: {
+      headerRouting: {
+        headers: ["Mcp-Method", "Mcp-Name"],
+        precedence: "headers-first",
+      },
+      discovery: {
+        method: "server/discover",
+        status: "implemented",
+      },
+      tasks: {
+        namespace: "io.modelcontextprotocol/tasks",
+        methods: ["tasks/get", "tasks/update"],
+        status: "implemented",
+      },
+      subscriptions: {
+        method: "subscriptions/listen",
+        status: "implemented",
+      },
+    },
+    tools: toolSpecs.map((spec) => ({
+      name: spec.name,
+      description: spec.description,
+    })),
+  };
+}
+
+export function buildMrtrInputRequiredResult(options = {}) {
+  return {
+    resultType: "input_required",
+    tool: options.toolName,
+    requestToken: options.requestToken,
+    requiredInputs: Array.isArray(options.requiredInputs)
+      ? options.requiredInputs
+      : [],
+  };
+}
+
+function pushSubscriptionEvent(topic, kind, payload = {}) {
+  if (!SUBSCRIPTION_TOPICS.has(topic) || topic === SUBSCRIPTION_TOPIC_ALL) {
+    return;
+  }
+
+  SUBSCRIPTION_CURSOR += 1;
+  SUBSCRIPTION_EVENTS.push({
+    id: `evt-${SUBSCRIPTION_CURSOR}`,
+    cursor: String(SUBSCRIPTION_CURSOR),
+    timestamp: new Date().toISOString(),
+    topic,
+    kind,
+    payload,
+  });
+
+  if (SUBSCRIPTION_EVENTS.length > MAX_SUBSCRIPTION_EVENTS) {
+    SUBSCRIPTION_EVENTS.splice(0, SUBSCRIPTION_EVENTS.length - MAX_SUBSCRIPTION_EVENTS);
+  }
+}
+
+function readSubscriptionsTopic(args) {
+  const value = typeof args?.topic === "string" ? args.topic.trim() : SUBSCRIPTION_TOPIC_ALL;
+  const topic = value.length > 0 ? value : SUBSCRIPTION_TOPIC_ALL;
+  if (!SUBSCRIPTION_TOPICS.has(topic)) {
+    throw new Error(
+      `Invalid topic: ${topic}. Expected one of ${[...SUBSCRIPTION_TOPICS].join(", ")}`,
+    );
+  }
+  return topic;
+}
+
+function readSubscriptionsLimit(args) {
+  const value = args?.limit;
+  if (value === undefined || value === null) return 20;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error("limit must be a positive integer");
+  }
+  return Math.min(Math.floor(parsed), 100);
+}
+
+function mapGraphEventsToSubscriptionEntries(topic, limit) {
+  if (topic !== SUBSCRIPTION_TOPIC_ALL && topic !== "graph.events") {
+    return [];
+  }
+
+  const graph = readGraphEvents({ repoRoot, configPath: CONFIG_PATH, limit });
+  const events = Array.isArray(graph?.events) ? graph.events : [];
+  return events.map((event, index) => ({
+    id: `graph-${graph?.count ?? 0}-${index}`,
+    cursor: `graph-${graph?.count ?? 0}-${index}`,
+    timestamp: typeof event?.timestamp === "string" ? event.timestamp : new Date().toISOString(),
+    topic: "graph.events",
+    kind: typeof event?.eventType === "string" ? event.eventType : "unknown",
+    payload: event && typeof event === "object" ? event : {},
+  }));
+}
+
+export function buildSubscriptionsListenResult(args = {}) {
+  const topic = readSubscriptionsTopic(args);
+  const limit = readSubscriptionsLimit(args);
+
+  const localEvents = SUBSCRIPTION_EVENTS.filter((entry) =>
+    topic === SUBSCRIPTION_TOPIC_ALL ? true : entry.topic === topic,
+  );
+  const graphEvents = mapGraphEventsToSubscriptionEntries(topic, limit);
+
+  const combined = [...localEvents, ...graphEvents]
+    .sort((left, right) => String(left.timestamp).localeCompare(String(right.timestamp)))
+    .slice(-limit);
+
+  return {
+    subscriptions: combined,
+    cursor: String(SUBSCRIPTION_CURSOR),
+    streaming: false,
+    topic,
+    limit,
+  };
+}
+
+function toTaskSnapshot(task) {
+  if (!task) return null;
+  return {
+    taskId: task.taskId,
+    toolName: task.toolName,
+    status: task.status,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    result: task.result,
+    error: task.error,
+  };
+}
+
+function sanitizeTaskArguments(args) {
+  const clean = { ...args };
+  delete clean.__task;
+  return clean;
+}
+
+function readTaskMode(args) {
+  const mode = args?.__task?.mode;
+  if (typeof mode !== "string") return undefined;
+  const value = mode.trim().toLowerCase();
+  return value || undefined;
+}
+
+function readTaskDelayMs(args) {
+  const value = Number(args?.__task?.delayMs ?? 0);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.min(Math.floor(value), 60000);
+}
+
+function taskInvalidParamsError(message) {
+  return createErrorResponse(ErrorCode.INVALID_ARGUMENTS, message);
+}
+
+export function createPendingTask(toolName, args, options = {}) {
+  const taskId = `task-${randomUUID()}`;
+  const delayMs = Number.isFinite(options.delayMs) ? Math.max(0, options.delayMs) : readTaskDelayMs(args);
+  const now = Date.now();
+
+  TASK_STORE.set(taskId, {
+    taskId,
+    toolName,
+    status: "running",
+    createdAt: now,
+    updatedAt: now,
+    readyAt: now + delayMs,
+    arguments: sanitizeTaskArguments(args),
+    result: null,
+    error: null,
+  });
+
+  pushSubscriptionEvent("tasks.lifecycle", "task.created", {
+    taskId,
+    toolName,
+    status: "running",
+  });
+
+  return {
+    resultType: "task",
+    taskId,
+    status: "running",
+    pollMethod: "tasks/get",
+    updateMethod: "tasks/update",
+  };
+}
+
+export function getTaskSnapshot(taskId) {
+  const task = TASK_STORE.get(taskId);
+  return toTaskSnapshot(task);
+}
+
+export function updateTask(taskId, update = {}) {
+  const task = TASK_STORE.get(taskId);
+  if (!task) {
+    return { ok: false, errorResponse: taskInvalidParamsError(`Unknown taskId: ${taskId}`) };
+  }
+
+  const nextStatus = typeof update.status === "string" ? update.status.trim().toLowerCase() : "";
+  if (nextStatus !== "canceled") {
+    return { ok: false, errorResponse: taskInvalidParamsError("tasks/update currently supports status=canceled only") };
+  }
+  if (task.status !== "running") {
+    return { ok: false, errorResponse: taskInvalidParamsError(`Cannot transition task in status ${task.status} to canceled`) };
+  }
+
+  task.status = "canceled";
+  task.updatedAt = Date.now();
+  TASK_STORE.set(taskId, task);
+
+  pushSubscriptionEvent("tasks.lifecycle", "task.canceled", {
+    taskId,
+    toolName: task.toolName,
+    status: task.status,
+  });
+
+  return { ok: true, task: toTaskSnapshot(task) };
+}
+
+export function resolveTaskIfReady(taskId, executeTask) {
+  const task = TASK_STORE.get(taskId);
+  if (!task) {
+    return { ok: false, errorResponse: taskInvalidParamsError(`Unknown taskId: ${taskId}`) };
+  }
+
+  if (task.status !== "running") {
+    return { ok: true, task: toTaskSnapshot(task) };
+  }
+
+  if (Date.now() < task.readyAt) {
+    return { ok: true, task: toTaskSnapshot(task) };
+  }
+
+  const execution = executeTask(task);
+  if (execution.ok) {
+    task.status = "completed";
+    task.result = execution.result;
+    task.error = null;
+    pushSubscriptionEvent("tasks.lifecycle", "task.completed", {
+      taskId,
+      toolName: task.toolName,
+      status: task.status,
+    });
+  } else {
+    task.status = "failed";
+    task.result = null;
+    task.error = {
+      code: execution.code,
+      message: execution.error,
+      status: execution.status,
+    };
+    pushSubscriptionEvent("tasks.lifecycle", "task.failed", {
+      taskId,
+      toolName: task.toolName,
+      status: task.status,
+      error: task.error,
+    });
+  }
+
+  task.updatedAt = Date.now();
+  TASK_STORE.set(taskId, task);
+  return { ok: true, task: toTaskSnapshot(task) };
+}
+
+function sanitizeMrtrArguments(args) {
+  const clean = { ...args };
+  delete clean.__mrtr;
+  delete clean.requestToken;
+  delete clean.inputResponses;
+  return clean;
+}
+
+function normalizeMrtrRequiredInputs(args) {
+  const raw = args?.__mrtr?.requiredInputs;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => {
+      const name = typeof entry.name === "string" ? entry.name.trim() : "";
+      if (!name) {
+        return null;
+      }
+      const item = { name };
+      if (typeof entry.description === "string" && entry.description.trim()) {
+        item.description = entry.description.trim();
+      }
+      return item;
+    })
+    .filter(Boolean);
+}
+
+function readMrtrRequestToken(args) {
+  if (typeof args?.requestToken !== "string") {
+    return undefined;
+  }
+  const token = args.requestToken.trim();
+  return token.length > 0 ? token : undefined;
+}
+
+function readMrtrInputResponses(args) {
+  if (!args?.inputResponses || typeof args.inputResponses !== "object" || Array.isArray(args.inputResponses)) {
+    return undefined;
+  }
+  return args.inputResponses;
+}
 
 // Memory resource paths (Phase 1: memory resources only; graph deferred to Phase 2+)
 const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
@@ -773,6 +1175,7 @@ async function buildAllResources(cache) {
   }
 
   // Cache the combined result
+  resources.sort((a, b) => a.uri.localeCompare(b.uri));
   cache.set(cacheKey, resources);
 
   return resources;
@@ -900,15 +1303,15 @@ function showTools() {
 
 function createServer() {
   // Initialize cache (Phase 2a: TTL-based, 5-minute expiry)
-  const cache = new ResourceCache(5 * 60 * 1000);
+  const cache = new ResourceCache(RESOURCE_CACHE_TTL_MS);
 
   // Server-scoped rate-limiter instance (isolated state per server; supports Phase 2c store injection)
   const limiter = createRateLimiter();
 
   const server = new Server(
     {
-      name: "sc-fleet-harness-mcp",
-      version: "1.0.0",
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
     },
     {
       capabilities: {
@@ -946,6 +1349,7 @@ function createServer() {
         const chunkSize = request.params?.chunkSize || 50;
         for (let i = 0; i < resources.length; i += chunkSize) {
           const chunk = resources.slice(i, i + chunkSize);
+          const chunkIndex = Math.floor(i / chunkSize) + 1;
           server.notification({
             jsonrpc: "2.0",
             method: "resource_chunk",
@@ -958,20 +1362,54 @@ function createServer() {
               nextChunk: (i + chunkSize) < resources.length ? i + chunkSize : null,
             },
           });
+
+          pushSubscriptionEvent("resources.stream", "resource.chunk", {
+            chunkIndex,
+            chunkSize: chunk.length,
+            hasNext: (i + chunkSize) < resources.length,
+          });
         }
         // Return streaming acknowledgment (MCP 1.29.0 protocol)
         return {
           resources: [], // Streamed via notifications
           streaming: true,
+          ttlMs: RESOURCE_CACHE_TTL_MS,
+          cacheScope: RESOURCE_CACHE_SCOPE,
         };
       }
 
+
+    // subscriptions/listen handler (Slice D)
+    server.setRequestHandler(SubscriptionsListenRequestSchema, async (request) => {
+      const params = parseArguments(request?.params);
+
+      try {
+        return {
+          result: buildSubscriptionsListenResult(params),
+        };
+      } catch (error) {
+        return {
+          error: {
+            code: -32602,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    });
       // Fallback to buffered response (Phase 1 compatibility)
-      return { resources };
+      return {
+        resources,
+        ttlMs: RESOURCE_CACHE_TTL_MS,
+        cacheScope: RESOURCE_CACHE_SCOPE,
+      };
     } catch (error) {
       console.error("ListResources error:", error.message);
       // Graceful degradation: return empty list
-      return { resources: [] };
+      return {
+        resources: [],
+        ttlMs: RESOURCE_CACHE_TTL_MS,
+        cacheScope: RESOURCE_CACHE_SCOPE,
+      };
     }
   });
 
@@ -1003,6 +1441,8 @@ function createServer() {
                 text: resource.text,
               },
             ],
+            ttlMs: RESOURCE_CACHE_TTL_MS,
+            cacheScope: RESOURCE_CACHE_SCOPE,
           };
         }
       }
@@ -1020,6 +1460,8 @@ function createServer() {
                 text: resource.text,
               },
             ],
+            ttlMs: RESOURCE_CACHE_TTL_MS,
+            cacheScope: RESOURCE_CACHE_SCOPE,
           };
         }
       }
@@ -1081,6 +1523,170 @@ function createServer() {
     return { allowed: true, callerInfo, quotaInfo: null, dispatchConfig };
   }
 
+  function buildToolCallTextPayload(payload) {
+    return { content: [{ type: "text", text: textPayload(payload) }] };
+  }
+
+  function handleMrtrFlow(toolName, rawArgs) {
+    const requestToken = readMrtrRequestToken(rawArgs);
+    const inputResponses = readMrtrInputResponses(rawArgs);
+    const requiredInputs = normalizeMrtrRequiredInputs(rawArgs);
+    let effectiveArgs = sanitizeMrtrArguments(rawArgs);
+
+    if (requestToken) {
+      const pending = MRTR_PENDING_REQUESTS.get(requestToken);
+      if (!pending) {
+        return {
+          error: createErrorResponse(
+            ErrorCode.INVALID_ARGUMENTS,
+            `Invalid MRTR requestToken: ${requestToken}`,
+          ),
+        };
+      }
+      if (pending.toolName !== toolName) {
+        return {
+          error: createErrorResponse(
+            ErrorCode.INVALID_ARGUMENTS,
+            `MRTR requestToken ${requestToken} is bound to tool ${pending.toolName}`,
+          ),
+        };
+      }
+      if (!inputResponses) {
+        return {
+          error: createErrorResponse(
+            ErrorCode.INVALID_ARGUMENTS,
+            "Missing inputResponses for MRTR continuation",
+          ),
+        };
+      }
+
+      MRTR_PENDING_REQUESTS.delete(requestToken);
+      effectiveArgs = {
+        ...pending.arguments,
+        inputResponses,
+      };
+      return { effectiveArgs };
+    }
+
+    if (requiredInputs.length > 0 && !inputResponses) {
+      const continuationToken = `mrtr-${randomUUID()}`;
+      MRTR_PENDING_REQUESTS.set(continuationToken, {
+        toolName,
+        arguments: effectiveArgs,
+      });
+      const mrtrResult = buildMrtrInputRequiredResult({
+        toolName,
+        requestToken: continuationToken,
+        requiredInputs,
+      });
+      return {
+        response: {
+          structuredContent: mrtrResult,
+          ...buildToolCallTextPayload(mrtrResult),
+        },
+      };
+    }
+
+    if (inputResponses) {
+      effectiveArgs = {
+        ...effectiveArgs,
+        inputResponses,
+      };
+    }
+
+    return { effectiveArgs };
+  }
+
+  function buildTaskExecutionResult(task) {
+    const taskSpec = toolByName.get(task.toolName);
+    if (!taskSpec) {
+      return {
+        ok: false,
+        code: "TOOL_NOT_FOUND",
+        error: `Unknown tool: ${task.toolName}`,
+        status: 404,
+      };
+    }
+
+    let cliArgs;
+    try {
+      cliArgs = taskSpec.toCliArgs(task.arguments || {});
+    } catch (error) {
+      return {
+        ok: false,
+        code: "INVALID_ARGS",
+        error: error instanceof Error ? error.message : String(error),
+        status: 400,
+      };
+    }
+
+    const result = runWrapper(task.toolName, cliArgs);
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: "TOOL_EXECUTION_FAILED",
+        error: result.stderr || `Tool execution failed for ${task.toolName}`,
+        status: 500,
+      };
+    }
+
+    return {
+      ok: true,
+      result: {
+        tool: task.toolName,
+        output: result.payload,
+      },
+    };
+  }
+
+  function handleTaskMethods(toolName, rawArgs) {
+    if (toolName === "tasks-get") {
+      const taskId = readRequiredString(rawArgs, "taskId");
+      const resolved = resolveTaskIfReady(taskId, buildTaskExecutionResult);
+      if (!resolved.ok) {
+        return { error: resolved.errorResponse };
+      }
+      const payload = resolved.task;
+      return {
+        response: {
+          structuredContent: payload,
+          ...buildToolCallTextPayload(payload),
+        },
+      };
+    }
+
+    if (toolName === "tasks-update") {
+      const taskId = readRequiredString(rawArgs, "taskId");
+      const status = readRequiredString(rawArgs, "status");
+      const updated = updateTask(taskId, { status });
+      if (!updated.ok) {
+        return { error: updated.errorResponse };
+      }
+      const payload = updated.task;
+      return {
+        response: {
+          structuredContent: payload,
+          ...buildToolCallTextPayload(payload),
+        },
+      };
+    }
+
+    return { response: null };
+  }
+
+  function maybeCreateAsyncTask(toolName, args) {
+    const mode = readTaskMode(args);
+    if (mode !== TASK_MODE_ASYNC) return null;
+    if (toolName === "tasks-get" || toolName === "tasks-update") {
+      throw new Error("Task helper methods cannot be invoked with __task.mode=async");
+    }
+    const payload = createPendingTask(toolName, args, { delayMs: readTaskDelayMs(args) });
+    return {
+      structuredContent: payload,
+      ...buildToolCallTextPayload(payload),
+    };
+  }
+
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
     const spec = toolByName.get(toolName);
@@ -1092,9 +1698,31 @@ function createServer() {
       );
     }
 
+    const rawArgs = parseArguments(request.params.arguments);
+    let effectiveArgs = rawArgs;
+
+    try {
+      const taskMethods = handleTaskMethods(toolName, rawArgs);
+      if (taskMethods.error) return taskMethods.error;
+      if (taskMethods.response) return taskMethods.response;
+
+      const mrtr = handleMrtrFlow(toolName, rawArgs);
+      if (mrtr.error) return mrtr.error;
+      if (mrtr.response) return mrtr.response;
+      effectiveArgs = mrtr.effectiveArgs;
+
+      const asyncTaskResponse = maybeCreateAsyncTask(toolName, effectiveArgs);
+      if (asyncTaskResponse) return asyncTaskResponse;
+    } catch (error) {
+      return createErrorResponse(
+        ErrorCode.INVALID_ARGUMENTS,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+
     let cliArgs;
     try {
-      cliArgs = spec.toCliArgs(parseArguments(request.params.arguments));
+      cliArgs = spec.toCliArgs(effectiveArgs);
     } catch (error) {
       return createErrorResponse(
         ErrorCode.INVALID_ARGUMENTS,
@@ -1166,13 +1794,13 @@ function createServer() {
       return {
         isError: true,
         structuredContent,
-        content: [{ type: "text", text: textPayload(errorPayload) }],
+        ...buildToolCallTextPayload(errorPayload),
       };
     }
 
     return {
       structuredContent,
-      content: [{ type: "text", text: textPayload(result.payload) }],
+      ...buildToolCallTextPayload(result.payload),
     };
   });
 
@@ -1196,14 +1824,20 @@ async function main() {
   await server.connect(transport);
 }
 
-try {
-  await main();
-} catch (error) {
-  process.stderr.write(
-    `${textPayload({
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    })}\n`,
-  );
-  process.exit(1);
+const isDirectExecution =
+  typeof process.argv[1] === "string" &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectExecution) {
+  try {
+    await main();
+  } catch (error) {
+    process.stderr.write(
+      `${textPayload({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      })}\n`,
+    );
+    process.exit(1);
+  }
 }

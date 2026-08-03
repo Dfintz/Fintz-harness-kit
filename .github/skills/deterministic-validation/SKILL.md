@@ -108,6 +108,7 @@ Examples of valid proof:
 - A focused test file passes
 - A build or lint command exits `0`
 - A required file or report exists at the expected path
+- When none of the above exists yet, an acceptance-gate spec created with `npm run harness:acceptance -- scaffold ...` and baseline-checked with `npm run harness:acceptance -- baseline --file <spec>`
 
 ### Step 2 — Run the phase with scoped checks
 
@@ -196,6 +197,12 @@ For loop/report/telemetry work specifically:
 - use `harness:report` to prove the output appears in the aggregated dashboard path
 - use `harness:grade` to prove experiment scoring still works when evaluation surfaces are touched
 - use `harness:otel` when the slice changes trace export expectations
+
+For feature work lacking a narrow existing proof seam:
+
+- scaffold a hand-editable acceptance-gate spec under `.github/harness/acceptance/`
+- keep executable proof checks as `argv` arrays, not shell strings
+- require a baseline RED result before implementation unless the task is explicitly already done
 
 ---
 

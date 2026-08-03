@@ -116,6 +116,7 @@ The failure mode is silent: the edit tool reports a mismatch and the agent waste
 
 - identify the smallest proof that shows the change works
 - prefer existing tests, checks, previews, dry-runs, or sample runs
+- when no narrow deterministic proof already exists, create one before implementation with `npm run harness:acceptance -- scaffold ...` and prove it starts RED via `npm run harness:acceptance -- baseline --file <spec>`
 - do not invent new validation infrastructure unless the task requires it
 
 ### 4. Risk discovery

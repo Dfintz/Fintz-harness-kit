@@ -34,17 +34,27 @@
  */
 import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
-import { timingSafeEqual, createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { timingSafeEqual, createHash, randomUUID } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { mcpToolSpecs } from './mcp-contracts.mjs';
+import { loadConfig } from './config.mjs';
+import { validateIssuerBinding } from './mcp-auth-validator.mjs';
+import {
+  buildServerDiscoverPayload,
+  buildMrtrInputRequiredResult,
+  buildSubscriptionsListenResult,
+  createPendingTask,
+  resolveTaskIfReady,
+  updateTask,
+} from './mcp-server.mjs';
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(harnessDir, '..', '..');
 const mcpToolsPath = join(harnessDir, 'mcp-tools.mjs');
 const SPAWN_MAX_BUFFER = 16 * 1024 * 1024;
+const MRTR_PENDING_REQUESTS = new Map();
 
 const VERSION = '2.6.0';
 
@@ -68,6 +78,59 @@ function parseArgs(argv) {
 function parsePositiveInt(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
+function parseBoolean(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') return true;
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') return false;
+  return fallback;
+}
+
+function resolveOAuthHardeningConfig(baseUrl, harnessConfig = {}) {
+  const fromConfig = harnessConfig?.oauthHardening && typeof harnessConfig.oauthHardening === 'object'
+    ? harnessConfig.oauthHardening
+    : {};
+
+  let issuerSource = baseUrl;
+  if (typeof process.env.HARNESS_OAUTH_ISSUER === 'string' && process.env.HARNESS_OAUTH_ISSUER.trim()) {
+    issuerSource = process.env.HARNESS_OAUTH_ISSUER.trim();
+  } else if (typeof fromConfig.issuer === 'string' && fromConfig.issuer.trim()) {
+    issuerSource = fromConfig.issuer.trim();
+  }
+
+  const enabled = parseBoolean(process.env.HARNESS_OAUTH_HARDENING, parseBoolean(fromConfig.enabled, true));
+  const requireIssuerBinding = parseBoolean(
+    process.env.HARNESS_OAUTH_REQUIRE_ISSUER_BINDING,
+    parseBoolean(fromConfig.requireIssuerBinding, enabled),
+  );
+  const allowApiKeyFallback = parseBoolean(
+    process.env.HARNESS_OAUTH_ALLOW_API_KEY_FALLBACK,
+    parseBoolean(fromConfig.allowApiKeyFallback, true),
+  );
+  const cimdEnabled = parseBoolean(
+    process.env.HARNESS_OAUTH_CIMD_ENABLED,
+    parseBoolean(fromConfig.cimdEnabled, true),
+  );
+
+  return {
+    enabled,
+    issuer: trimTrailingSlashes(issuerSource),
+    requireIssuerBinding,
+    allowApiKeyFallback,
+    cimdEnabled,
+    validationEndpoint: '/oauth/client-metadata/validate',
+  };
 }
 
 function readBody(req, maxBytes) {
@@ -104,6 +167,452 @@ function notFound(res) {
 
 function methodNotAllowed(res) {
   json(res, 405, { error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' });
+}
+
+function normalizeHeaderValue(value) {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildMcpMethodNotFound(method) {
+  return {
+    jsonrpc: '2.0',
+    error: {
+      code: -32601,
+      message: `Method not found: ${method}`,
+    },
+  };
+}
+
+function buildMcpInvalidParams(message) {
+  return {
+    jsonrpc: '2.0',
+    error: {
+      code: -32602,
+      message,
+    },
+  };
+}
+
+function buildMcpInternalError(message) {
+  return {
+    jsonrpc: '2.0',
+    error: {
+      code: -32603,
+      message,
+    },
+  };
+}
+
+function extractMcpRouting(req, body) {
+  const methodFromHeader = normalizeHeaderValue(req.headers['mcp-method']);
+  const nameFromHeader = normalizeHeaderValue(req.headers['mcp-name']);
+  const methodFromBody = typeof body?.method === 'string' ? body.method.trim() : undefined;
+
+  const method = methodFromHeader || methodFromBody;
+  const params = body?.params && typeof body.params === 'object' ? body.params : {};
+  const nameFromParams = typeof params.name === 'string' ? params.name.trim() : undefined;
+  const nameFromBody = typeof body?.name === 'string' ? body.name.trim() : undefined;
+  const toolName = nameFromHeader || nameFromParams || nameFromBody;
+  let callArguments = {};
+  if (params.arguments && typeof params.arguments === 'object') {
+    callArguments = params.arguments;
+  } else if (body?.arguments && typeof body.arguments === 'object') {
+    callArguments = body.arguments;
+  }
+
+  return {
+    id: body?.id ?? null,
+    jsonrpc: '2.0',
+    method,
+    toolName,
+    arguments: callArguments,
+  };
+}
+
+function normalizeRequiredInputs(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter(entry => entry && typeof entry === 'object')
+    .map(entry => {
+      const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+      if (!name) return null;
+      const item = { name };
+      if (typeof entry.description === 'string' && entry.description.trim()) {
+        item.description = entry.description.trim();
+      }
+      return item;
+    })
+    .filter(Boolean);
+}
+
+function sanitizeMrtrArguments(args) {
+  const clean = args && typeof args === 'object' && !Array.isArray(args)
+    ? { ...args }
+    : {};
+  delete clean.__mrtr;
+  delete clean.requestToken;
+  delete clean.inputResponses;
+  return clean;
+}
+
+function toMcpResponseEnvelope(id, payload) {
+  return {
+    jsonrpc: '2.0',
+    id,
+    ...payload,
+  };
+}
+
+function listToolSummaries(baseUrl) {
+  return mcpToolSpecs.map(spec => ({
+    name: spec.name,
+    description: spec.description,
+    endpoint: `${baseUrl}/tools/${spec.name}`,
+  }));
+}
+
+function readTaskMode(args) {
+  const mode = args?.__task?.mode;
+  if (typeof mode !== 'string') return undefined;
+  const value = mode.trim().toLowerCase();
+  return value || undefined;
+}
+
+function readTaskDelayMs(args) {
+  const value = Number(args?.__task?.delayMs ?? 0);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.min(Math.floor(value), 60000);
+}
+
+function mapTaskErrorToMcpError(errorResponse) {
+  const rawText = errorResponse?.content?.[0]?.text;
+  if (typeof rawText !== 'string') {
+    return buildMcpInvalidParams('Task request failed');
+  }
+  try {
+    const parsed = JSON.parse(rawText);
+    const message = typeof parsed?.message === 'string' && parsed.message.trim()
+      ? parsed.message.trim()
+      : 'Task request failed';
+    return buildMcpInvalidParams(message);
+  } catch {
+    return buildMcpInvalidParams('Task request failed');
+  }
+}
+
+function buildTaskExecutor() {
+  return (task) => {
+    const dispatch = dispatchTool(task.toolName, task.arguments || {});
+    if (!dispatch.ok) {
+      return {
+        ok: false,
+        code: dispatch.code,
+        error: dispatch.error,
+        status: dispatch.status,
+      };
+    }
+    return {
+      ok: true,
+      result: {
+        tool: task.toolName,
+        output: dispatch.result,
+      },
+    };
+  };
+}
+
+function readMcpBodyParams(body) {
+  return body?.params && typeof body.params === 'object' ? body.params : {};
+}
+
+function readTaskIdFromMcp(body, route) {
+  const params = readMcpBodyParams(body);
+  return normalizeHeaderValue(params.taskId)
+    || normalizeHeaderValue(route?.arguments?.taskId)
+    || normalizeHeaderValue(body?.taskId);
+}
+
+function readTaskStatusFromMcp(body, route) {
+  const params = readMcpBodyParams(body);
+  return normalizeHeaderValue(params.status)
+    || normalizeHeaderValue(route?.arguments?.status)
+    || normalizeHeaderValue(body?.status);
+}
+
+function readSubscriptionsArgs(body, route) {
+  const params = readMcpBodyParams(body);
+  const args = route?.arguments && typeof route.arguments === 'object' && !Array.isArray(route.arguments)
+    ? route.arguments
+    : {};
+  return {
+    topic: normalizeHeaderValue(params.topic)
+      || normalizeHeaderValue(args.topic)
+      || normalizeHeaderValue(body?.topic),
+    limit: params.limit ?? args.limit ?? body?.limit,
+  };
+}
+
+function tryHandleMcpTaskMethod(route, body) {
+  if (route.method !== 'tasks/get' && route.method !== 'tasks/update') {
+    return null;
+  }
+
+  const taskId = readTaskIdFromMcp(body, route);
+  if (!taskId) {
+    return { status: 400, payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing taskId for task method')) };
+  }
+
+  if (route.method === 'tasks/get') {
+    const resolved = resolveTaskIfReady(taskId, buildTaskExecutor());
+    if (!resolved.ok) {
+      return { status: 400, payload: toMcpResponseEnvelope(route.id, mapTaskErrorToMcpError(resolved.errorResponse)) };
+    }
+    return { status: 200, payload: toMcpResponseEnvelope(route.id, { result: resolved.task }) };
+  }
+
+  const status = readTaskStatusFromMcp(body, route);
+  if (!status) {
+    return { status: 400, payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing status for tasks/update')) };
+  }
+
+  const updated = updateTask(taskId, { status });
+  if (!updated.ok) {
+    return { status: 400, payload: toMcpResponseEnvelope(route.id, mapTaskErrorToMcpError(updated.errorResponse)) };
+  }
+
+  return { status: 200, payload: toMcpResponseEnvelope(route.id, { result: updated.task }) };
+}
+
+function parseInputResponses(params, body) {
+  if (params.inputResponses && typeof params.inputResponses === 'object' && !Array.isArray(params.inputResponses)) {
+    return params.inputResponses;
+  }
+  if (body?.inputResponses && typeof body.inputResponses === 'object' && !Array.isArray(body.inputResponses)) {
+    return body.inputResponses;
+  }
+  return undefined;
+}
+
+function handleMcpToolsCall(route, body) {
+  if (!route.toolName) {
+    return {
+      status: 400,
+      payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing tool name. Provide Mcp-Name header or params.name')),
+    };
+  }
+
+  const params = readMcpBodyParams(body);
+  const requestToken = normalizeHeaderValue(params.requestToken) || normalizeHeaderValue(body?.requestToken);
+  const inputResponses = parseInputResponses(params, body);
+  const requiredInputs = normalizeRequiredInputs(route.arguments?.__mrtr?.requiredInputs);
+  let callArguments = sanitizeMrtrArguments(route.arguments || {});
+
+  if (requestToken) {
+    const pending = MRTR_PENDING_REQUESTS.get(requestToken);
+    if (!pending) {
+      return {
+        status: 400,
+        payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams(`Invalid MRTR requestToken: ${requestToken}`)),
+      };
+    }
+    if (pending.toolName !== route.toolName) {
+      return {
+        status: 400,
+        payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams(`MRTR requestToken ${requestToken} is bound to tool ${pending.toolName}`)),
+      };
+    }
+    if (!inputResponses) {
+      return {
+        status: 400,
+        payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing inputResponses for MRTR continuation')),
+      };
+    }
+
+    MRTR_PENDING_REQUESTS.delete(requestToken);
+    callArguments = {
+      ...pending.arguments,
+      inputResponses,
+    };
+  } else if (requiredInputs.length > 0 && !inputResponses) {
+    const continuationToken = `mrtr-${randomUUID()}`;
+    MRTR_PENDING_REQUESTS.set(continuationToken, {
+      toolName: route.toolName,
+      arguments: callArguments,
+    });
+    const mrtrResult = buildMrtrInputRequiredResult({
+      toolName: route.toolName,
+      requestToken: continuationToken,
+      requiredInputs,
+    });
+    return {
+      status: 200,
+      payload: toMcpResponseEnvelope(route.id, { result: mrtrResult }),
+    };
+  } else if (inputResponses) {
+    callArguments = {
+      ...callArguments,
+      inputResponses,
+    };
+  }
+
+  const taskMode = readTaskMode(callArguments);
+  if (taskMode === 'async') {
+    if (route.toolName === 'tasks-get' || route.toolName === 'tasks-update') {
+      return {
+        status: 400,
+        payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Task helper methods cannot be invoked with __task.mode=async')),
+      };
+    }
+    const taskResult = createPendingTask(route.toolName, callArguments, { delayMs: readTaskDelayMs(callArguments) });
+    return {
+      status: 200,
+      payload: toMcpResponseEnvelope(route.id, { result: taskResult }),
+    };
+  }
+
+  const dispatch = dispatchTool(route.toolName, callArguments);
+  if (!dispatch.ok) {
+    return {
+      status: dispatch.status,
+      payload: toMcpResponseEnvelope(route.id, buildMcpInternalError(`${dispatch.code}: ${dispatch.error}`)),
+    };
+  }
+
+  return {
+    status: 200,
+    payload: toMcpResponseEnvelope(route.id, {
+      result: {
+        tool: route.toolName,
+        output: dispatch.result,
+      },
+    }),
+  };
+}
+
+async function handleMcpRequest(req, res, config) {
+  const { maxBodyBytes, baseUrl } = config;
+  let body = {};
+  let raw;
+  try {
+    raw = await readBody(req, maxBodyBytes);
+  } catch (err) {
+    json(res, err.status || 400, toMcpResponseEnvelope(null, buildMcpInvalidParams(err.message || 'Unable to read request body')));
+    return;
+  }
+
+  if (raw.length > 0) {
+    try {
+      body = JSON.parse(raw.toString('utf8'));
+    } catch {
+      json(res, 400, toMcpResponseEnvelope(null, buildMcpInvalidParams('Invalid JSON body')));
+      return;
+    }
+  }
+
+  const route = extractMcpRouting(req, body);
+  if (!route.method) {
+    json(res, 400, toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing MCP method. Provide Mcp-Method header or body.method')));
+    return;
+  }
+
+  if (route.method === 'server/discover') {
+    const result = buildServerDiscoverPayload({ transport: 'http', baseUrl });
+    json(res, 200, toMcpResponseEnvelope(route.id, { result }));
+    return;
+  }
+
+  if (route.method === 'tools/list') {
+    json(res, 200, toMcpResponseEnvelope(route.id, {
+      result: {
+        tools: listToolSummaries(baseUrl),
+      },
+    }));
+    return;
+  }
+
+  if (route.method === 'subscriptions/listen') {
+    try {
+      const result = buildSubscriptionsListenResult(readSubscriptionsArgs(body, route));
+      json(res, 200, toMcpResponseEnvelope(route.id, { result }));
+    } catch (error) {
+      json(res, 400, toMcpResponseEnvelope(route.id, buildMcpInvalidParams(error instanceof Error ? error.message : String(error))));
+    }
+    return;
+  }
+
+  const taskMethodResult = tryHandleMcpTaskMethod(route, body);
+  if (taskMethodResult) {
+    json(res, taskMethodResult.status, taskMethodResult.payload);
+    return;
+  }
+
+  if (route.method === 'tools/call') {
+    const callResult = handleMcpToolsCall(route, body);
+    json(res, callResult.status, callResult.payload);
+    return;
+  }
+
+  json(res, 404, toMcpResponseEnvelope(route.id, buildMcpMethodNotFound(route.method)));
+}
+
+async function readOptionalJsonBody(req, maxBodyBytes) {
+  let body = {};
+  const ct = (req.headers['content-type'] || '').toLowerCase();
+  if (!ct.includes('application/json')) {
+    return body;
+  }
+
+  let raw;
+  try {
+    raw = await readBody(req, maxBodyBytes);
+  } catch (err) {
+    throw Object.assign(new Error(err.message), { status: err.status || 400, code: 'BODY_ERROR' });
+  }
+
+  if (raw.length === 0) return body;
+
+  try {
+    body = JSON.parse(raw.toString('utf8'));
+  } catch {
+    throw Object.assign(new Error('Invalid JSON body'), { status: 400, code: 'PARSE_ERROR' });
+  }
+
+  return body;
+}
+
+function handleToolCollectionRequest(res) {
+  json(res, 200, {
+    ok: true,
+    tools: mcpToolSpecs.map(s => ({
+      name: s.name,
+      description: s.description,
+      endpoint: `POST /tools/${s.name}`,
+      hasInput: Boolean(s.inputSchema?.properties && Object.keys(s.inputSchema.properties).length > 0),
+    })),
+  });
+}
+
+async function handleToolInvokeRequest(req, res, config, toolName) {
+  let body = {};
+  try {
+    body = await readOptionalJsonBody(req, config.maxBodyBytes);
+  } catch (err) {
+    json(res, err.status || 400, { error: err.message, code: err.code || 'BODY_ERROR' });
+    return;
+  }
+
+  const dispatch = dispatchTool(toolName, body);
+  if (!dispatch.ok) {
+    json(res, dispatch.status, { error: dispatch.error, code: dispatch.code });
+    return;
+  }
+
+  json(res, 200, { ok: true, tool: toolName, result: dispatch.result });
 }
 
 // ---------------------------------------------------------------------------
@@ -163,13 +672,11 @@ function buildOpenApiSchema(baseUrl) {
 
   for (const spec of mcpToolSpecs) {
     const path = `/tools/${spec.name}`;
-    const hasInput = spec.inputSchema &&
-      spec.inputSchema.properties &&
-      Object.keys(spec.inputSchema.properties).length > 0;
+    const hasInput = Object.keys(spec.inputSchema?.properties || {}).length > 0;
 
     paths[path] = {
       post: {
-        operationId: spec.name.replace(/-/g, '_'),
+        operationId: spec.name.replaceAll('-', '_'),
         summary: spec.description,
         tags: [spec.name.split('-')[0]],
         security: [{ apiKey: [] }, { bearerAuth: [] }],
@@ -237,14 +744,17 @@ function buildOpenApiSchema(baseUrl) {
 // OAuth 2.0 stub
 // ---------------------------------------------------------------------------
 
-function buildOAuthMetadata(baseUrl) {
+function buildOAuthMetadata(baseUrl, oauthHardening) {
+  const cfg = oauthHardening || resolveOAuthHardeningConfig(baseUrl, {});
   return {
-    issuer: baseUrl,
+    issuer: cfg.issuer,
     authorization_endpoint: `${baseUrl}/oauth/authorize`,
     token_endpoint: `${baseUrl}/oauth/token`,
     jwks_uri: `${baseUrl}/.well-known/jwks.json`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code', 'client_credentials'],
+    client_id_metadata_document_supported: cfg.cimdEnabled,
+    client_id_metadata_document_endpoint: `${baseUrl}${cfg.validationEndpoint}`,
     _phase3_note: [
       'This is a Phase 2 MVP stub. All OAuth endpoints return 501 Not Implemented.',
       'Phase 3 (v3.x): Replace with Azure AD OAuth 2.0 by setting HARNESS_OAUTH_TENANT_ID,',
@@ -253,6 +763,16 @@ function buildOAuthMetadata(baseUrl) {
     ].join(' '),
     _current_auth: 'API key via X-Harness-API-Key or Authorization: Bearer',
     _upgrade_trigger: 'Set HARNESS_OAUTH_TENANT_ID to activate Phase 3 auth.',
+    _oauth_hardening: {
+      enabled: cfg.enabled,
+      issuerBinding: cfg.requireIssuerBinding,
+      cimdEnabled: cfg.cimdEnabled,
+      validationEndpoint: cfg.validationEndpoint,
+    },
+    _api_key_compatibility: {
+      enabled: cfg.allowApiKeyFallback,
+      mode: 'x-harness-api-key-or-bearer',
+    },
   };
 }
 
@@ -299,57 +819,104 @@ function dispatchTool(toolName, args) {
 // Request router
 // ---------------------------------------------------------------------------
 
-async function handleRequest(req, res, config) {
-  const { expectedKeyBuffer, maxBodyBytes, baseUrl } = config;
-  const method = req.method || 'GET';
-  const path = (req.url || '/').split('?')[0];
-
-  // --- Unauthenticated endpoints ---
-
+function tryHandlePublicRoute(path, method, res, config) {
   if (path === '/healthz') {
-    json(res, 200, { ok: true, version: VERSION, auth: expectedKeyBuffer ? 'api-key' : 'none (dev mode)' });
-    return;
+    json(res, 200, {
+      ok: true,
+      version: VERSION,
+      auth: config.expectedKeyBuffer ? 'api-key' : 'none (dev mode)',
+    });
+    return true;
   }
 
   if (path === '/openapi.json' && method === 'GET') {
-    json(res, 200, buildOpenApiSchema(baseUrl));
-    return;
+    json(res, 200, buildOpenApiSchema(config.baseUrl));
+    return true;
   }
 
   if (path === '/.well-known/oauth-authorization-server' && method === 'GET') {
-    json(res, 200, buildOAuthMetadata(baseUrl));
+    json(res, 200, buildOAuthMetadata(config.baseUrl, config.oauthHardening));
+    return true;
+  }
+
+  return false;
+}
+
+async function handleOAuthClientMetadataValidation(req, res, config) {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res);
     return;
   }
 
-  // OAuth stub endpoints — always 501
-  if (path.startsWith('/oauth/')) {
-    json(res, 501, {
-      error: 'OAuth 2.0 not implemented in Phase 2 MVP. See /.well-known/oauth-authorization-server for Phase 3 upgrade path.',
-      code: 'NOT_IMPLEMENTED',
-    });
-    return;
-  }
-
-  // --- Auth gate ---
-
-  const auth = checkAuth(req, expectedKeyBuffer);
+  const auth = checkAuth(req, config.expectedKeyBuffer);
   if (!auth.ok) {
     sendUnauthorized(res);
     return;
   }
 
-  // --- /tools ---
+  let body = {};
+  try {
+    body = await readOptionalJsonBody(req, config.maxBodyBytes);
+  } catch (err) {
+    json(res, err.status || 400, { ok: false, error: err.message, code: err.code || 'BODY_ERROR' });
+    return;
+  }
+
+  const validation = validateIssuerBinding(body, {
+    expectedIssuer: config.oauthHardening?.issuer,
+    requireIssuerBinding: config.oauthHardening?.enabled && config.oauthHardening?.requireIssuerBinding,
+  });
+
+  if (!validation.ok) {
+    json(res, 400, {
+      ok: false,
+      issuerBound: false,
+      expectedIssuer: validation.expectedIssuer,
+      receivedIssuer: validation.receivedIssuer,
+      errors: validation.errors,
+    });
+    return;
+  }
+
+  json(res, 200, {
+    ok: true,
+    issuerBound: true,
+    expectedIssuer: validation.expectedIssuer,
+    receivedIssuer: validation.receivedIssuer,
+    cimdEnabled: config.oauthHardening?.cimdEnabled === true,
+    apiKeyFallback: config.oauthHardening?.allowApiKeyFallback === true,
+  });
+}
+
+async function tryHandleOAuthRoute(req, res, config, path) {
+  if (path === '/oauth/client-metadata/validate') {
+    await handleOAuthClientMetadataValidation(req, res, config);
+    return true;
+  }
+
+  if (path.startsWith('/oauth/')) {
+    json(res, 501, {
+      error: 'OAuth 2.0 not implemented in Phase 2 MVP. See /.well-known/oauth-authorization-server for Phase 3 upgrade path.',
+      code: 'NOT_IMPLEMENTED',
+    });
+    return true;
+  }
+
+  return false;
+}
+
+async function handleAuthenticatedRoute(req, res, config, path, method) {
+  if (path === '/mcp') {
+    if (method !== 'POST') {
+      methodNotAllowed(res);
+      return;
+    }
+    await handleMcpRequest(req, res, { maxBodyBytes: config.maxBodyBytes, baseUrl: config.baseUrl });
+    return;
+  }
 
   if (path === '/tools' && method === 'GET') {
-    json(res, 200, {
-      ok: true,
-      tools: mcpToolSpecs.map(s => ({
-        name: s.name,
-        description: s.description,
-        endpoint: `POST /tools/${s.name}`,
-        hasInput: Boolean(s.inputSchema?.properties && Object.keys(s.inputSchema.properties).length > 0),
-      })),
-    });
+    handleToolCollectionRequest(res);
     return;
   }
 
@@ -360,35 +927,31 @@ async function handleRequest(req, res, config) {
 
   const toolMatch = path.match(/^\/tools\/([^/]+)$/);
   if (toolMatch) {
-    if (method !== 'POST') { methodNotAllowed(res); return; }
-
-    let body = {};
-    const ct = (req.headers['content-type'] || '').toLowerCase();
-    if (ct.includes('application/json')) {
-      let raw;
-      try { raw = await readBody(req, maxBodyBytes); } catch (err) {
-        json(res, err.status || 400, { error: err.message, code: 'BODY_ERROR' });
-        return;
-      }
-      if (raw.length > 0) {
-        try { body = JSON.parse(raw.toString('utf8')); } catch {
-          json(res, 400, { error: 'Invalid JSON body', code: 'PARSE_ERROR' });
-          return;
-        }
-      }
-    }
-
-    const toolName = toolMatch[1];
-    const dispatch = dispatchTool(toolName, body);
-    if (!dispatch.ok) {
-      json(res, dispatch.status, { error: dispatch.error, code: dispatch.code });
+    if (method !== 'POST') {
+      methodNotAllowed(res);
       return;
     }
-    json(res, 200, { ok: true, tool: toolName, result: dispatch.result });
+    await handleToolInvokeRequest(req, res, config, toolMatch[1]);
     return;
   }
 
   notFound(res);
+}
+
+async function handleRequest(req, res, config) {
+  const method = req.method || 'GET';
+  const path = (req.url || '/').split('?')[0];
+
+  if (tryHandlePublicRoute(path, method, res, config)) return;
+  if (await tryHandleOAuthRoute(req, res, config, path)) return;
+
+  const auth = checkAuth(req, config.expectedKeyBuffer);
+  if (!auth.ok) {
+    sendUnauthorized(res);
+    return;
+  }
+
+  await handleAuthenticatedRoute(req, res, config, path, method);
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +969,11 @@ function showHelp() {
       HARNESS_HTTP_HOST: 'Bind address (default 127.0.0.1)',
       HARNESS_HTTP_URL: 'Public base URL for OpenAPI server entry',
       HARNESS_HTTP_MAX_BODY_BYTES: 'Max request body bytes (default 1048576)',
+      HARNESS_OAUTH_HARDENING: 'Enable OAuth hardening metadata and issuer checks (default true)',
+      HARNESS_OAUTH_ISSUER: 'Canonical issuer used for issuer-binding validation (default HARNESS_HTTP_URL)',
+      HARNESS_OAUTH_REQUIRE_ISSUER_BINDING: 'Require issuer in client metadata validation (default true when hardening enabled)',
+      HARNESS_OAUTH_ALLOW_API_KEY_FALLBACK: 'Declare API-key compatibility mode in OAuth metadata (default true)',
+      HARNESS_OAUTH_CIMD_ENABLED: 'Expose client metadata document migration hints (default true)',
     },
     endpoints: {
       'GET /healthz': 'Liveness probe',
@@ -424,8 +992,10 @@ async function main() {
   const port = parsePositiveInt(flags.port ?? process.env.HARNESS_HTTP_PORT, 8100);
   const host = String(flags.host ?? process.env.HARNESS_HTTP_HOST ?? '127.0.0.1').trim();
   const rawKey = process.env.HARNESS_API_KEY;
-  const baseUrl = String(process.env.HARNESS_HTTP_URL || `http://${host}:${port}`).replace(/\/+$/, '');
+  const baseUrl = trimTrailingSlashes(String(process.env.HARNESS_HTTP_URL || `http://${host}:${port}`));
   const maxBodyBytes = parsePositiveInt(process.env.HARNESS_HTTP_MAX_BODY_BYTES, 1024 * 1024);
+  const harnessConfig = loadConfig();
+  const oauthHardening = resolveOAuthHardeningConfig(baseUrl, harnessConfig);
 
   // Schema-only mode: print OpenAPI spec and exit
   if (flags['schema-only']) {
@@ -442,7 +1012,7 @@ async function main() {
     );
   }
 
-  const config = { expectedKeyBuffer, maxBodyBytes, baseUrl };
+  const config = { expectedKeyBuffer, maxBodyBytes, baseUrl, oauthHardening };
 
   const server = createServer(async (req, res) => {
     try {
@@ -474,7 +1044,9 @@ async function main() {
   }
 }
 
-main().catch(err => {
+try {
+  await main();
+} catch (err) {
   process.stderr.write(`[http-adapter] fatal: ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
-});
+}

@@ -52,17 +52,19 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertSafeCliCommand } from "./command-validation.mjs";
+import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const repoRootSlash = `${trimTrailingForwardSlashes(repoRoot.replaceAll("\\", "/"))}/`;
 let repoFileManifest = null;
+const repoManifestAllowlist = createManifestAllowlist({ rootDir: repoRoot, fail });
 
 function trimTrailingForwardSlashes(value) {
   let text = String(value ?? "");
@@ -337,7 +339,7 @@ function toRepoRelativePath(inputPath, label) {
 }
 
 function materializeWritePathFromKey(relativePath) {
-  return join(repoRoot, ...relativePath.split("/"));
+  return repoManifestAllowlist.materializeRelativePath(relativePath, "trusted write path");
 }
 
 function buildRepoFileManifest() {
@@ -388,8 +390,7 @@ function sanitizeFileNameSegment(rawValue, label) {
 
 function readTrustedUtf8(pathValue, label) {
   const key = toRepoRelativePath(pathValue, label);
-  const selectedPath = selectManifestPath(key, label);
-  return readFileSync(selectedPath, "utf8");
+  return repoManifestAllowlist.readUtf8Relative(key, label);
 }
 
 function writeTrustedUtf8(pathValue, content, label) {
@@ -570,6 +571,14 @@ function writeReviewLog(logPath, subjectPath, result, lens) {
 function writeJournal(subjectPath, logPath, result, meta) {
   const startedAt = meta.startedAt;
   const finishedAt = new Date().toISOString();
+  const divergenceRounds = result.rounds
+    .filter((r) => r.verdict !== "APPROVED")
+    .map((r) => ({
+      round: r.round,
+      verdict: r.verdict,
+      flaggedTamper: Boolean(r.flaggedTamper),
+    }));
+  const hasConsensus = result.finalVerdict === "APPROVED";
   const journal = {
     loop: "plan-review",
     kind: "workflow",
@@ -593,6 +602,25 @@ function writeJournal(subjectPath, logPath, result, meta) {
       author: meta.author ?? null,
       maxRounds: meta.maxRounds,
       finalVerdict: result.finalVerdict,
+    },
+    comparativeReviewLedger: {
+      schemaVersion: 1,
+      source: "plan-review",
+      lens: meta.lens,
+      generatedAt: finishedAt,
+      consensus: {
+        status: hasConsensus ? "consensus" : "divergence",
+        finalVerdict: result.finalVerdict ?? "UNCLEAR",
+      },
+      divergence: {
+        hasDivergence: divergenceRounds.length > 0,
+        count: divergenceRounds.length,
+        rounds: divergenceRounds,
+      },
+      evidence: {
+        subject: basename(subjectPath),
+        log: basename(logPath),
+      },
     },
   };
   mkdirSync(runsDir, { recursive: true });

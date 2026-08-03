@@ -20,6 +20,42 @@ analysis and dependency tracing.
 
 ---
 
+## MCP 2026-07-28 Support Snapshot
+
+This repository already ships a first-class MCP server and partially aligns with the
+`2026-07-28` specification.
+
+### Implemented now
+
+- MCP server over stdio transport (`scripts/harness/mcp-server.mjs`)
+- Resources API (`resources/list`, `resources/read`) for memory and graph assets
+- Resource cache hints (`ttlMs`, `cacheScope`) and deterministic resource ordering
+- Structured tool error taxonomy for MCP tool execution failures
+- Read-only command surface with audit and rate-limit hooks
+
+### 2026-07-28 gap execution matrix
+
+| Backlog item | Current status | Primary target files | Minimum acceptance checks |
+| --- | --- | --- | --- |
+| Stateless HTTP transport with header routing (`Mcp-Method`, `Mcp-Name`) | Implemented (Slice A: header-first method/name routing over HTTP MCP endpoint) | `scripts/harness/http-adapter.mjs`, `scripts/harness/mcp-server.mjs`, `scripts/harness/test/mcp-http-slice-a-test.mjs` | HTTP endpoint accepts MCP-style headers and routes method/tool name without JSON-body inspection |
+| `server/discover` RPC for capability bootstrap | Implemented (Slice A: discovery payload on stdio + HTTP adapter parity) | `scripts/harness/mcp-server.mjs`, `scripts/harness/http-adapter.mjs`, `scripts/harness/test/mcp-http-slice-a-test.mjs` | Discovery response includes tools/resources/extensions summary and server metadata |
+| MRTR (`resultType: "input_required"` + `inputResponses`) flow support | Implemented (Slice B: stdio + HTTP adapter parity) | `scripts/harness/mcp-server.mjs`, `scripts/harness/http-adapter.mjs`, `scripts/harness/test/mcp-http-slice-b-mrtr-test.mjs` | At least one interactive tool path returns `input_required` and resumes correctly with `inputResponses` |
+| Tasks extension (`io.modelcontextprotocol/tasks`) support (`tasks/get`, `tasks/update`) | Implemented (Slice C: async task envelope + poll/cancel methods) | `scripts/harness/mcp-server.mjs`, `scripts/harness/http-adapter.mjs`, `scripts/harness/test/mcp-http-slice-c-tasks-test.mjs` | Long-running operation can be polled via `tasks/get` and state-transitioned via `tasks/update` |
+| Subscription stream migration (`subscriptions/listen`) for notifications | Implemented (Slice D: unified listen surface over graph/resources/tasks events) | `scripts/harness/mcp-server.mjs`, `scripts/harness/http-adapter.mjs`, `scripts/harness/test/mcp-http-slice-d-subscriptions-test.mjs` | Notification stream emits subscribed event types through one listen surface |
+| OAuth hardening semantics (issuer binding/CIMD migration) | Implemented (Slice E: issuer-bound metadata validation + explicit API-key compatibility) | `scripts/harness/http-adapter.mjs`, `scripts/harness/mcp-auth-validator.mjs`, `scripts/harness/test/mcp-http-slice-e-oauth-hardening-test.mjs`, `harness.config.json` | Issuer-bound client metadata is validated/configured and backward compatibility with API-key mode is explicit |
+
+### Priority execution order (completed)
+
+1. Header routing + discovery (`Mcp-Method`/`Mcp-Name`, `server/discover`) — completed.
+2. MRTR interactive flow support — completed.
+3. Tasks extension support — completed.
+4. Subscription stream migration — completed.
+5. OAuth issuer/CIMD hardening — completed.
+
+Execution note: keep stdio MCP support unchanged while introducing HTTP/path extensions in parallel.
+
+---
+
 ## MCP Tool Contracts
 
 ### Tool 1: `harness:mcp:find`
@@ -173,7 +209,7 @@ All graph status surfaces now share core contract fields:
 
 ### Understand Stage
 
-```
+```text
 ┌──────────────────────────────────────────┐
 │ Stage: UNDERSTAND                        │
 │ Model: Claude Opus 4.8                   │

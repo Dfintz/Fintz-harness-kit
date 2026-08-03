@@ -324,6 +324,35 @@ npm run harness:catalog:sync    # writes llms.txt + .github/harness/catalog/harn
 
 ---
 
+## macOS + LM Studio setup (Apple Silicon, Metal GPU)
+
+> **Quick path:** Run the discovery script first — it detects your chip, unified RAM, and LM Studio status.
+>
+> ```bash
+> bash scripts/setup-macos.sh           # hardware discovery + model recommendations
+> bash scripts/setup-macos.sh --json    # machine-readable JSON output
+> bash scripts/setup-macos.sh --install # auto-install missing dependencies via Homebrew
+> ```
+
+Or via npm:
+
+```bash
+npm run harness:setup:macos
+npm run harness:setup:macos:install
+```
+
+The script detects:
+- Chip generation (M1/M2/M3/M4), unified RAM, and memory pressure
+- LM Studio app installed + local server running on :1234
+- Loaded models (via `/v1/models`)
+- Node.js, git, Homebrew, Python3, pdftotext (for document ingestion)
+- Harness proxy, dashboard, and HTTP adapter service status
+- Generates a personalised env block for `~/.zshrc`
+
+See `.github/instructions/hardware-macbook-air-m1-8gb.instructions.md` for the full M1 8 GB profile.
+
+---
+
 ## Ubuntu + Ollama setup (local CPU inference, 50 GB Intel server)
 
 > **Quick path:** Run the discovery script first — it detects your hardware and tells you exactly what to install.

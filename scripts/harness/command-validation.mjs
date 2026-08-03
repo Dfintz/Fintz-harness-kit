@@ -17,6 +17,15 @@ const DEFAULT_ALLOWED_EXECUTABLES = [
   'graphify',
 ];
 
+function buildAllowList(options = {}) {
+  return new Set(
+    (Array.isArray(options.allowedExecutables)
+      ? options.allowedExecutables
+      : DEFAULT_ALLOWED_EXECUTABLES
+    ).map(entry => String(entry).toLowerCase())
+  );
+}
+
 const BLOCKED_SHELL_PATTERNS = [
   { pattern: /;/, reason: 'command chaining via semicolon is not allowed' },
   { pattern: /\|\|?|&&/, reason: 'command chaining/piping operators are not allowed' },
@@ -51,12 +60,7 @@ export function validateAgentCommand(command, options = {}) {
 
   const firstToken = shellSplit(cmd)[0];
   const executable = resolveExecutable(firstToken);
-  const allowList = new Set(
-    (Array.isArray(options.allowedExecutables)
-      ? options.allowedExecutables
-      : DEFAULT_ALLOWED_EXECUTABLES
-    ).map(entry => String(entry).toLowerCase())
-  );
+  const allowList = buildAllowList(options);
 
   if (!allowList.has(executable)) {
     return {
@@ -72,6 +76,43 @@ export function assertValidAgentCommand(command, context = 'agent command') {
   const verdict = validateAgentCommand(command);
   if (!verdict.ok) {
     throw new Error(`${context} rejected: ${verdict.reason}`);
+  }
+  return verdict;
+}
+
+export function validateCliArgv(argv, options = {}) {
+  if (!Array.isArray(argv) || argv.length === 0) {
+    return { ok: false, reason: 'argv must be a non-empty array' };
+  }
+
+  const firstToken = typeof argv[0] === 'string' ? argv[0].trim() : '';
+  if (!firstToken) {
+    return { ok: false, reason: 'argv[0] must be a non-empty executable string' };
+  }
+
+  const executable = resolveExecutable(firstToken);
+  const allowList = buildAllowList(options);
+  if (!allowList.has(executable)) {
+    return {
+      ok: false,
+      reason: `executable "${executable}" is not in allowlist (${[...allowList].join(', ')})`,
+    };
+  }
+
+  for (let i = 1; i < argv.length; i += 1) {
+    if (typeof argv[i] !== 'string') {
+      return { ok: false, reason: `argv[${i}] must be a string` };
+    }
+  }
+
+  return { ok: true, executable };
+}
+
+export function assertSafeCliArgv(argv, opts = {}) {
+  const label = opts?.label || 'CLI argv';
+  const verdict = validateCliArgv(argv, opts);
+  if (!verdict.ok) {
+    throw new Error(`${label} rejected: ${verdict.reason}`);
   }
   return verdict;
 }
@@ -137,6 +178,17 @@ function runSelfTest() {
       run: () => {
         const verdict = validateCliCommand('node -v');
         return verdict.ok === true && verdict.executable === 'node';
+      },
+    },
+    {
+      name: 'accepts argv with allowlisted executable',
+      run: () => validateCliArgv(['node', '--version']).ok === true,
+    },
+    {
+      name: 'rejects empty argv arrays',
+      run: () => {
+        const verdict = validateCliArgv([]);
+        return verdict.ok === false && /non-empty array/.test(verdict.reason || '');
       },
     },
   ];

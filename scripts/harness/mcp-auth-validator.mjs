@@ -84,4 +84,45 @@ function getCallerAuditInfo(caller, commandName, config) {
   };
 }
 
-export { extractCallerIdentity, isAuthorized, getCallerAuditInfo };
+/**
+ * Validate issuer binding for OAuth client metadata.
+ * Phase 2e: deterministic binding check used by HTTP adapter hardening endpoint.
+ * @param {object} metadata - Client metadata payload.
+ * @param {object} options - Validation options.
+ * @returns {object} {ok, issuerBound, expectedIssuer, receivedIssuer, errors}
+ */
+function validateIssuerBinding(metadata = {}, options = {}) {
+  const expectedIssuer = typeof options.expectedIssuer === 'string' ? options.expectedIssuer.trim() : '';
+  const requireIssuerBinding = options.requireIssuerBinding !== false;
+
+  let receivedIssuer = '';
+  if (typeof metadata?.issuer === 'string') {
+    receivedIssuer = metadata.issuer.trim();
+  } else if (typeof metadata?.client_metadata_issuer === 'string') {
+    receivedIssuer = metadata.client_metadata_issuer.trim();
+  }
+
+  const errors = [];
+
+  if (!expectedIssuer) {
+    errors.push('Expected issuer is not configured');
+  }
+
+  if (requireIssuerBinding && !receivedIssuer) {
+    errors.push('Client metadata issuer is required when issuer binding is enabled');
+  }
+
+  if (requireIssuerBinding && expectedIssuer && receivedIssuer && receivedIssuer !== expectedIssuer) {
+    errors.push(`Issuer mismatch. Expected ${expectedIssuer} but received ${receivedIssuer}`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    issuerBound: errors.length === 0,
+    expectedIssuer,
+    receivedIssuer: receivedIssuer || null,
+    errors,
+  };
+}
+
+export { extractCallerIdentity, isAuthorized, getCallerAuditInfo, validateIssuerBinding };

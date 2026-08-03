@@ -18,6 +18,96 @@ NOW                v2.4              v2.5              v2.6+
 
 ---
 
+## 2026-07-28 backlog execution slices
+
+This section tracks the exact MCP backlog items requested for protocol parity work.
+
+### Slice A — Header routing + discovery (first)
+
+Scope:
+
+- `Mcp-Method` and `Mcp-Name` HTTP header routing path
+- `server/discover` capability bootstrap RPC
+
+Targets:
+
+- `scripts/harness/http-adapter.mjs`
+- `scripts/harness/mcp-server.mjs`
+- `scripts/harness/mcp-contracts.mjs`
+
+Exit criteria:
+
+- Header-driven routing works without parsing JSON request bodies for method/tool selection.
+- `server/discover` returns capabilities and extension map.
+
+### Slice B — MRTR support (second)
+
+Scope:
+
+- `resultType: "input_required"` responses
+- resume path with `inputResponses`
+
+Targets:
+
+- `scripts/harness/mcp-server.mjs`
+- `scripts/harness/mcp-contracts.mjs`
+
+Exit criteria:
+
+- Interactive call path requires user input and resumes deterministically.
+
+### Slice C — Tasks extension (third)
+
+Scope:
+
+- `io.modelcontextprotocol/tasks` shape
+- `tasks/get` and `tasks/update`
+
+Targets:
+
+- `scripts/harness/mcp-server.mjs`
+- `scripts/harness/harness-mcp-tasks.mjs`
+- `scripts/harness/mcp-contracts.mjs`
+
+Exit criteria:
+
+- Long-running operation can be tracked and updated through task APIs.
+
+### Slice D — Subscriptions migration (fourth)
+
+Scope:
+
+- Consolidate notification transport under `subscriptions/listen`.
+
+Targets:
+
+- `scripts/harness/mcp-server.mjs`
+- `scripts/harness/mcp-cache.mjs`
+
+Exit criteria:
+
+- Single subscription stream handles selected notification types.
+
+### Slice E — OAuth hardening (fifth)
+
+Scope:
+
+- Issuer-bound credential semantics
+- CIMD-oriented registration metadata
+
+Targets:
+
+- `scripts/harness/http-adapter.mjs`
+- `scripts/harness/mcp-auth-validator.mjs`
+- `harness.config.json`
+
+Exit criteria:
+
+- Issuer/client metadata validation is explicit.
+- API-key mode remains available as documented fallback.
+
+---
+
 ## Phase 1: Resources & Metadata (v2.4)
 **Duration**: 1-2 weeks  
 **Effort**: ~300 lines across 2 files  

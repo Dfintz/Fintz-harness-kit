@@ -299,7 +299,9 @@ export function resolveGraphProviderState({
   );
   const graphifyRefreshCommand = stringOrUndefined(graphifyConfig.refreshCommand);
   const graphifyRefreshCwd = toAbsoluteMaybe(repoRoot, graphifyConfig.refreshCwd) ?? repoRoot;
-  const uaPluginRoot = stringOrUndefined(graphConfig.pluginRoot);
+  const uaPluginRoot =
+    stringOrUndefined(graphConfig.pluginRoot) ??
+    stringOrUndefined(process.env.UNDERSTAND_PLUGIN_ROOT);
   const graphEventsPath = toAbsolutePath(
     repoRoot,
     observabilityConfig.eventsPath,
@@ -508,7 +510,7 @@ function computeRefreshReadiness(state) {
         ready,
         reason: ready
           ? null
-          : 'graph.pluginRoot is required for understand-anything refresh.',
+          : 'graph.pluginRoot or UNDERSTAND_PLUGIN_ROOT is required for understand-anything refresh.',
       };
       continue;
     }
