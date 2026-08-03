@@ -52,8 +52,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertSafeCliCommand } from "./command-validation.mjs";
@@ -61,6 +61,16 @@ import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
+const repoRootSlash = `${trimTrailingForwardSlashes(repoRoot.replaceAll("\\", "/"))}/`;
+let repoFileManifest = null;
+
+function trimTrailingForwardSlashes(value) {
+  let text = String(value ?? "");
+  while (text.endsWith("/")) {
+    text = text.slice(0, -1);
+  }
+  return text;
+}
 
 // The review lenses. Each frames what the rival reviewer looks for, points at the authoritative
 // harness stage instruction (so the rival applies the SAME bar as the native pass), and defines when
@@ -289,29 +299,83 @@ function hashContent(content) {
     .digest("hex");
 }
 
-function assertPathInsideRepo(candidatePath, label) {
-  const resolvedPath = resolve(candidatePath); // NOSONAR: canonicalize first, then enforce repo-root boundary below.
-  const relPath = relative(repoRoot, resolvedPath);
-  const insideRepo =
-    relPath === "" || (!relPath.startsWith("..") && !isAbsolute(relPath));
-  if (!insideRepo) {
-    fail(`${label} must resolve under repository root: ${candidatePath}`);
-  }
-  return resolvedPath;
-}
-
-function resolveRepoInputPath(inputPath, label) {
-  const rawPath = String(inputPath ?? "");
-  if (!rawPath) {
+function parseSafeRelativeSegments(pathValue, label) {
+  const normalized = String(pathValue ?? "").trim().replaceAll("\\", "/");
+  if (!normalized) {
     fail(`${label} is required.`);
   }
-  if (rawPath.includes("\0")) {
+  if (normalized.includes("\0")) {
     fail(`${label} contains invalid null-byte path data.`);
   }
-  const candidatePath = isAbsolute(rawPath)
-    ? rawPath
-    : resolve(repoRoot, rawPath); // NOSONAR: user input is normalized and immediately constrained by assertPathInsideRepo.
-  return assertPathInsideRepo(candidatePath, label);
+  if (normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) {
+    fail(`${label} must be a repository-relative path.`);
+  }
+  const segments = normalized.split("/");
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === "..") {
+      fail(`${label} contains invalid traversal segments.`);
+    }
+    if (!/^[A-Za-z0-9._ -]+$/.test(segment)) {
+      fail(`${label} contains unsupported path characters.`);
+    }
+  }
+  return segments;
+}
+
+function toRepoRelativePath(inputPath, label) {
+  const normalized = String(inputPath ?? "").trim().replaceAll("\\", "/");
+  if (normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) {
+    const absoluteSlash = trimTrailingForwardSlashes(normalized);
+    if (!(absoluteSlash === repoRootSlash.slice(0, -1) || absoluteSlash.startsWith(repoRootSlash))) {
+      fail(`${label} must resolve under repository root.`);
+    }
+    const relativePath = absoluteSlash.slice(repoRootSlash.length);
+    const relativeSegments = relativePath ? parseSafeRelativeSegments(relativePath, label) : [];
+    return relativeSegments.join("/");
+  }
+  return parseSafeRelativeSegments(normalized, label).join("/");
+}
+
+function materializeWritePathFromKey(relativePath) {
+  return join(repoRoot, ...relativePath.split("/"));
+}
+
+function buildRepoFileManifest() {
+  const map = new Map();
+  const queue = [{ absoluteDir: repoRoot, relativeDir: "" }];
+  while (queue.length > 0) {
+    const next = queue.pop();
+    const entries = readdirSync(next.absoluteDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const childRelative = next.relativeDir
+        ? `${next.relativeDir}/${entry.name}`
+        : entry.name;
+      const childAbsolute = join(next.absoluteDir, entry.name);
+      if (entry.isDirectory()) {
+        queue.push({ absoluteDir: childAbsolute, relativeDir: childRelative });
+        continue;
+      }
+      if (entry.isFile()) {
+        map.set(childRelative.replaceAll("\\", "/"), childAbsolute);
+      }
+    }
+  }
+  return map;
+}
+
+function getRepoFileManifest() {
+  if (repoFileManifest === null) {
+    repoFileManifest = buildRepoFileManifest();
+  }
+  return repoFileManifest;
+}
+
+function selectManifestPath(relativePath, label) {
+  const selectedPath = getRepoFileManifest().get(relativePath);
+  if (!selectedPath) {
+    fail(`${label} not found in repository manifest: ${relativePath}`);
+  }
+  return selectedPath;
 }
 
 function sanitizeFileNameSegment(rawValue, label) {
@@ -323,13 +387,15 @@ function sanitizeFileNameSegment(rawValue, label) {
 }
 
 function readTrustedUtf8(pathValue, label) {
-  const trustedPath = assertPathInsideRepo(pathValue, label);
-  return readFileSync(trustedPath, "utf8"); // NOSONAR: trustedPath is repo-bound by assertPathInsideRepo.
+  const key = toRepoRelativePath(pathValue, label);
+  const selectedPath = selectManifestPath(key, label);
+  return readFileSync(selectedPath, "utf8");
 }
 
 function writeTrustedUtf8(pathValue, content, label) {
-  const trustedPath = assertPathInsideRepo(pathValue, label);
-  writeFileSync(trustedPath, content);
+  const trustedPath = selectManifestPath(toRepoRelativePath(pathValue, label), label);
+  writeFileSync(trustedPath, content, "utf8");
+  repoFileManifest = null;
 }
 
 function tokenizeCommand(command, label) {
@@ -535,10 +601,10 @@ function writeJournal(subjectPath, logPath, result, meta) {
     startedAt.replace(/[:.]/g, "-"),
     "journal timestamp",
   );
-  const out = resolveRepoInputPath(
+  const out = materializeWritePathFromKey(toRepoRelativePath(
     `.github/harness/runs/plan-review-${safeLens}-${safeStartedAt}.json`,
     "journal output",
-  );
+  ));
   writeFileSync(out, JSON.stringify(journal, null, 2));
   return out;
 }
@@ -930,7 +996,7 @@ function validateReviewerAndRounds(flags, lens) {
 }
 
 function resolveSubjectPathOrFail(subjectArg) {
-  const subjectPath = resolveRepoInputPath(subjectArg, "--subject");
+  const subjectPath = selectManifestPath(toRepoRelativePath(subjectArg, "--subject"), "--subject");
   if (!existsSync(subjectPath)) fail(`subject not found: ${subjectArg}`);
   return subjectPath;
 }
@@ -938,7 +1004,7 @@ function resolveSubjectPathOrFail(subjectArg) {
 function buildContextBlocks(flags) {
   const contextBlocks = [];
   for (const ctx of flags.context) {
-    const ctxPath = resolveRepoInputPath(ctx, "--context");
+    const ctxPath = selectManifestPath(toRepoRelativePath(ctx, "--context"), "--context");
     if (!existsSync(ctxPath)) fail(`--context file not found: ${ctx}`);
     const { block } = wrapUntrusted(
       readTrustedUtf8(ctxPath, "plan-review context read"),
@@ -956,11 +1022,11 @@ function resolveLogPath(flags, lens, subjectPath) {
     lens === DEFAULT_LENS
       ? `${basename(subjectPath, ".md")}-REVIEW-LOG.md`
       : `${basename(subjectPath, ".md")}-${lens}-REVIEW-LOG.md`;
-  const defaultLogPath = `${dirname(subjectPath)}/${defaultLogFile}`;
-  const logPathRaw = flags.log
-    ? resolveRepoInputPath(flags.log, "--log")
-    : assertPathInsideRepo(defaultLogPath, "--log");
-  return assertPathInsideRepo(logPathRaw, "--log");
+  const defaultLogPath = `${dirname(subjectPath)}\\${defaultLogFile}`;
+  const logPathInput = flags.log
+    ? flags.log
+    : toRepoRelativePath(defaultLogPath, "--log");
+  return materializeWritePathFromKey(toRepoRelativePath(logPathInput, "--log"));
 }
 
 function main() {
