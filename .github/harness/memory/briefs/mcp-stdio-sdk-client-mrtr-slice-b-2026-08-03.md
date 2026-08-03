@@ -34,7 +34,7 @@ resource: scripts/harness/test/mcp-http-slice-b-mrtr-test.mjs, scripts/harness/m
 
 ## File Plan
 - Add: `scripts/harness/test/mcp-stdio-slice-b-mrtr-sdk-client-test.mjs`
-- Update: `package.json` scripts section with a new `test:mcp:stdio:slice-b` entry.
+- Update: `package.json` scripts section with a new `test:mcp:stdio:mrtr` entry.
 
 ## Constraints
 - Do not invent raw JSON-RPC handshake logic in the test.
@@ -51,6 +51,6 @@ resource: scripts/harness/test/mcp-http-slice-b-mrtr-test.mjs, scripts/harness/m
 - `Client.callTool` returns structured content for successful responses and throws on protocol-level errors.
 
 ## Validation Plan
-- Run `npm run test:mcp:stdio:slice-b`.
-- Re-run `npm run test:mcp:http:slice-b` to verify parity and no regressions.
+- Run `npm run test:mcp:stdio:mrtr`.
+- Re-run `npm run test:mcp:http:mrtr` to verify parity and no regressions.
 - Run diagnostics on new test and package script changes.

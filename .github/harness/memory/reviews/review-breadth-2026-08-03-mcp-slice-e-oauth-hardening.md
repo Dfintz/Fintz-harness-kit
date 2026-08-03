@@ -14,8 +14,8 @@ Scope reviewed:
 - [Nit] API-key compatibility metadata is extension-style (`_api_key_compatibility`) and may later need standardization if external consumers demand strict schemas.
 
 ## Validation Evidence
-- Acceptance-first baseline confirmed: `npm run test:mcp:http:slice-e` failed pre-implementation.
-- Post-implementation: `npm run test:mcp:http:slice-e` passed (T1/T2/T3).
+- Acceptance-first baseline confirmed: `npm run test:mcp:http:oauth-hardening` failed pre-implementation.
+- Post-implementation: `npm run test:mcp:http:oauth-hardening` passed (T1/T2/T3).
 - Regression chain: `npm run test:mcp:dispatch` passed with Slice E included.
 
 ## Verdict

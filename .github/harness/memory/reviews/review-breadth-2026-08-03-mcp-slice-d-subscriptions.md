@@ -13,8 +13,8 @@ Scope reviewed:
 - [Nit] Topic taxonomy is fixed (`graph.events`, `resources.stream`, `tasks.lifecycle`); future Slice E+ may need extensible registration.
 
 ## Validation Evidence
-- Acceptance-first baseline observed: `npm run test:mcp:http:slice-d` failed before implementation (404 on `subscriptions/listen`).
-- Post-implementation: `npm run test:mcp:http:slice-d` passed.
+- Acceptance-first baseline observed: `npm run test:mcp:http:subscriptions` failed before implementation (404 on `subscriptions/listen`).
+- Post-implementation: `npm run test:mcp:http:subscriptions` passed.
 - Regression suite: `npm run test:mcp:dispatch` passed with Slice D included.
 
 ## Verdict

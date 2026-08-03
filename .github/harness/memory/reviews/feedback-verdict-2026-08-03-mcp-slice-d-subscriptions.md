@@ -5,7 +5,7 @@
 | --- | --- | --- |
 | Add `subscriptions/listen` without breaking Slice A-C | Decision holds | Full `test:mcp:dispatch` passed with A/B/C/D |
 | Keep acceptance-first pattern | Decision holds | Slice D test added + wired before implementation; pre-implementation failure recorded |
-| Pre-wire deterministic test chain coverage | Decision holds | `package.json` includes `test:mcp:http:slice-d` in `test:mcp:dispatch` |
+| Pre-wire deterministic test chain coverage | Decision holds | `package.json` includes `test:mcp:http:subscriptions` in `test:mcp:dispatch` |
 | Update integration contract state | Decision holds | MCP integration row updated to implemented for Slice D |
 
 ## Overall Verdict

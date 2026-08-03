@@ -57,7 +57,13 @@ function parseArgs(argv) {
       continue;
     }
 
-    flags[key] = next;
+    if (flags[key] === undefined) {
+      flags[key] = next;
+    } else if (Array.isArray(flags[key])) {
+      flags[key].push(next);
+    } else {
+      flags[key] = [flags[key], next];
+    }
     i += 1;
   }
   return flags;
@@ -78,6 +84,52 @@ function requireString(flags, key, message) {
     throw new Error(message);
   }
   return value.trim();
+}
+
+function parseFileValues(rawValue) {
+  const values = [];
+  const pushValue = (item) => {
+    if (typeof item !== 'string') return;
+    for (const part of item.split(',')) {
+      const trimmed = part.trim();
+      if (trimmed.length > 0) values.push(trimmed);
+    }
+  };
+
+  if (Array.isArray(rawValue)) {
+    for (const item of rawValue) pushValue(item);
+  } else {
+    pushValue(rawValue);
+  }
+
+  if (values.length === 0) {
+    throw new Error('impact requires --file <workspace-relative-path>');
+  }
+
+  return values;
+}
+
+function runImpactForFile(filePath, depth) {
+  const dependents = executeMcpTool('graph-dependents', { filePath });
+  const neighborCandidates = [`file:${filePath}`, `document:${filePath}`];
+  const dependentId = dependents?.data?.id;
+  if (typeof dependentId === 'string' && dependentId.length > 0) {
+    neighborCandidates.push(dependentId);
+  }
+
+  let neighbors = { ok: false };
+  for (const nodeId of neighborCandidates) {
+    neighbors = executeMcpTool('graph-neighbors', { nodeId, depth });
+    if (neighbors.ok) break;
+  }
+
+  return {
+    ok: dependents.ok && neighbors.ok,
+    filePath,
+    depth,
+    dependents,
+    neighbors,
+  };
 }
 
 function cmdStatus() {
@@ -154,26 +206,19 @@ function cmdFind(flags) {
 }
 
 function cmdImpact(flags) {
-  const filePath = requireString(flags, 'file', 'impact requires --file <workspace-relative-path>');
+  const filePaths = parseFileValues(flags.file);
   const depth = toPositiveInt(flags.depth, 2);
-  const nodeId = `file:${filePath}`;
 
-  const dependents = executeMcpTool('graph-dependents', { filePath });
-  let neighbors = executeMcpTool('graph-neighbors', { nodeId, depth });
-
-  if (!neighbors.ok) {
-    neighbors = executeMcpTool('graph-neighbors', {
-      nodeId: `document:${filePath}`,
-      depth,
-    });
+  if (filePaths.length === 1) {
+    return runImpactForFile(filePaths[0], depth);
   }
 
+  const results = filePaths.map((filePath) => runImpactForFile(filePath, depth));
   return {
-    ok: dependents.ok && neighbors.ok,
-    filePath,
+    ok: results.every((item) => item.ok),
+    files: filePaths,
     depth,
-    dependents,
-    neighbors,
+    results,
   };
 }
 
@@ -182,7 +227,7 @@ function usage() {
     usage: [
       'node scripts/harness/harness-mcp-tasks.mjs status',
       'node scripts/harness/harness-mcp-tasks.mjs find --query "tenant isolation" [--scope all] [--top 8] [--limit 8]',
-      'node scripts/harness/harness-mcp-tasks.mjs impact --file backend/src/app.ts [--depth 2]',
+      'node scripts/harness/harness-mcp-tasks.mjs impact --file backend/src/app.ts [--file backend/src/other.ts] [--depth 2]',
     ],
   };
 }

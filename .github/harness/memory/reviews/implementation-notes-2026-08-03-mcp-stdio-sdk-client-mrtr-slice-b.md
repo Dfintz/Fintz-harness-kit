@@ -4,7 +4,7 @@
 - Added stdio MRTR parity test using installed MCP SDK client seam:
   - scripts/harness/test/mcp-stdio-slice-b-mrtr-sdk-client-test.mjs
 - Added npm script entry:
-  - test:mcp:stdio:slice-b in package.json
+  - test:mcp:stdio:mrtr in package.json
 
 ## Key Implementation Details
 - Test uses `Client` + `StdioClientTransport` from `@modelcontextprotocol/sdk`.
@@ -17,8 +17,8 @@
   - T3 invalid requestToken is rejected
 
 ## Validation Evidence
-- npm run test:mcp:stdio:slice-b: PASS
-- npm run test:mcp:http:slice-b: PASS
+- npm run test:mcp:stdio:mrtr: PASS
+- npm run test:mcp:http:mrtr: PASS
 - Diagnostics on new test file: no errors
 
 ## Scope Check

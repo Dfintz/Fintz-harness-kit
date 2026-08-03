@@ -8,6 +8,8 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
+Latest release notes: [`RELEASE_NOTES_v3.1.1.md`](RELEASE_NOTES_v3.1.1.md).
+
 ## Install
 
 The kit is packaged as an [Agent Skill](https://agentskills.io/) and a Claude Code plugin, so it

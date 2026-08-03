@@ -120,13 +120,16 @@ npm run harness:mcp:find -- <component-name-or-pattern>
 **Invocation:**
 
 ```bash
-npm run harness:mcp:impact -- --files "<path1>,<path2>,..." [--depth 1-3]
+npm run harness:mcp:impact -- --file "<path1>,<path2>,..." [--file <pathN>] [--depth 1-3]
 ```
 
 **Inputs:**
 
-- `files`: Comma-separated paths (e.g.,
-  `.github/harness/registry.json, scripts/harness/dspy-bridge.mjs`)
+- `file`: One or more workspace-relative paths.
+  - Comma-separated in one flag (e.g.,
+    `--file ".github/harness/registry.json,scripts/harness/dspy-bridge.mjs"`)
+  - Or repeated flags (e.g.,
+    `--file .github/harness/registry.json --file scripts/harness/dspy-bridge.mjs`)
 - `depth`: Traversal depth (1 = direct dependents, 2 = transitive, 3 = full closure; default: 2)
 
 **Output:**
@@ -289,7 +292,7 @@ npm run harness:mcp:find -- "registry.json"
 # Output: prompt-router, optimize-skills, AGENTS.md, HARNESS.md
 
 # 2. Analyze impact of registry changes
-npm run harness:mcp:impact -- --files ".github/harness/registry.json" --depth 2
+npm run harness:mcp:impact -- --file .github/harness/registry.json --depth 2
 
 # Output: routing, skill discovery, CLI entry points all affected
 # Risk: Medium (registry change cascades to routing decisions)
@@ -313,7 +316,7 @@ npm run harness:mcp:find -- "dspy-bridge.mjs"
 # Output: optimize-all-skills.mjs, dspy-optimize-ollama.py, dspy-optimize.py
 
 # 2. Analyze impact on optimization pipeline
-npm run harness:mcp:impact -- --files "scripts/harness/dspy-bridge.mjs" --depth 2
+npm run harness:mcp:impact -- --file scripts/harness/dspy-bridge.mjs --depth 2
 
 # Output: Optimizer orchestration, eval-set loading, report generation affected
 # Risk: Medium (optimizer is critical path for skill optimization workflow)

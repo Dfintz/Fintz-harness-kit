@@ -11,15 +11,19 @@
  *
  * Usage (interactive monitoring):
  *   node scripts/harness/phase5c-live-monitor.mjs
+ *   npm run harness:phase5:postdeploy:monitor
  *
  * Usage (metrics export):
  *   node scripts/harness/phase5c-live-monitor.mjs --json > metrics.json
+ *   npm run harness:phase5:postdeploy:monitor:json
  *
  * Usage (check specific skill):
  *   node scripts/harness/phase5c-live-monitor.mjs --skill architect
+ *   npm run harness:phase5:postdeploy:monitor:skill -- --skill=architect
  *
  * Usage (alert mode):
  *   node scripts/harness/phase5c-live-monitor.mjs --alert-threshold 5
+ *   npm run harness:phase5:postdeploy:monitor:alerts
  *
  * Environment:
  *   PHASE5C_BASELINE — path to cascade health check results (auto-detected)

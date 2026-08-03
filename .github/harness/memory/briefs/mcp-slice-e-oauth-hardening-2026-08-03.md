@@ -40,7 +40,7 @@ OAuth discovery metadata exists, but issuer-bound client metadata validation is 
 4. `scripts/harness/test/mcp-http-slice-e-oauth-hardening-test.mjs`
 - new deterministic acceptance tests.
 5. `package.json`
-- add and wire `test:mcp:http:slice-e` into `test:mcp:dispatch`.
+- add and wire `test:mcp:http:oauth-hardening` into `test:mcp:dispatch`.
 6. `.github/harness/MCP-INTEGRATION.md`
 - update Slice E row to implemented after validation.
 
@@ -60,7 +60,7 @@ OAuth discovery metadata exists, but issuer-bound client metadata validation is 
 
 ## Exit Criteria
 1. Slice E deterministic test fails pre-implementation, passes post-implementation.
-2. `npm run test:mcp:http:slice-e` passes.
+2. `npm run test:mcp:http:oauth-hardening` passes.
 3. `npm run test:mcp:dispatch` passes with Slice E wired in.
 4. MCP-INTEGRATION Slice E row updated to implemented.
 

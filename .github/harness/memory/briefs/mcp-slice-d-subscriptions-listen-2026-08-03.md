@@ -35,7 +35,7 @@ Current implementation has custom resource-stream notifications in stdio `resour
 3. `scripts/harness/test/mcp-http-slice-d-subscriptions-test.mjs`
 - New deterministic acceptance tests for success/validation behavior.
 4. `package.json`
-- Add `test:mcp:http:slice-d` and include in `test:mcp:dispatch` chain.
+- Add `test:mcp:http:subscriptions` and include in `test:mcp:dispatch` chain.
 5. `.github/harness/MCP-INTEGRATION.md`
 - Update Slice D status row to implemented after validation.
 
@@ -57,7 +57,7 @@ Current implementation has custom resource-stream notifications in stdio `resour
 
 ## Exit Criteria
 1. New Slice D test fails pre-implementation and passes post-implementation.
-2. `npm run test:mcp:http:slice-d` passes.
+2. `npm run test:mcp:http:subscriptions` passes.
 3. `npm run test:mcp:dispatch` passes with Slice D wired in.
 4. MCP integration matrix row for Slice D is updated to implemented.
 

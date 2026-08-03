@@ -296,6 +296,29 @@ function validateCitedScripts(findings) {
   }
 }
 
+function validateNoExactDuplicateScriptBodies(findings) {
+  const pkg = readJson(packageJsonPath);
+  const scripts = pkg.scripts ?? {};
+  const byBody = new Map();
+
+  for (const [name, body] of Object.entries(scripts)) {
+    if (typeof body !== "string") continue;
+    const names = byBody.get(body) ?? [];
+    names.push(name);
+    byBody.set(body, names);
+  }
+
+  for (const [body, names] of byBody.entries()) {
+    if (names.length < 2) continue;
+    addError(
+      findings,
+      "duplicate-script-body",
+      "package.json",
+      `Scripts share an identical command body (${names.join(", ")}): ${body}`,
+    );
+  }
+}
+
 function parseArgs(argv) {
   const flags = {
     changedSurfaceWarnings: false,
@@ -417,6 +440,7 @@ function main() {
   validateRegistryTooling(registry, findings);
   validateSkillEntries(registry, findings);
   validateCitedScripts(findings);
+  validateNoExactDuplicateScriptBodies(findings);
   if (flags.changedSurfaceWarnings) {
     validateChangedSurfaceCitations(findings, {
       baseRef: flags.changedSurfaceBase,

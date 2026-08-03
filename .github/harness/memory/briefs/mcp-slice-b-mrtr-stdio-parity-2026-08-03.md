@@ -53,7 +53,7 @@ Missing context: none material. The server's line-oriented stdio test pattern ex
 1. Add `scripts/harness/test/mcp-stdio-slice-b-mrtr-test.mjs` as a focused persistent-process test.
 2. Cover stdio kickoff, valid same-tool resume, unknown-token rejection, valid-token cross-tool rejection, and missing-`inputResponses` rejection. This mirrors HTTP acceptance without asserting shared token state across transports.
 3. Implement the test helper as a persistent line-buffered subprocess client with JSON-RPC ID correlation, per-request timeout, and awaited child cleanup.
-4. Add `test:mcp:stdio:slice-b` and `test:mcp:slice-b` scripts. The latter owns the HTTP-plus-stdio aggregate invoked by `test:mcp:dispatch`.
+4. Add `test:mcp:stdio:mrtr` and `test:mcp:slice-b` scripts. The latter owns the HTTP-plus-stdio aggregate invoked by `test:mcp:dispatch`.
 5. Update the MCP support matrix to name both deterministic tests.
 
 ## Constraints and Do-NOTs
@@ -66,8 +66,8 @@ Missing context: none material. The server's line-oriented stdio test pattern ex
 
 ## Validation plan
 
-- `npm run test:mcp:stdio:slice-b`
-- `npm run test:mcp:http:slice-b`
+- `npm run test:mcp:stdio:mrtr`
+- `npm run test:mcp:http:mrtr`
 - `npm run test:mcp:slice-b`
 - `npm run test:mcp:dispatch`
 - Markdown diagnostics for the updated support matrix and brief.
