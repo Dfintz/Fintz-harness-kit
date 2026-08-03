@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief - Radar Reevaluation and Adoption Audit"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [radar, reevaluation, and, adoption]
+---
 # Architecture Brief - Radar Reevaluation and Adoption Audit
 resource: .github/harness/memory/radar/, .github/harness/memory/radar/README.md, .github/harness/memory/radar/_template.md, .github/harness/runs/run-contract.md, scripts/harness/record-run.mjs, scripts/harness/harness-report.mjs, .github/instructions/03-ARCHITECT.md, .github/instructions/05-REVIEW-BREADTH.md
 status: active

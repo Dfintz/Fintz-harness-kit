@@ -1,3 +1,12 @@
+---
+summary: "Phase 2b Evaluation: Understand Stage"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [phase2b, evaluation, stage1, understand]
+---
 # Phase 2b Evaluation: Understand Stage
 
 **Date:** 2026-07-27  

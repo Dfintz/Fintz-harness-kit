@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Harness Full Review — Issues, Gaps, Improvements"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, harness, full, review]
+---
 # Architecture Brief: Harness Full Review — Issues, Gaps, Improvements
 
 resource: `.github/harness/HARNESS.md`, `.github/harness/registry.json`, `harness.config.json`, `.github/skills/*/SKILL.md`, `.github/instructions/02-07-*.md`, `scripts/harness/prompt-router.mjs`, `scripts/harness/validate-doc-contracts.mjs`, `.github/harness/loops/*.json`

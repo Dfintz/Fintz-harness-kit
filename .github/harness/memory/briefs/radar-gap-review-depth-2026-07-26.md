@@ -1,3 +1,12 @@
+---
+summary: "Review Depth Findings - Radar Gap Implementation - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [radar, gap, review, depth]
+---
 # Review Depth Findings - Radar Gap Implementation - 2026-07-26
 resource: .github/harness/memory/briefs/radar-gap-implementation-brief-2026-07-26.md, .github/harness/memory/briefs/radar-gap-review-breadth-2026-07-26.md, scripts/harness/prompt-router.mjs, scripts/harness/validate-doc-contracts.mjs
 

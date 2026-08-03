@@ -1,3 +1,12 @@
+---
+summary: "CodeRabbit Gap Implementation Brief - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [coderabbit, review, gap]
+---
 # CodeRabbit Gap Implementation Brief - 2026-07-26
 resource: .github/harness/memory/radar/coderabbit-pr-review.md, .github/harness/HARNESS.md, .github/instructions/05-REVIEW-BREADTH.md
 

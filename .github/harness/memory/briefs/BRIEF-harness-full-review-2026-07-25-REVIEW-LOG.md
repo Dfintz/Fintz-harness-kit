@@ -1,3 +1,12 @@
+---
+summary: "Cross-Model Review Log (plan)"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, harness, full, review]
+---
 # Cross-Model Review Log (plan)
 
 > Cross-model plan review of `BRIEF-harness-full-review-2026-07-25.md`. The _what_ lives in the subject;

@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Harness Full Review — 2026-07-25"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, harness, full, review]
+---
 # Architecture Brief: Harness Full Review — 2026-07-25
 resource: AGENTS.md, .github/harness/HARNESS.md, .github/harness/LOOPS.md, .github/instructions/02-UNDERSTAND-WORKFLOW.md, .github/instructions/03-ARCHITECT.md, .github/instructions/04-IMPLEMENT.md, .github/instructions/05-REVIEW-BREADTH.md, .github/instructions/06-REVIEW-DEPTH.md, .github/instructions/07-FEEDBACK.md, harness.config.json, package.json, scripts/harness/validate-doc-contracts.mjs, scripts/harness/prompt-router.mjs, .github/harness/pilot/INTEGRATION-PLAN.md, .github/harness/optimized-skills/
 

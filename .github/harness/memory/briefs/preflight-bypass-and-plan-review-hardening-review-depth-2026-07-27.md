@@ -1,3 +1,12 @@
+---
+summary: "Review Depth"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [preflight, bypass, and, plan]
+---
 ## Review Depth
 resource: scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs,.github/harness/memory/briefs/preflight-bypass-and-plan-review-hardening-brief-2026-07-27.md
 

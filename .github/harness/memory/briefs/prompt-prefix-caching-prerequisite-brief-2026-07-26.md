@@ -1,3 +1,12 @@
+---
+summary: "Prompt Prefix Caching Prerequisite Brief - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [prompt, prefix, caching, prerequisite]
+---
 # Prompt Prefix Caching Prerequisite Brief - 2026-07-26
 resource: .github/harness/memory/radar/prompt-prefix-caching.md, scripts/harness/llm-provider.mjs, scripts/harness/dspy-bridge.mjs, scripts/harness/dspy-optimize.py
 

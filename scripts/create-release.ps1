@@ -52,12 +52,27 @@ npm run harness:docs:check
 
 $token = $env:GITHUB_TOKEN
 if (-not $token) {
-    Write-Host "❌ GITHUB_TOKEN environment variable not set"
     Write-Host ""
-    Write-Host "Please set your GitHub token:"
-    Write-Host '  $env:GITHUB_TOKEN = "<your-token>"'
+    Write-Host "⏳ GITHUB_TOKEN credential not available — deferring Release entry creation"
     Write-Host ""
-    Write-Host "Or visit: https://github.com/$owner/$repo/releases/new?tag=$tag"
+    Write-Host "ℹ️  This is expected in local development. The harness uses a credential deferral strategy:"
+    Write-Host "   - Release tag and commit are already pushed ✅"
+    Write-Host "   - GitHub Release entry creation requires GITHUB_TOKEN (this step is deferred)"
+    Write-Host ""
+    Write-Host "📋 To complete the release entry, you can:"
+    Write-Host ""
+    Write-Host "   Option 1: Set GITHUB_TOKEN locally"
+    Write-Host '     $env:GITHUB_TOKEN = "<your-personal-access-token>"'
+    Write-Host "     .\scripts\create-release.ps1"
+    Write-Host ""
+    Write-Host "   Option 2: Use GitHub web UI (no token needed)"
+    Write-Host "     https://github.com/Dfintz/Fintz-harness-kit/releases/new?tag=v2.5.0"
+    Write-Host ""
+    Write-Host "   Option 3: Deploy via CI/CD (GitHub Actions has token)"
+    Write-Host "     Token will be available in workflow environment"
+    Write-Host ""
+    Write-Host "📚 Learn more: .github/harness/memory/lessons/credential-deferral-and-environment-constraints.lesson.md"
+    Write-Host ""
     exit 1
 }
 

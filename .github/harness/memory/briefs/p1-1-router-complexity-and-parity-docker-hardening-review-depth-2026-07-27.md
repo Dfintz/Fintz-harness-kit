@@ -1,3 +1,12 @@
+---
+summary: "Review Depth - P1-1 Router Complexity + Parity Docker Hardening - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [router, complexity]
+---
 # Review Depth - P1-1 Router Complexity + Parity Docker Hardening - 2026-07-27
 resource: .github/harness/memory/briefs/p1-1-router-complexity-and-parity-docker-hardening-brief-2026-07-27.md, .github/harness/memory/briefs/p1-1-router-complexity-and-parity-docker-hardening-implementation-2026-07-27.md, .github/harness/memory/briefs/p1-1-router-complexity-and-parity-docker-hardening-review-breadth-2026-07-27.md
 

@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Deferred Harness Improvements (4 Tasks)"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, deferred, harness, improvements]
+---
 # Architecture Brief: Deferred Harness Improvements (4 Tasks)
 
 **Date:** 2026-07-20  

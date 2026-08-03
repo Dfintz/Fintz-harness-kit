@@ -1,3 +1,12 @@
+---
+summary: "P0-3 Graph Parity JSON Contract Alignment Implementation - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [graph, parity]
+---
 # P0-3 Graph Parity JSON Contract Alignment Implementation - 2026-07-27
 resource: .github/harness/memory/briefs/p0-3-graph-parity-json-contract-alignment-brief-2026-07-27.md, scripts/harness/graph-parity-self-test.mjs, scripts/harness/graph.mjs, scripts/harness/graph-provider.mjs
 

@@ -1,3 +1,12 @@
+---
+summary: "P1-3 Snyk Trust and Rescan Review Breadth - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [snyk, trust]
+---
 # P1-3 Snyk Trust and Rescan Review Breadth - 2026-07-27
 resource: .github/harness/memory/briefs/p1-3-snyk-trust-and-rescan-implementation-2026-07-27.md, scripts/harness/prompt-router.mjs
 

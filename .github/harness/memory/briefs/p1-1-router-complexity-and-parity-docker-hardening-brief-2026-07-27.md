@@ -1,3 +1,12 @@
+---
+summary: "P1-1 Router Complexity Refactor With Parity Docker Hardening Brief - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [router, complexity]
+---
 # P1-1 Router Complexity Refactor With Parity Docker Hardening Brief - 2026-07-27
 resource: scripts/harness/prompt-router.mjs, scripts/harness/graph-parity-self-test.mjs, scripts/harness/command-validation.mjs, package.json
 

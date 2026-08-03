@@ -1,3 +1,12 @@
+---
+summary: "Brief: OKF follow-up hard-flag remediation and targeted strict CI — active"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [okf, followup, memory, curate]
+---
 # Brief: OKF follow-up hard-flag remediation and targeted strict CI — active
 
 resource: scripts/harness/memory-curate.mjs,scripts/harness/okf-phase0.mjs,.github/workflows/harness-optional-security-gates.example.yml,.github/harness/memory/briefs/harness-review-consistency-2026-07-25.md

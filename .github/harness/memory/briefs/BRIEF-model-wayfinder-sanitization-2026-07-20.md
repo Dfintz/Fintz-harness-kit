@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Model Benchmarks, Wayfinder Integration, Sanitization Audit"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, model, wayfinder, sanitization]
+---
 # Architecture Brief: Model Benchmarks, Wayfinder Integration, Sanitization Audit
 
 resource: `harness.config.json`, `.github/harness/HARNESS.md`, `scripts/harness/run-loop.mjs`, `scripts/harness/run-experiment.mjs`, `scripts/harness/untrusted.mjs`, `scripts/harness/council-review.mjs`, `.github/harness/WORKFLOW.md`

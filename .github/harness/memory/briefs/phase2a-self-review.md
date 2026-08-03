@@ -1,3 +1,12 @@
+---
+summary: "Phase 2a Self-Review Checklist"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [phase2a, self, review]
+---
 # Phase 2a Self-Review Checklist
 
 **Reviewer:** GitHub Copilot  

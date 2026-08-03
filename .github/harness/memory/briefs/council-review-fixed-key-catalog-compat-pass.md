@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Council Review Fixed-Key Catalog Compatibility Pass"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [council, review, fixed, key]
+---
 # Architecture Brief: Council Review Fixed-Key Catalog Compatibility Pass
 
 Date: 2026-06-15

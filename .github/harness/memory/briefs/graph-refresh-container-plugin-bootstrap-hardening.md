@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Graph Refresh Container Plugin Bootstrap Hardening"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [graph, refresh, container, plugin]
+---
 # Architecture Brief: Graph Refresh Container Plugin Bootstrap Hardening
 
 Date: 2026-06-15

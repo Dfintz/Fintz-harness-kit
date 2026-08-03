@@ -1,3 +1,12 @@
+---
+summary: "Feedback Verdict Record"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [preflight, bypass, and, plan]
+---
 ## Feedback Verdict Record
 resource: .github/harness/memory/briefs/preflight-bypass-and-plan-review-hardening-brief-2026-07-27.md,.github/harness/memory/briefs/preflight-bypass-and-plan-review-hardening-review-breadth-2026-07-27.md,.github/harness/memory/briefs/preflight-bypass-and-plan-review-hardening-review-depth-2026-07-27.md,scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs
 

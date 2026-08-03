@@ -1,3 +1,12 @@
+---
+summary: "Brief: Harness Consistency Review (Registry Gap, Package Version, llms.txt) — implemented"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [harness, review, consistency, 2026]
+---
 # Brief: Harness Consistency Review (Registry Gap, Package Version, llms.txt) — implemented
 
 resource: .github/harness/registry.json, package.json, llms.txt, harness.config.json

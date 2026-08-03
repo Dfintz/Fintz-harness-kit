@@ -1,3 +1,12 @@
+---
+summary: "Review Depth - P0-2 Harness Health Command - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [harness, health]
+---
 # Review Depth - P0-2 Harness Health Command - 2026-07-27
 resource: .github/harness/memory/briefs/p0-2-harness-health-command-brief-2026-07-27.md, .github/harness/memory/briefs/p0-2-harness-health-command-implementation-2026-07-27.md, .github/harness/memory/briefs/p0-2-harness-health-command-review-breadth-2026-07-27.md
 

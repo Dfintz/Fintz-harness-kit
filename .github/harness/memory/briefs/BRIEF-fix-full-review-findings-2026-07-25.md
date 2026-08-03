@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Fix Full Review Findings — 2026-07-25"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [BRIEF, fix, full, review]
+---
 # Architecture Brief: Fix Full Review Findings — 2026-07-25
 resource: .github/harness/pilot/INTEGRATION-PLAN.md, .github/harness/pilot/QUICK-START.md, .github/skills/setup-harness-bootstrap/SKILL.md, package.json, scripts/harness/validate-doc-contracts.mjs, harness.config.json, scripts/harness/phase5-multi-model-optimizer.mjs, scripts/harness/phase5/validate-skills.mjs, .github/instructions/02-UNDERSTAND-WORKFLOW.md, scripts/harness/measure-phase5c-real.mjs
 

@@ -1,3 +1,12 @@
+---
+summary: "Cross-Model Review Log (plan)"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [plan, review, zero, warning]
+---
 # Cross-Model Review Log (plan)
 
 > Cross-model plan review of `plan-review-zero-warning-analyzer-pass-brief-2026-07-27.md`. The _what_ lives in the subject;

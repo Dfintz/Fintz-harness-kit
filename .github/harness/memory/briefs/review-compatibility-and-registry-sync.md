@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief: Restore review compatibility and sync registry entrypoints"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [review, compatibility, and, registry]
+---
 # Architecture Brief: Restore review compatibility and sync registry entrypoints
 
 Date: 2026-06-15

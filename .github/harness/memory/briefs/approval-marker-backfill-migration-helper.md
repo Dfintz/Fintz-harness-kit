@@ -1,3 +1,12 @@
+---
+summary: "Brief: Approval marker backfill migration helper - active"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [approval, marker, backfill, migration]
+---
 # Brief: Approval marker backfill migration helper - active
 
 Date: 2026-06-15

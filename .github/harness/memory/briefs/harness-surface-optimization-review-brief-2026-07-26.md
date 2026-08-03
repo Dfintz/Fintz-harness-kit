@@ -1,3 +1,12 @@
+---
+summary: "Harness Surface Optimization Review Brief - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [harness, surface, optimization, review]
+---
 # Harness Surface Optimization Review Brief - 2026-07-26
 resource: .github/harness/HARNESS.md, .github/harness/LOOPS.md, .github/harness/registry.json, harness.config.json, package.json, scripts/harness/prompt-router.mjs, scripts/harness/validate-doc-contracts.mjs, scripts/harness/run-loop.mjs, scripts/harness/harness-report.mjs
 

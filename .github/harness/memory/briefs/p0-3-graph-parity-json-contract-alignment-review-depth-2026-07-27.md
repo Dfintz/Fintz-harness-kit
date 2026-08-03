@@ -1,3 +1,12 @@
+---
+summary: "Review Depth - P0-3 Graph Parity JSON Contract Alignment - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [graph, parity]
+---
 # Review Depth - P0-3 Graph Parity JSON Contract Alignment - 2026-07-27
 resource: .github/harness/memory/briefs/p0-3-graph-parity-json-contract-alignment-brief-2026-07-27.md, .github/harness/memory/briefs/p0-3-graph-parity-json-contract-alignment-implementation-2026-07-27.md, .github/harness/memory/briefs/p0-3-graph-parity-json-contract-alignment-review-breadth-2026-07-27.md
 

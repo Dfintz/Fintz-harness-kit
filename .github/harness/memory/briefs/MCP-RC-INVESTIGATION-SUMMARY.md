@@ -1,3 +1,12 @@
+---
+summary: "MCP 2026-07-28 Release Candidate Investigation — Executive Summary"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [MCP, INVESTIGATION, SUMMARY]
+---
 # MCP 2026-07-28 Release Candidate Investigation — Executive Summary
 
 **Date**: 2026-07-27  

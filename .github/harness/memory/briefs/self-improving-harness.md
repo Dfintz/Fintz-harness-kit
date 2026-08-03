@@ -1,3 +1,12 @@
+---
+summary: "Self-Improving Harness — eval-gated, security-first evolution"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [self, improving, harness]
+---
 # Self-Improving Harness — eval-gated, security-first evolution
 
 active

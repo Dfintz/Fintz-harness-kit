@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [reflexion, loop, memory, architect]
+---
 ## Architecture Brief
 
 ### Objective

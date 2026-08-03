@@ -1,3 +1,12 @@
+---
+summary: "Review Depth"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [whole, harness, review, depth]
+---
 ## Review Depth
 resource: .github/harness/memory/briefs/whole-harness-review-brief-2026-07-27.md,scripts/harness/command-validation.mjs,scripts/harness/graph-provider.mjs,harness.config.json,.github/instructions/03-ARCHITECT.md,.github/instructions/06-REVIEW-DEPTH.md
 

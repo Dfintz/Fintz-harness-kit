@@ -1,3 +1,12 @@
+---
+summary: "Feedback Verdict Record"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [whole, harness, review, feedback]
+---
 ## Feedback Verdict Record
 resource: .github/harness/memory/briefs/whole-harness-review-brief-2026-07-27.md,.github/harness/memory/briefs/whole-harness-review-breadth-2026-07-27.md,.github/harness/memory/briefs/whole-harness-review-depth-2026-07-27.md,scripts/harness/command-validation.mjs,harness.config.json,scripts/harness/graph-provider.mjs
 

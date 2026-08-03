@@ -1,3 +1,12 @@
+---
+summary: "Phase 2 P0 Security Hardening — Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [phase2, architect, critical]
+---
 # Phase 2 P0 Security Hardening — Architecture Brief
 
 resource: `backend/src/services/authentication/TwoFactorService.ts`,

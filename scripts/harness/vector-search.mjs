@@ -6,6 +6,7 @@
  * - .github/harness/memory/lessons
  * - .github/harness/memory/briefs
  * - provider-selected graph snapshot nodes (understand-anything default, graphify optional)
+ * - arbitrary filesystem paths via --root and --scope fs
  *
  * Usage:
  *   node scripts/harness/vector-search.mjs status
@@ -13,8 +14,8 @@
  *   node scripts/harness/vector-search.mjs search --query "tenant isolation" --scope all --top 10
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { embedOne, normalizeHost as resolveProviderHost, resolveProvider } from './llm-provider.mjs';
@@ -39,8 +40,17 @@ const DEFAULT_TOP = 10;
 const DEFAULT_SCOPE = 'memory';
 const DEFAULT_TIMEOUT_MS = Number(process.env.HARNESS_EMBED_TIMEOUT_MS || 60000);
 
-const ALLOWED_SCOPE_TOKENS = new Set(['all', 'memory', 'lessons', 'briefs', 'graph']);
-const DOC_SCOPE_ORDER = ['lessons', 'briefs', 'graph'];
+// Filesystem indexing defaults (used when --scope fs or --root is provided)
+const DEFAULT_CHUNK_SIZE = Number(process.env.HARNESS_FS_CHUNK_SIZE || 2000);
+const DEFAULT_CHUNK_OVERLAP = Number(process.env.HARNESS_FS_CHUNK_OVERLAP || 200);
+const DEFAULT_MAX_FILE_BYTES = Number(process.env.HARNESS_FS_MAX_FILE_BYTES || 512 * 1024);
+const DEFAULT_FS_EXTENSIONS = (process.env.HARNESS_FS_EXTENSIONS ||
+  '.md,.txt,.js,.mjs,.ts,.py,.sh,.yaml,.yml,.json,.toml,.ini,.cfg,.log,.csv,.xml,.html,.css,.rs,.go,.java,.rb,.php,.c,.cpp,.h'
+).split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+const FS_SKIP_DIRS = new Set(['.git', 'node_modules', '.understand-anything', '.graphify', 'dist', 'build', 'coverage', '__pycache__', '.venv', 'venv']);
+
+const ALLOWED_SCOPE_TOKENS = new Set(['all', 'memory', 'lessons', 'briefs', 'graph', 'fs', 'ontology']);
+const DOC_SCOPE_ORDER = ['lessons', 'briefs', 'graph', 'fs', 'ontology'];
 
 function resolveGraphPathFromProvider() {
   const state = resolveGraphProviderState({ repoRoot, configPath });
@@ -138,21 +148,21 @@ function listMarkdownFiles(dir) {
     .sort((left, right) => left.localeCompare(right));
 }
 
-function parseScopeSelection(scopeValue, defaultScope = DEFAULT_SCOPE) {
+function parseScopeSelection(scopeValue, defaultScope = DEFAULT_SCOPE, includeFs = false) {
   const raw = String(scopeValue || defaultScope)
     .split(',')
     .map(token => token.trim().toLowerCase())
     .filter(Boolean);
 
   if (raw.length === 0) {
-    return ['lessons', 'briefs'];
+    return includeFs ? ['lessons', 'briefs', 'fs'] : ['lessons', 'briefs'];
   }
 
   const expanded = new Set();
   for (const token of raw) {
     if (!ALLOWED_SCOPE_TOKENS.has(token)) {
       throw new Error(
-        `Invalid scope token: ${token}. Expected one of all,memory,lessons,briefs,graph.`
+        `Invalid scope token: ${token}. Expected one of all,memory,lessons,briefs,graph,fs,ontology.`
       );
     }
 
@@ -160,6 +170,8 @@ function parseScopeSelection(scopeValue, defaultScope = DEFAULT_SCOPE) {
       expanded.add('lessons');
       expanded.add('briefs');
       expanded.add('graph');
+      expanded.add('ontology');
+      if (includeFs) expanded.add('fs');
       continue;
     }
 
@@ -229,6 +241,117 @@ function readMemoryDocuments() {
   return docs;
 }
 
+// Returns true when the buffer contains a null byte (reliable binary skip for UTF-8 content).
+function looksLikeBinary(buffer) {
+  const checkLen = Math.min(buffer.length, 8192);
+  for (let i = 0; i < checkLen; i += 1) {
+    if (buffer[i] === 0) return true;
+  }
+  return false;
+}
+
+function chunkText(text, chunkSize, overlap) {
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    const end = Math.min(start + chunkSize, text.length);
+    chunks.push(text.slice(start, end));
+    if (end >= text.length) break;
+    start += chunkSize - overlap;
+  }
+  return chunks;
+}
+
+/**
+ * Walk a directory tree and produce chunk documents for the vector index.
+ * Skips binaries, oversized files, and common noise directories.
+ * Symlinks are followed only when they resolve within root to prevent traversal escapes.
+ */
+function readFilesystemDocuments(fsRoot, options = {}) {
+  const chunkSize = Number(options.chunkSize || DEFAULT_CHUNK_SIZE);
+  const chunkOverlap = Number(options.chunkOverlap || DEFAULT_CHUNK_OVERLAP);
+  const maxFileBytes = Number(options.maxFileBytes || DEFAULT_MAX_FILE_BYTES);
+  const allowedExtensions = Array.isArray(options.extensions) ? options.extensions : DEFAULT_FS_EXTENSIONS;
+  const extSet = new Set(allowedExtensions.map(e => e.startsWith('.') ? e : `.${e}`));
+  const resolvedRoot = resolve(fsRoot);
+
+  const docs = [];
+  const stack = [resolvedRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    let entries;
+    try {
+      entries = readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') && !entry.isDirectory()) continue;
+
+      const fullPath = join(current, entry.name);
+
+      if (entry.isSymbolicLink()) {
+        let resolved;
+        try { resolved = realpathSync(fullPath); } catch { continue; }
+        // Only follow symlinks that stay within the declared root
+        if (!resolved.startsWith(resolvedRoot + sep) && resolved !== resolvedRoot) continue;
+      }
+
+      if (entry.isDirectory()) {
+        if (FS_SKIP_DIRS.has(entry.name)) continue;
+        stack.push(fullPath);
+        continue;
+      }
+
+      if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+
+      const ext = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase();
+      if (!extSet.has(ext)) continue;
+
+      let stat;
+      try { stat = statSync(fullPath); } catch { continue; }
+      if (stat.size > maxFileBytes) {
+        process.stderr.write(`[vector-fs] skipped (too large ${stat.size}B): ${fullPath}\n`);
+        continue;
+      }
+
+      let buffer;
+      try { buffer = readFileSync(fullPath); } catch { continue; }
+      if (looksLikeBinary(buffer)) continue;
+
+      const text = buffer.toString('utf8').replace(/\r/g, '');
+      if (text.trim().length === 0) continue;
+
+      const relPath = relative(resolvedRoot, fullPath).replace(/\\/g, '/');
+      const pathHash = sha256(fullPath);
+      const chunks = chunkText(text, chunkSize, chunkOverlap);
+
+      for (let ci = 0; ci < chunks.length; ci += 1) {
+        const chunk = chunks[ci];
+        const id = `fs:${pathHash}:${ci}`;
+        const titleLine = firstMeaningfulLine(chunk);
+        docs.push({
+          id,
+          scope: 'fs',
+          kind: 'filesystem-chunk',
+          name: chunks.length > 1 ? `${relPath}:${ci}` : relPath,
+          title: titleLine,
+          summary: titleLine,
+          path: fullPath,
+          chunkIndex: ci,
+          chunkTotal: chunks.length,
+          sourceMtimeMs: stat.mtimeMs,
+          text: chunk,
+        });
+      }
+    }
+  }
+
+  return docs;
+}
+
 function readGraphDocuments(graphLimit) {
   const graphPath = resolveGraphPathFromProvider();
   if (!existsSync(graphPath)) {
@@ -291,6 +414,37 @@ function readGraphDocuments(graphLimit) {
   };
 }
 
+/** Convert ontology concepts into vector-indexable documents (scope=ontology). */
+function readOntologyDocuments() {
+  const ontologyPath = join(repoRoot, '.github', 'harness', 'memory', 'ontology', 'core.json');
+  if (!existsSync(ontologyPath)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(ontologyPath, 'utf8'));
+    const concepts = Array.isArray(raw.concepts) ? raw.concepts : [];
+    return concepts.map(c => {
+      const text = [
+        `concept: ${c.label}`,
+        `id: ${c.id}`,
+        `definition: ${c.definition}`,
+        `aliases: ${(c.aliases || []).join(', ')}`,
+        `related: ${(c.related || []).join(', ')}`,
+        `hints: ${(c.memoryHints || []).join(', ')}`,
+      ].join('\n');
+      return {
+        id: `ontology:${c.id}`,
+        scope: 'ontology',
+        kind: 'concept',
+        name: c.id,
+        title: c.label,
+        summary: c.definition,
+        path: ontologyPath,
+        sourceMtimeMs: statSync(ontologyPath).mtimeMs,
+        text,
+      };
+    });
+  } catch { return []; }
+}
+
 function buildCorpus(scopes, options) {
   const selected = new Set(scopes);
   const corpus = [];
@@ -310,6 +464,21 @@ function buildCorpus(scopes, options) {
     const graphResult = readGraphDocuments(options.graphLimit);
     corpus.push(...graphResult.docs);
     graphMeta = graphResult.meta;
+  }
+
+  if (selected.has('fs') && options.fsRoot) {
+    const fsDocs = readFilesystemDocuments(options.fsRoot, {
+      chunkSize: options.chunkSize,
+      chunkOverlap: options.chunkOverlap,
+      maxFileBytes: options.maxFileBytes,
+      extensions: options.extensions,
+    });
+    corpus.push(...fsDocs);
+  }
+
+  if (selected.has('ontology')) {
+    const ontologyDocs = readOntologyDocuments();
+    corpus.push(...ontologyDocs);
   }
 
   return { docs: corpus, graphMeta };
@@ -385,7 +554,8 @@ function summarizeDocuments(documents) {
 }
 
 async function buildOrUpdateIndex(options) {
-  const scopes = parseScopeSelection(options.scope, options.defaultScope || DEFAULT_SCOPE);
+  const hasFs = options.fsRoot || (typeof options.scope === 'string' && options.scope.includes('fs'));
+  const scopes = parseScopeSelection(options.scope, options.defaultScope || DEFAULT_SCOPE, Boolean(hasFs));
   const selectedScopes = new Set(scopes);
   const provider = resolveProvider(options.provider);
   const host = resolveProviderHost(options.host, provider);
@@ -400,6 +570,11 @@ async function buildOrUpdateIndex(options) {
 
   const { docs: corpusDocs, graphMeta } = buildCorpus(scopes, {
     graphLimit: options.graphLimit,
+    fsRoot: options.fsRoot,
+    chunkSize: options.chunkSize,
+    chunkOverlap: options.chunkOverlap,
+    maxFileBytes: options.maxFileBytes,
+    extensions: options.extensions,
   });
 
   const selectedResults = [];
@@ -617,6 +792,11 @@ async function runSemanticSearch(options) {
       force: Boolean(options.force),
       maxTextChars: options.maxTextChars,
       graphLimit: options.graphLimit,
+      fsRoot: options.fsRoot,
+      chunkSize: options.chunkSize,
+      chunkOverlap: options.chunkOverlap,
+      maxFileBytes: options.maxFileBytes,
+      extensions: options.extensions,
       timeoutMs,
       verbose: options.verbose,
     });
@@ -713,7 +893,12 @@ function showHelp() {
       search: 'Run semantic retrieval against indexed scopes.',
     },
     commonFlags: {
-      '--scope': 'all|memory|lessons|briefs|graph (comma-separated accepted)',
+      '--scope': 'all|memory|lessons|briefs|graph|fs|ontology (comma-separated accepted). Use fs to index arbitrary filesystem paths. Use ontology to search concept definitions.',
+      '--root': `Root directory to walk when scope includes fs (default: repo root). Env: HARNESS_FS_ROOT.`,
+      '--chunk-size': `Characters per filesystem chunk (default ${DEFAULT_CHUNK_SIZE}). Env: HARNESS_FS_CHUNK_SIZE.`,
+      '--chunk-overlap': `Overlap between consecutive chunks (default ${DEFAULT_CHUNK_OVERLAP}). Env: HARNESS_FS_CHUNK_OVERLAP.`,
+      '--max-file-bytes': `Max file size to index, bytes (default ${DEFAULT_MAX_FILE_BYTES}). Env: HARNESS_FS_MAX_FILE_BYTES.`,
+      '--ext': 'Comma-separated extensions for fs scope (e.g. .md,.py,.js).',
       '--model': 'Embedding model name (default nomic-embed-text)',
       '--host': 'Ollama host URL (default http://localhost:11434)',
       '--max-text-chars': `Max characters per embedded document (default ${DEFAULT_MAX_TEXT_CHARS})`,
@@ -731,7 +916,10 @@ function showHelp() {
       'npm run harness:vector -- status',
       'npm run harness:vector -- index --scope memory',
       'npm run harness:vector -- index --scope all --model nomic-embed-text',
+      'npm run harness:vector -- index --scope fs --root /path/to/docs',
+      'npm run harness:vector -- index --scope fs --root . --chunk-size 1500 --chunk-overlap 150',
       'npm run harness:vector -- search --query "tenant isolation middleware" --scope all --top 8',
+      'npm run harness:search -- --query "error handling" --root /var/log',
     ],
   });
 }
@@ -759,6 +947,11 @@ async function main() {
       force: Boolean(flags.force),
       maxTextChars: flags['max-text-chars'],
       graphLimit: toPositiveInt(flags['graph-limit'], undefined, 'graph-limit'),
+      fsRoot: flags.root || (flags.scope && String(flags.scope).includes('fs') ? repoRoot : undefined),
+      chunkSize: flags['chunk-size'] ? Number(flags['chunk-size']) : undefined,
+      chunkOverlap: flags['chunk-overlap'] ? Number(flags['chunk-overlap']) : undefined,
+      maxFileBytes: flags['max-file-bytes'] ? Number(flags['max-file-bytes']) : undefined,
+      extensions: flags.ext ? String(flags.ext).split(',').map(e => e.trim()) : undefined,
       timeoutMs: flags['timeout-ms'],
       verbose: Boolean(flags.verbose),
       defaultScope: DEFAULT_SCOPE,
@@ -779,6 +972,11 @@ async function main() {
       force: Boolean(flags.force),
       maxTextChars: flags['max-text-chars'],
       graphLimit: toPositiveInt(flags['graph-limit'], undefined, 'graph-limit'),
+      fsRoot: flags.root || (flags.scope && String(flags.scope).includes('fs') ? repoRoot : undefined),
+      chunkSize: flags['chunk-size'] ? Number(flags['chunk-size']) : undefined,
+      chunkOverlap: flags['chunk-overlap'] ? Number(flags['chunk-overlap']) : undefined,
+      maxFileBytes: flags['max-file-bytes'] ? Number(flags['max-file-bytes']) : undefined,
+      extensions: flags.ext ? String(flags.ext).split(',').map(e => e.trim()) : undefined,
       timeoutMs: flags['timeout-ms'],
       noAutoIndex: Boolean(flags['no-auto-index']),
       verbose: Boolean(flags.verbose),

@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [whole, harness, review, brief]
+---
 ## Architecture Brief
 resource: .github/harness/HARNESS.md,.github/harness/LOOPS.md,.github/instructions/02-UNDERSTAND-WORKFLOW.md,.github/instructions/03-ARCHITECT.md,.github/instructions/04-IMPLEMENT.md,.github/instructions/05-REVIEW-BREADTH.md,.github/instructions/06-REVIEW-DEPTH.md,.github/instructions/07-FEEDBACK.md,scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs,scripts/harness/graph.mjs,scripts/harness/harness-report.mjs,harness.config.json,.github/harness/registry.json,.github/harness/loops/plan-review.json,.github/harness/loops/feature-cycle.json
 

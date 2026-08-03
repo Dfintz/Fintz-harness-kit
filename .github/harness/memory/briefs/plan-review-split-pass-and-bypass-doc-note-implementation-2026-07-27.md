@@ -1,3 +1,12 @@
+---
+summary: "Implement Summary"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [plan, review, split, pass]
+---
 ## Implement Summary
 
 ### Delivered

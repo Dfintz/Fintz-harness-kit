@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief — mattpocock/skills Improvement Pass"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [mattpocock, skills, improvement, pass]
+---
 ## Architecture Brief — mattpocock/skills Improvement Pass
 
 resource: https://github.com/mattpocock/skills, .github/harness/memory/radar/, .github/harness/loops/, .github/instructions/, .github/skills/

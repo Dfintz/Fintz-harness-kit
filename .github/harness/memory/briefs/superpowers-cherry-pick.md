@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief — obra/superpowers Cherry-Pick"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [superpowers, cherry, pick]
+---
 ## Architecture Brief — obra/superpowers Cherry-Pick
 
 resource: https://github.com/obra/superpowers, .github/skills/doubt-driven-development/, .github/skills/deterministic-validation/, .github/skills/teach-agent/

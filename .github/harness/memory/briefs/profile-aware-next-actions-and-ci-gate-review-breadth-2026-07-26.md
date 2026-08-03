@@ -1,3 +1,12 @@
+---
+summary: "Review Breadth Findings - Profile-Aware Next-Actions and CI Gate - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [profile, aware, next, actions]
+---
 # Review Breadth Findings - Profile-Aware Next-Actions and CI Gate - 2026-07-26
 resource: scripts/harness/prompt-router.mjs, .github/workflows/harness-optional-security-gates.example.yml, SETUP.md
 

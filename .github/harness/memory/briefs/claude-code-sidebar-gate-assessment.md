@@ -1,3 +1,12 @@
+---
+summary: "Claude Code Sidebar Support - Phase 1 Blocking Gate Assessment"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [claude, code, sidebar, gate]
+---
 # Claude Code Sidebar Support - Phase 1 Blocking Gate Assessment
 
 ## Gate Definition

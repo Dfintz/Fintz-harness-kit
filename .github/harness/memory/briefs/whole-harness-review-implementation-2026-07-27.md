@@ -1,3 +1,12 @@
+---
+summary: "Implementation Summary"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [whole, harness, review, implementation]
+---
 ## Implementation Summary
 resource: scripts/harness/command-validation.mjs,package.json,.github/harness/memory/briefs/whole-harness-review-brief-2026-07-27.md
 

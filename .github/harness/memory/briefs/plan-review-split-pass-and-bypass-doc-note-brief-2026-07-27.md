@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [plan, review, split, pass]
+---
 ## Architecture Brief
 resource: scripts/harness/plan-review.mjs,scripts/harness/prompt-router.mjs,.github/harness/HARNESS.md,.github/instructions/03-ARCHITECT.md
 

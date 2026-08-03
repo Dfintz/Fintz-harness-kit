@@ -1,3 +1,12 @@
+---
+summary: "Brief: Explicit approval markers for run journals - active"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [explicit, approval, markers, for]
+---
 # Brief: Explicit approval markers for run journals - active
 
 Date: 2026-06-15

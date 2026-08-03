@@ -1,3 +1,12 @@
+---
+summary: "P0-2 Unified Harness Health Command Brief - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [harness, health]
+---
 # P0-2 Unified Harness Health Command Brief - 2026-07-27
 resource: package.json, scripts/harness/config-self-test.mjs, scripts/harness/graph.mjs, scripts/harness/validate-doc-contracts.mjs, .github/harness/memory/briefs/p0-1-config-startup-validation-feedback-2026-07-27.md
 

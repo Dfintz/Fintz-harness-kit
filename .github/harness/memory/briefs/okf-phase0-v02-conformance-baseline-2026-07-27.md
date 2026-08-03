@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [okf, phase0, v02, conformance]
+---
 # Architecture Brief
 
 resource: scripts/harness/okf-phase0.mjs,.github/harness/memory/README.md,.github/harness/memory/lessons/_template.md

@@ -1,3 +1,12 @@
+---
+summary: "P1-2 Prompt-Router Path Hardening Review Depth - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [prompt, router]
+---
 # P1-2 Prompt-Router Path Hardening Review Depth - 2026-07-27
 resource: .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-brief-2026-07-27.md, .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-review-breadth-2026-07-27.md, scripts/harness/prompt-router.mjs
 

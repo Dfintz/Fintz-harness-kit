@@ -1,3 +1,12 @@
+---
+summary: "Feedback Verdict - Profile-Aware Next-Actions and CI Gate - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [profile, aware, next, actions]
+---
 # Feedback Verdict - Profile-Aware Next-Actions and CI Gate - 2026-07-26
 resource: .github/harness/memory/briefs/profile-aware-next-actions-and-ci-gate-brief-2026-07-26.md, .github/harness/memory/briefs/profile-aware-next-actions-and-ci-gate-review-breadth-2026-07-26.md, .github/harness/memory/briefs/profile-aware-next-actions-and-ci-gate-review-depth-2026-07-26.md
 

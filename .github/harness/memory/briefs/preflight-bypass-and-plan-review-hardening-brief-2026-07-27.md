@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [preflight, bypass, and, plan]
+---
 ## Architecture Brief
 resource: scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs,scripts/harness/graph-provider.mjs,scripts/harness/command-validation.mjs,.github/instructions/02-UNDERSTAND-WORKFLOW.md,.github/instructions/03-ARCHITECT.md
 

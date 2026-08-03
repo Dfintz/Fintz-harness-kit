@@ -1,3 +1,12 @@
+---
+summary: "P0-1 Config Startup Validation Brief - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [config, startup]
+---
 # P0-1 Config Startup Validation Brief - 2026-07-27
 resource: scripts/harness/config.mjs, harness.config.schema.json, harness.config.json, package.json, scripts/harness/harness-catalog.mjs, scripts/harness/run-loop.mjs, scripts/harness/validate-doc-contracts.mjs
 

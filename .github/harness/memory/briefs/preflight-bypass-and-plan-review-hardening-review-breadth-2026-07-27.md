@@ -1,3 +1,12 @@
+---
+summary: "Review Breadth Findings"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [preflight, bypass, and, plan]
+---
 ## Review Breadth Findings
 resource: scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs,.github/harness/runs/preflight-overrides.jsonl
 

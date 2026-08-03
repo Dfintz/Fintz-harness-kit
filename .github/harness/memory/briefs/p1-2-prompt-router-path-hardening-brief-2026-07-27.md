@@ -1,3 +1,12 @@
+---
+summary: "P1-2 Prompt-Router Path Hardening Brief - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [prompt, router]
+---
 # P1-2 Prompt-Router Path Hardening Brief - 2026-07-27
 resource: scripts/harness/prompt-router.mjs, scripts/harness/mcp-tools.mjs, .github/instructions/02-UNDERSTAND-WORKFLOW.md, .github/instructions/03-ARCHITECT.md, .github/instructions/04-IMPLEMENT.md
 

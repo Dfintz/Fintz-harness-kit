@@ -1,3 +1,12 @@
+---
+summary: "P0-2 Harness Health Command Implementation - 2026-07-27"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [harness, health]
+---
 # P0-2 Harness Health Command Implementation - 2026-07-27
 resource: .github/harness/memory/briefs/p0-2-harness-health-command-brief-2026-07-27.md, scripts/harness/health.mjs, package.json, SETUP.md
 

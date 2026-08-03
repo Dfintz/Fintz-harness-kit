@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [plan, review, path, safety]
+---
 ## Architecture Brief
 resource: scripts/harness/plan-review.mjs,.github/instructions/03-ARCHITECT.md
 

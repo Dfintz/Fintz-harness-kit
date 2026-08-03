@@ -1,3 +1,12 @@
+---
+summary: "Review Breadth Findings"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [route, and, reviewer, preflight]
+---
 ## Review Breadth Findings
 resource: scripts/harness/prompt-router.mjs,scripts/harness/plan-review.mjs
 

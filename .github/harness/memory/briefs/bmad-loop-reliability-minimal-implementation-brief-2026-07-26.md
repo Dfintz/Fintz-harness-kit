@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief - BMAD Loop Reliability Minimal Slice"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [bmad, loop, reliability, minimal]
+---
 # Architecture Brief - BMAD Loop Reliability Minimal Slice
 resource: https://github.com/bmad-code-org/BMAD-METHOD/blob/main/docs/reference/dev-auto.md, .github/harness/memory/radar/bmad-autonomous-loop-state-machine-contract.md, .github/harness/memory/radar/bmad-run-provenance-anchors.md, scripts/harness/record-run.mjs, scripts/harness/harness-report.mjs, .github/harness/runs/
 status: active

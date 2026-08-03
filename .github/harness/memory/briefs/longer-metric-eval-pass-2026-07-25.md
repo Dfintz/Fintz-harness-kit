@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [longer, metric, eval, pass]
+---
 ## Architecture Brief
 resource: scripts/harness/prompt-router.mjs, scripts/harness/measure-phase5c-real.mjs, scripts/harness/eval/run-eval.mjs, .github/harness/phase5/validation-results/
 

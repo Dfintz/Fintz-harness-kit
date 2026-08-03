@@ -1,3 +1,12 @@
+---
+summary: "Review Depth Findings"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [plan, review, zero, warning]
+---
 ## Review Depth Findings
 
 ### Gate ledger

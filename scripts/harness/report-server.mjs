@@ -33,6 +33,9 @@
  *   GET /graph.html  -> provider-configured graph html if present/safe
  *   GET /genui/graph.json -> graph render payload for GenUI consumers
  *   GET /graph-events.json -> recent structured graph lifecycle events
+ *   GET /control     -> live stage control panel (SSE + approval UI)
+ *   GET /sse/state   -> SSE stream of live stage-state.json changes
+ *   POST /control/approve -> write an approval decision to stage-state
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -40,6 +43,7 @@ import { createServer } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildGraphGenUiPayload, readGraphEvents } from './graph-provider.mjs';
+import { handleSseState, handleApprove, handleControlPanel, startControlPanelPolling } from './control-panel.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const configPath = join(repoRoot, 'harness.config.json');
@@ -92,6 +96,9 @@ function showHelp() {
           'GET /graph.html',
           'GET /genui/graph.json',
           'GET /graph-events.json',
+          'GET /control',
+          'GET /sse/state',
+          'POST /control/approve',
           'GET /healthz',
         ],
         envFallbacks: [
@@ -266,6 +273,18 @@ function createDashboardServer() {
       res.end('ok');
       return;
     }
+    if (path === '/sse/state') {
+      handleSseState(req, res);
+      return;
+    }
+    if (path === '/control/approve') {
+      handleApprove(req, res);
+      return;
+    }
+    if (path === '/control') {
+      handleControlPanel(req, res);
+      return;
+    }
     if (path === '/metrics.json') {
       serveMetrics(res);
       return;
@@ -309,6 +328,7 @@ function main() {
 
   regenerate();
   const timer = setInterval(regenerate, intervalSeconds * 1000);
+  startControlPanelPolling();
 
   const server = createDashboardServer();
   server.listen(port, host, () => {

@@ -24,7 +24,7 @@ import {
 } from './graph-provider.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports']);
+const EXTRACTED_EDGE_TYPES = new Set(['imports', 'contains', 'exports', 'calls']);
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -234,6 +234,110 @@ function hasNonCodeStructure(payload) {
     payload.steps.length > 0 ||
     payload.resources.length > 0
   );
+}
+
+/**
+ * Heuristic call-graph inference: scans function bodies for identifier( patterns and
+ * creates INFERRED `calls` edges between function nodes. Runs after builder.build() so
+ * all function node IDs are stable.
+ *
+ * Cross-file calls are only emitted when the caller's file has an `imports` edge to
+ * the callee's file — this suppresses common-name false positives (main→main, fail→fail).
+ *
+ * Trade-offs:
+ *   - Fast: regex scan only, no AST second-pass
+ *   - Additive: edges marked confidence=INFERRED so callers can filter
+ *   - Some false positives possible for same-file calls (variable named like a function)
+ */
+function inferCallEdges(graph, projectRoot, scanFiles) {
+  // Build name → Set<nodeId> lookup for all function nodes
+  const nameToIds = new Map();
+  for (const node of graph.nodes) {
+    if (node.type !== 'function') continue;
+    const name = node.name;
+    if (!name) continue;
+    if (!nameToIds.has(name)) nameToIds.set(name, new Set());
+    nameToIds.get(name).add(node.id);
+  }
+
+  if (nameToIds.size === 0) return [];
+
+  // Build filePath → [functionNode] lookup
+  const fileToFns = new Map();
+  // Build nodeId → filePath lookup
+  const nodeToFile = new Map();
+  for (const node of graph.nodes) {
+    if (node.type !== 'function' || !node.filePath) continue;
+    const fp = toPosix(node.filePath);
+    if (!fileToFns.has(fp)) fileToFns.set(fp, []);
+    fileToFns.get(fp).push(node);
+    nodeToFile.set(node.id, fp);
+  }
+
+  // Build imports adjacency: file → Set<importedFile> from existing `imports` edges
+  const fileImports = new Map();
+  for (const edge of graph.edges) {
+    if (edge.type !== 'imports') continue;
+    const src = edge.source.startsWith('file:') ? edge.source.slice(5) : edge.source;
+    const tgt = edge.target.startsWith('file:') ? edge.target.slice(5) : edge.target;
+    if (!fileImports.has(src)) fileImports.set(src, new Set());
+    fileImports.get(src).add(tgt);
+  }
+
+  const edgeSet = new Set();
+  const callEdges = [];
+
+  for (const file of scanFiles) {
+    const relPath = toPosix(String(file.path || ''));
+    if (!relPath) continue;
+    if (!isCodeCategory(String(file.fileCategory || 'code'))) continue;
+
+    const fnsInFile = fileToFns.get(relPath);
+    if (!fnsInFile || fnsInFile.length === 0) continue;
+
+    const absolutePath = join(projectRoot, relPath);
+    let content;
+    try {
+      content = readFileSync(absolutePath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    const lines = content.split('\n');
+    const importedFiles = fileImports.get(relPath) || new Set();
+
+    for (const callerNode of fnsInFile) {
+      if (!Array.isArray(callerNode.lineRange) || callerNode.lineRange.length < 2) continue;
+      const startLine = Math.max(0, callerNode.lineRange[0] - 1);
+      const endLine = Math.min(lines.length, callerNode.lineRange[1]);
+      const body = lines.slice(startLine, endLine).join('\n');
+
+      for (const matchArr of body.matchAll(/\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g)) {
+        const calledName = matchArr[1];
+        if (!calledName || !nameToIds.has(calledName)) continue;
+
+        for (const targetId of nameToIds.get(calledName)) {
+          if (targetId === callerNode.id) continue; // skip self-calls
+          const targetFile = nodeToFile.get(targetId);
+          // Only allow cross-file calls when there's an imports edge to that file
+          if (targetFile && targetFile !== relPath && !importedFiles.has(targetFile)) continue;
+          const key = `${callerNode.id}\0${targetId}`;
+          if (edgeSet.has(key)) continue;
+          edgeSet.add(key);
+          callEdges.push({
+            source: callerNode.id,
+            target: targetId,
+            type: 'calls',
+            direction: 'forward',
+            weight: 1,
+            confidence: 'INFERRED',
+          });
+        }
+      }
+    }
+  }
+
+  return callEdges;
 }
 
 function runNodeScript(scriptPath, args, cwd) {
@@ -744,6 +848,12 @@ async function main() {
       confidence: edge.confidence || (EXTRACTED_EDGE_TYPES.has(edge.type) ? 'EXTRACTED' : 'INFERRED'),
     }));
 
+    // Heuristic call-graph pass: adds INFERRED `calls` edges between function nodes
+    const callEdges = inferCallEdges(graph, projectRoot, scanFiles);
+    if (callEdges.length > 0) {
+      graph.edges = [...graph.edges, ...callEdges];
+    }
+
     const validation = validateGraph(graph);
     if (!validation.success || !validation.data) {
       const issueText = Array.isArray(validation.issues)
@@ -777,6 +887,8 @@ async function main() {
         analyzedFiles,
         nodeCount: finalGraph.nodes.length,
         edgeCount: finalGraph.edges.length,
+        edgesByType: finalGraph.edges.reduce((acc, e) => { acc[e.type] = (acc[e.type] || 0) + 1; return acc; }, {}),
+        callEdgesInferred: callEdges.length,
         layerCount: finalGraph.layers.length,
         tourSteps: finalGraph.tour.length,
         validationIssues: Array.isArray(validation.issues) ? validation.issues : [],

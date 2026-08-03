@@ -1,3 +1,12 @@
+---
+summary: "Profile-Aware Next-Actions and CI Gate Brief - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [profile, aware, next, actions]
+---
 # Profile-Aware Next-Actions and CI Gate Brief - 2026-07-26
 resource: scripts/harness/prompt-router.mjs, scripts/harness/validate-doc-contracts.mjs, scripts/harness/lurkr-check.mjs, package.json, .github/workflows/harness-optional-security-gates.example.yml, SETUP.md
 

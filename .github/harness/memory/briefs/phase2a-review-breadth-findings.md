@@ -1,3 +1,12 @@
+---
+summary: "Phase 2a Review Breadth: Findings Ledger"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [phase2a, review, breadth, findings]
+---
 # Phase 2a Review Breadth: Findings Ledger
 
 **Stage:** 5 (Review Breadth)  

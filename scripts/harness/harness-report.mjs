@@ -1216,7 +1216,7 @@ metrics.refreshSeconds =
     : 60;
 
 if (args.json) {
-  console.log(JSON.stringify(metrics, null, 2));
+  process.stdout.write(JSON.stringify(metrics, null, 2) + '\n');
   process.exit(0);
 }
 

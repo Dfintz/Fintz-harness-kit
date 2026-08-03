@@ -1,3 +1,12 @@
+---
+summary: "Brief: Unified AI Council adoption matrix for harness-kit - active"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [unified, council, adoption]
+---
 # Brief: Unified AI Council adoption matrix for harness-kit - active
 
 Date: 2026-06-15

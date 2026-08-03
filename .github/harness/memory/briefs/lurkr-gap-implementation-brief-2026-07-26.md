@@ -1,3 +1,12 @@
+---
+summary: "Lurkr Gap Implementation Brief - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [lurkr, gap, implementation, brief]
+---
 # Lurkr Gap Implementation Brief - 2026-07-26
 resource: scripts/harness/lurkr-check.mjs, package.json, SETUP.md, .github/instructions/05-REVIEW-BREADTH.md, .github/harness/memory/radar/lurkr-ai-capability-scanner.md
 

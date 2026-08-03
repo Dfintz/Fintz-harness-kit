@@ -1,3 +1,12 @@
+---
+summary: "Radar Reevaluation Matrix - 2026-07-26"
+type: brief
+status: active
+source: human
+created: 2026-08-03
+updated: 2026-08-03
+tags: [radar, reevaluation, matrix, 2026]
+---
 # Radar Reevaluation Matrix - 2026-07-26
 
 Resource: .github/harness/memory/briefs/radar-reevaluation-and-adoption-audit-2026-07-26.md
