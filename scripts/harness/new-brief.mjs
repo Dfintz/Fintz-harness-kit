@@ -111,6 +111,11 @@ function main() {
   }
 
   const content = [
+    '---',
+    'artifact_family: architect',
+    'immutability: mutable',
+    '---',
+    '',
     `# Brief: ${slug} - ${status}`,
     `resource: ${resourceLine}`,
     '',

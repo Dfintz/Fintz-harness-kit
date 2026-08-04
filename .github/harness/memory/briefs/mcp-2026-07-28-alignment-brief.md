@@ -1,6 +1,6 @@
 ---
 owner: harness-team
-status: READY-FOR-IMPLEMENT
+status: implemented
 priority: medium
 created: 2026-07-27
 updated: 2026-07-27

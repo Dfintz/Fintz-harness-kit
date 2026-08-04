@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [breaking, window, remove, test]
+---
 ## Architecture Brief
 resource: package.json,scripts/harness/validate-doc-contracts.mjs,.github/workflows/harness-optional-security-gates.example.yml,RELEASE_NOTES_v2.5.0.md,README.md
 

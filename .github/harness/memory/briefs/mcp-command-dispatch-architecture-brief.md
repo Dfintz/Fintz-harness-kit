@@ -1,9 +1,12 @@
 ---
-status: draft
+status: implemented
 date: 2026-07-28
 stage: Architect
 brief_type: Feature
 ownership: harness-team
+artifact_family: architect
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architecture Brief: MCP Command Dispatch Server

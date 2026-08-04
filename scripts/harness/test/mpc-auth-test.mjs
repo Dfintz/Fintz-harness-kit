@@ -43,14 +43,13 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 3: Missing role defaults to auditor');
 }
 
-// Test 4: Invalid role - rejects unknown roles
+// Test 4: Custom role accepted - supports organization-defined role taxonomies
 {
-  const context = { caller: { token: 'token', role: 'admin' } }; // admin is not valid
+  const context = { caller: { token: 'token', role: 'admin' } };
   const caller = extractCallerIdentity(context);
-  assert.strictEqual(caller.valid, false, 'Test 4: Should be invalid');
-  assert(caller.errors.length > 0, 'Test 4: Should have error');
-  assert(caller.errors[0].includes('role') || caller.errors[0].includes('executor'), 'Test 4: Error should mention role');
-  console.log('✅ Test 4: Invalid role rejected');
+  assert.strictEqual(caller.valid, true, 'Test 4: Should be valid for custom role');
+  assert.strictEqual(caller.role, 'admin', 'Test 4: Role should be preserved');
+  console.log('✅ Test 4: Custom role accepted');
 }
 
 // Test 5: Invalid token type - rejects non-string tokens
@@ -112,9 +111,9 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 10: Caller ID generation passed');
 }
 
-// Test 11: All valid roles accepted
+// Test 11: Representative non-empty roles accepted
 {
-  const validRoles = ['executor', 'auditor', 'restricted'];
+  const validRoles = ['executor', 'auditor', 'restricted', 'admin', 'security', 'engineering'];
   for (const role of validRoles) {
     const caller = extractCallerIdentity({
       caller: { token: 'token', role },
@@ -122,7 +121,31 @@ console.log('[auth-validator-test] Starting test suite...');
     assert.strictEqual(caller.valid, true, `Test 11: Role ${role} should be valid`);
     assert.strictEqual(caller.role, role, `Test 11: Role ${role} should be preserved`);
   }
-  console.log('✅ Test 11: All valid roles accepted');
+  console.log('✅ Test 11: Representative roles accepted');
+}
+
+// Test 12: Empty role is invalid
+{
+  const caller = extractCallerIdentity({
+    caller: { token: 'token', role: '   ' },
+  });
+  assert.strictEqual(caller.valid, false, 'Test 12: Empty role should be invalid');
+  assert(caller.errors.some(e => e.includes('non-empty string')), 'Test 12: Error should mention non-empty role');
+  console.log('✅ Test 12: Empty role rejected');
+}
+
+// Test 13: Teams extraction supports array and CSV team formats
+{
+  const fromArray = extractCallerIdentity({
+    caller: { role: 'auditor', teams: ['hr', 'security'] },
+  });
+  assert.deepStrictEqual(fromArray.teams, ['hr', 'security'], 'Test 13: Teams array should be preserved');
+
+  const fromCsv = extractCallerIdentity({
+    caller: { role: 'auditor', team: 'hr, security' },
+  });
+  assert.deepStrictEqual(fromCsv.teams, ['hr', 'security'], 'Test 13: CSV team string should split correctly');
+  console.log('✅ Test 13: Teams extraction passed');
 }
 
 console.log('\n✅ All auth-validator tests passed!');

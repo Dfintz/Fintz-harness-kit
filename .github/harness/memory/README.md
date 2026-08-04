@@ -3,6 +3,8 @@
 > Committed, agent-agnostic memory so no agent rediscovers what a previous session already learned.
 > Part of the [Agent Harness](../HARNESS.md). Read at session start; write back before session end.
 
+Access control for team-scoped memory is documented in [../TEAM-MEMORY-ACCESS-CONTROL.md](../TEAM-MEMORY-ACCESS-CONTROL.md) and configured via [`access-policy.json`](./access-policy.json).
+
 Two complementary memory surfaces can exist in a project that adopts this harness:
 
 | Surface                                    | What it remembers                                                                    | Who writes it                                                 |
@@ -86,3 +88,8 @@ Fields used by this harness (all optional; see [`lessons/_template.md`](./lesson
 Frontmatter does not change the trust model: a file is trusted because it lives in `lessons/`, not
 because its frontmatter says `status: promoted`. The field records the decision; the directory still
 enforces it.
+
+## Team-scoped access tags
+
+When using memory ACL zones, classify sensitive entries with frontmatter `tags` (for example `hr`,
+`finance`) so the MCP server can enforce role/team visibility rules from `access-policy.json`.

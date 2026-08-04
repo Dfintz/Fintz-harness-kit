@@ -1,3 +1,12 @@
+---
+summary: "MCP Slice E OAuth Hardening Brief"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [mcp, slice, oauth, hardening]
+---
 # MCP Slice E OAuth Hardening Brief
 resource: scripts/harness/http-adapter.mjs, scripts/harness/mcp-auth-validator.mjs, harness.config.json, .github/harness/MCP-INTEGRATION.md, package.json
 

@@ -108,6 +108,21 @@ export function extractSummary(content) {
   return '';
 }
 
+/** Read a memory entry summary, preferring optional frontmatter metadata. */
+export function readMemorySummary(content) {
+  const text = String(content);
+  const frontmatter = parseFrontmatter(text);
+  const frontmatterSummary = normalizeFrontmatterValue(frontmatter?.summary);
+  if (frontmatterSummary) return frontmatterSummary;
+
+  const lines = text.split('\n');
+  if ((lines[0] || '').trim() === '---') {
+    const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === '---');
+    return closingIndex >= 0 ? extractSummary(lines.slice(closingIndex + 1).join('\n')) : '';
+  }
+  return extractSummary(text);
+}
+
 /** Parse a brief's `# Brief: <feature> — <status>` first line. Returns the status, or null. */
 export function parseBriefStatus(firstLine) {
   const match = /^#\s*brief:.*[—-]\s*(active|implemented|superseded)\s*$/i.exec(
@@ -135,6 +150,55 @@ export function parseFrontmatter(content) {
   }
 
   return null;
+}
+
+function normalizeFrontmatterValue(value) {
+  const text = String(value || '').trim();
+  const quoted = /^(?:"([\s\S]*)"|'([\s\S]*)')$/.exec(text);
+  return quoted ? quoted[1] ?? quoted[2] ?? '' : text;
+}
+
+function legacyBriefHeading(content) {
+  const lines = String(content).split('\n');
+  const start = (lines[0] || '').trim() === '---'
+    ? lines.findIndex((line, index) => index > 0 && line.trim() === '---') + 1
+    : 0;
+  for (let index = Math.max(start, 0); index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line) continue;
+    return line;
+  }
+  return '';
+}
+
+function legacyBriefTitle(content) {
+  return stripBriefTitle(legacyBriefHeading(content));
+}
+
+function stripBriefTitle(value) {
+  return String(value)
+    .replace(/^#+\s*/, '')
+    .replace(/^brief:\s*/i, '')
+    .replace(/\s*[—-]\s*(active|implemented|superseded)\s*$/i, '')
+    .trim();
+}
+
+/** Read a Brief's frontmatter-first display metadata with legacy heading compatibility. */
+export function readBriefMetadata(content) {
+  const frontmatter = parseFrontmatter(content);
+  const frontmatterStatus = normalizeFrontmatterValue(frontmatter?.status).toLowerCase();
+  const frontmatterSummary = normalizeFrontmatterValue(frontmatter?.summary);
+  const lines = String(content).split('\n');
+  const inlineStatus = parseBriefStatus(lines[0] ?? '');
+  const legacyStatus = parseBriefStatus(legacyBriefHeading(content));
+  const compatibilityStatus = resolveBriefStatus(content, 'compat');
+
+  return {
+    summary: frontmatterSummary || legacyBriefTitle(content),
+    status: BRIEF_STATUSES.has(frontmatterStatus)
+      ? frontmatterStatus
+      : legacyStatus || inlineStatus || compatibilityStatus,
+  };
 }
 
 /** Resolve brief status with strict or compatibility semantics. */
@@ -459,6 +523,40 @@ function runSelfTest() {
   );
   check('parseBriefStatus null on malformed', parseBriefStatus('# Not a brief heading') === null);
 
+  const frontmatterBrief = [
+    '---',
+    'summary: "Frontmatter summary"',
+    'status: active',
+    '---',
+    '# Brief: Legacy title — implemented',
+  ].join('\n');
+  const frontmatterMetadata = readBriefMetadata(frontmatterBrief);
+  check(
+    'readBriefMetadata prefers frontmatter summary and status',
+    frontmatterMetadata.summary === 'Frontmatter summary' && frontmatterMetadata.status === 'active'
+  );
+
+  const legacyMetadata = readBriefMetadata('# Brief: Legacy title — implemented');
+  check(
+    'readBriefMetadata supports legacy heading-only briefs',
+    legacyMetadata.summary === 'Legacy title' && legacyMetadata.status === 'implemented'
+  );
+
+  const malformedMetadata = readBriefMetadata('---\nstatus: pending\n---\n# Brief: Legacy title — active');
+  check(
+    'readBriefMetadata falls back when frontmatter status is invalid',
+    malformedMetadata.summary === 'Legacy title' && malformedMetadata.status === 'active'
+  );
+
+  check(
+    'readMemorySummary prefers frontmatter summary',
+    readMemorySummary('---\nsummary: "Curated lesson"\n---\n# Lesson\nLegacy body.') === 'Curated lesson'
+  );
+  check(
+    'readMemorySummary skips frontmatter without summary',
+    readMemorySummary('---\ntags: [workflow]\n---\n# Lesson\nBody summary.') === 'Body summary.'
+  );
+
   check(
     'hasSuccessorPointer true with link',
     hasSuccessorPointer('Status superseded by feature-x.md') === true
@@ -635,4 +733,5 @@ function main() {
   }
 }
 
-main();
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) main();

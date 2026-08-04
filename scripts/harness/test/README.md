@@ -40,7 +40,7 @@ for test in scripts/harness/test/mcp-resources-*.mjs; do node "$test"; done
 | Test File | Purpose | Isolation |
 |-----------|---------|-----------|
 | mcp-resources-streaming-test.mjs | Streaming + buffered modes, cache behavior | _flushCache() between tests |
-| mcp-resources-streaming-latency.mjs | Chunk size SLA validation (25/50/100 items) | Fresh cache per iteration |
+| mcp-resources-streaming-latency.mjs | Mock chunking plus live `resource_chunk` first-chunk SLA validation (25/50/100 items) | Initialized SDK client per chunk size |
 | mcp-resources-cache-benchmark.mjs | Cache hit/miss/expiry patterns | _flushCache() between scenarios |
 | mcp-resources-graph-latency.mjs | Graph adapter latency + graceful degradation | Reads only; no state mutation |
 

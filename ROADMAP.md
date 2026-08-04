@@ -153,11 +153,12 @@ The v1.1.0 roadmap outlined 5 work items across Phase 0 + 4 parallel workstreams
 - **[v2.6.0] HTTP Adapter**: `http-adapter.mjs` REST server — all MCP tools as HTTP endpoints, auto-generated OpenAPI 3.0 schema, API key auth, OAuth 2.0 stub with Phase 3 upgrade path
 - **[v2.8.0] Doc Workflow Mode**: `doc-verifier.mjs` (Flesch-Kincaid readability, required sections, word-count thresholds), `doc-workflow-loop.json`, `harness.config.json docWorkflow` section fully populated with defaults, `harness:doc:verify` + `harness:doc:loop` scripts
 - **[v2.9.0] Teams Adaptive Cards**: `teams-notifier.mjs` — three card templates (stage-complete, approval-needed, error-alert), Teams incoming webhook, auto-reads live state from `stage-state.mjs`, dry-run mode, `harness:teams:notify` script
+- **[v3.0.0] Teams Agent — Bi-Directional Approvals**: `teams-agent.mjs` — Microsoft Teams bot service for interactive approvals, Adaptive Card action callbacks, stage-state integration, command parsing, `/api/messages` endpoint for Teams Bot Framework
 - **[v3.0.0] Harness Control Panel**: `control-panel.mjs` — SSE live state stream (`/sse/state`), operator + end-user HTML panel (`/control`), approval buttons (`POST /control/approve`); exponential-backoff reconnect, heartbeat, tab-visibility reconnect. Served from `report-server.mjs` with zero breaking changes.
 
 ### Known Gaps ⚠️
-- Interactive Teams approval buttons require Power Automate (Phase 3)
 - OAuth 2.0 for HTTP adapter (Phase 3)
+- Power Automate integration for cross-org approval workflows (Phase 3)
 - All session work (v2.5.1 through v3.0.0) not yet committed to git
 
 ---

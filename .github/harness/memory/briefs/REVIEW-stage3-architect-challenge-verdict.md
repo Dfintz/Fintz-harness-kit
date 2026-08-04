@@ -3,6 +3,10 @@ stage: architect-challenge
 date: 2026-07-27
 model: gpt-5.3-codex (Skeptical Code-Context Verdict)
 brief: REVIEW-stage2-architect-phase2b-fullreview.md
+status: implemented
+artifact_family: challenge
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Stage 3 Challenge: Architect Challenge Verdict

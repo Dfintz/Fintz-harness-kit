@@ -1,6 +1,6 @@
 ---
-summary: Enforce evidence-only research claims with citation and freshness discipline to reduce hallucinated rationale in decision artifacts
-status: parked
+summary: Enforce evidence-linked research claims with citation and freshness discipline to reduce unsupported rationale in decision artifacts
+status: adopted
 source: https://github.com/bmad-code-org/BMAD-METHOD/blob/main/src/core-skills/bmad-deep-recon/SKILL.md
 author_project: bmad-code-org/BMAD-METHOD
 captured: 2026-07-26
@@ -29,6 +29,7 @@ This harness already supports memory and review rigor, but external-technique su
 ## Decision Log
 
 | Date | Status | Decision | By |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 2026-07-26 | candidate | Initial capture from BMAD radar pass | radar-pass |
 | 2026-07-26 | parked | Strong quality upside, but requires policy design to avoid over-constraining lightweight captures. | radar-pass |
+| 2026-08-04 | adopted | Reevaluation promoted a bounded, additive first slice: add optional source-captured and source-reviewed dates plus claim-to-source notes to radar captures, and add proportional evidence guidance to Architect research claims. This improves auditability without making lightweight local work citation-heavy. Route through Understand and Architect before editing the template and stage instruction. | ai-radar-triage |

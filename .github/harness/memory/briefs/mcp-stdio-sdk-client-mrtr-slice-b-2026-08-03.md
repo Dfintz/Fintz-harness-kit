@@ -1,3 +1,12 @@
+---
+summary: "MCP Stdio SDK Client MRTR Slice B 2026-08-03"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [mcp, stdio, sdk, client]
+---
 # MCP Stdio SDK Client MRTR Slice B 2026-08-03
 resource: scripts/harness/test/mcp-http-slice-b-mrtr-test.mjs, scripts/harness/mcp-server.mjs, node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.d.ts, node_modules/@modelcontextprotocol/sdk/dist/esm/client/stdio.d.ts, package.json
 

@@ -13,7 +13,7 @@
  * - Error codes: Structured 4-code taxonomy
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -24,8 +24,11 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
+  McpError,
   ReadResourceRequestSchema,
+  RequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { CONFIG_PATH, harnessRuntimeRoot, repoRoot, loadConfig } from "./config.mjs";
 import { ErrorCode, createErrorResponse } from "./mcp-contracts.mjs";
 import { ResourceCache } from "./mcp-cache.mjs";
@@ -34,6 +37,11 @@ import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resou
 import { readGraphEvents } from "./graph-provider.mjs";
 import { createRateLimiter } from "./mcp-rate-limiter.mjs";
 import { extractCallerIdentity, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
+import {
+  buildCallerAccessContext,
+  evaluateMemoryAccess,
+  loadMemoryAccessPolicy,
+} from "./memory-access-control.mjs";
 
 const wrapperPath = join(
   harnessRuntimeRoot,
@@ -59,6 +67,8 @@ const SUBSCRIPTION_TOPICS = new Set([
 const SUBSCRIPTION_EVENTS = [];
 let SUBSCRIPTION_CURSOR = 0;
 const MAX_SUBSCRIPTION_EVENTS = 500;
+const MEMORY_TOOL_NAMES = new Set(["memory-list", "memory-read", "memory-search"]);
+const MEMORY_RESOURCE_URI_PATTERN = /^io\.modelcontextprotocol\/harness\/memory\/(\w+)\/([A-Za-z0-9._-]+)$/;
 
 function trimTrailingSlashes(value) {
   let end = value.length;
@@ -691,7 +701,15 @@ const toolSpecs = [
 ];
 
 const toolByName = new Map(toolSpecs.map((spec) => [spec.name, spec]));
-const SubscriptionsListenRequestSchema = { method: "subscriptions/listen" };
+const SubscriptionsListenRequestSchema = RequestSchema.extend({
+  method: z.literal("subscriptions/listen"),
+});
+const StreamingListResourcesRequestSchema = ListResourcesRequestSchema.extend({
+  params: z.object({
+    streaming: z.boolean().optional(),
+    chunkSize: z.number().int().positive().optional(),
+  }).passthrough().optional(),
+});
 
 export function buildServerDiscoverPayload(options = {}) {
   const transport = typeof options.transport === "string" ? options.transport : "stdio";
@@ -1032,9 +1050,168 @@ function readMrtrInputResponses(args) {
   return args.inputResponses;
 }
 
-// Memory resource paths (Phase 1: memory resources only; graph deferred to Phase 2+)
-const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
-const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
+function parseMemoryResourceUri(uri) {
+  if (typeof uri !== "string") return null;
+  const match = MEMORY_RESOURCE_URI_PATTERN.exec(uri);
+  if (!match) return null;
+  const [, scope, name] = match;
+  if (!scope || !name) return null;
+  return { scope, name };
+}
+
+function isSafeWorkspaceRelativePath(relativePath) {
+  if (typeof relativePath !== "string") return false;
+  const normalized = relativePath.replaceAll("\\", "/").trim();
+  if (!normalized || normalized.includes("..")) return false;
+  if (!normalized.startsWith(".github/harness/memory/")) return false;
+  return true;
+}
+
+function resolveMemoryPath(relativePath) {
+  if (!isSafeWorkspaceRelativePath(relativePath)) return null;
+
+  const absolute = resolve(repoRoot, relativePath);
+  const rel = relative(repoRoot, absolute).replaceAll("\\", "/");
+  if (!isSafeWorkspaceRelativePath(rel)) return null;
+
+  return { absolute, relative: rel };
+}
+
+function readMemoryFileContentFromRelativePath(relativePath) {
+  if (typeof relativePath !== "string" || !relativePath.trim()) return "";
+  const resolved = resolveMemoryPath(relativePath);
+  if (!resolved) return "";
+
+  try {
+    return readFileSync(resolved.absolute, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function buildMemoryAccessState(params) {
+  const mcpContext = params?.context || {};
+  const callerInfo = extractCallerIdentity(mcpContext);
+  const caller = buildCallerAccessContext(callerInfo, mcpContext);
+  const policy = loadMemoryAccessPolicy(repoRoot);
+  return { caller, policy };
+}
+
+function buildMemoryEntryFromToolItem(entry = {}, includeContent = false) {
+  const path = typeof entry.path === "string" ? entry.path : "";
+  let content = "";
+  if (includeContent) {
+    if (typeof entry.content === "string") {
+      content = entry.content;
+    } else {
+      content = readMemoryFileContentFromRelativePath(path);
+    }
+  }
+
+  return {
+    scope: typeof entry.scope === "string" ? entry.scope : "",
+    path,
+    tags: Array.isArray(entry.tags) ? entry.tags : [],
+    content,
+  };
+}
+
+function isMemoryToolEntryAllowed(entry, caller, policy, includeContent = false) {
+  const normalized = buildMemoryEntryFromToolItem(entry, includeContent);
+  const verdict = evaluateMemoryAccess(normalized, caller, policy);
+  return verdict.allowed;
+}
+
+function buildMemoryEntryFromResourceDescriptor(resource, includeContent = false) {
+  const parsed = parseMemoryResourceUri(resource?.uri);
+  if (!parsed) return null;
+
+  const scopeConfig = MEMORY_RESOURCE_SCOPES[parsed.scope];
+  if (!scopeConfig) return null;
+
+  const absolutePath = resolve(scopeConfig.dir, `${parsed.name}.md`);
+  const relativePath = relative(repoRoot, absolutePath).replaceAll("\\", "/");
+  if (!isSafeWorkspaceRelativePath(relativePath)) return null;
+
+  let content = "";
+  if (includeContent) {
+    if (typeof resource?.text === "string") {
+      content = resource.text;
+    } else {
+      try {
+        content = readFileSync(absolutePath, "utf8");
+      } catch {
+        content = "";
+      }
+    }
+  }
+
+  return {
+    scope: parsed.scope,
+    path: relativePath,
+    content,
+    tags: [],
+  };
+}
+
+function isMemoryResourceAllowed(resource, caller, policy, includeContent = false) {
+  const entry = buildMemoryEntryFromResourceDescriptor(resource, includeContent);
+  if (!entry) return true;
+  const verdict = evaluateMemoryAccess(entry, caller, policy);
+  return verdict.allowed;
+}
+
+function filterMemoryToolPayload(toolName, payload, caller, policy) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "ok", payload };
+  }
+
+  if (toolName === "memory-list" || toolName === "memory-search") {
+    const entries = Array.isArray(payload.entries) ? payload.entries : [];
+    const filtered = entries.filter((entry) => isMemoryToolEntryAllowed(entry, caller, policy, true));
+    return {
+      status: "ok",
+      payload: {
+        ...payload,
+        entries: filtered,
+        count: filtered.length,
+      },
+    };
+  }
+
+  if (toolName === "memory-read") {
+    const allowed = isMemoryToolEntryAllowed(payload, caller, policy, true);
+    if (!allowed) {
+      return {
+        status: "denied",
+        message: "Memory entry not found or access denied.",
+      };
+    }
+    return { status: "ok", payload };
+  }
+
+  return { status: "ok", payload };
+}
+
+// Memory resource scope registry (trusted committed memory surfaces).
+const MEMORY_RESOURCE_SCOPES = {
+  briefs: {
+    dir: join(repoRoot, ".github", "harness", "memory", "briefs"),
+    description: "Harness Architecture Brief",
+  },
+  lessons: {
+    dir: join(repoRoot, ".github", "harness", "memory", "lessons"),
+    description: "Harness Lesson Learned",
+  },
+  reviews: {
+    dir: join(repoRoot, ".github", "harness", "memory", "reviews"),
+    description: "Harness Review Artifact",
+  },
+  radar: {
+    dir: join(repoRoot, ".github", "harness", "memory", "radar"),
+    description: "Harness Research Radar Note",
+  },
+};
 
 /**
  * Parse frontmatter from markdown file to extract title and metadata
@@ -1065,41 +1242,25 @@ function parseFrontmatter(content) {
 function buildMemoryResources() {
   const resources = [];
 
-  // Enumerate briefs
-  if (statSync(briefsDir, { throwIfNotFound: false })) {
-    try {
-      const briefFiles = readdirSync(briefsDir).filter(f => f.endsWith(".md"));
-      for (const file of briefFiles) {
-        const name = file.replace(".md", "");
-        const uri = `io.modelcontextprotocol/harness/memory/briefs/${name}`;
-        resources.push({
-          uri,
-          name,
-          description: "Harness Architecture Brief",
-          mimeType: "text/markdown",
-        });
-      }
-    } catch {
-      // Directory not readable; skip
+  for (const [scope, scopeConfig] of Object.entries(MEMORY_RESOURCE_SCOPES)) {
+    if (!statSync(scopeConfig.dir, { throwIfNotFound: false })) {
+      continue;
     }
-  }
 
-  // Enumerate lessons
-  if (statSync(lessonsDir, { throwIfNotFound: false })) {
     try {
-      const lessonFiles = readdirSync(lessonsDir).filter(f => f.endsWith(".md"));
-      for (const file of lessonFiles) {
+      const files = readdirSync(scopeConfig.dir).filter((file) => file.endsWith(".md"));
+      for (const file of files) {
         const name = file.replace(".md", "");
-        const uri = `io.modelcontextprotocol/harness/memory/lessons/${name}`;
+        const uri = `io.modelcontextprotocol/harness/memory/${scope}/${name}`;
         resources.push({
           uri,
           name,
-          description: "Harness Lesson Learned",
+          description: scopeConfig.description,
           mimeType: "text/markdown",
         });
       }
     } catch {
-      // Directory not readable; skip
+      // Directory not readable; skip this scope
     }
   }
 
@@ -1112,20 +1273,18 @@ function buildMemoryResources() {
  */
 function readResource(uri) {
   // Parse URI: io.modelcontextprotocol/harness/memory/briefs/name
-  const match = uri.match(/^io\.modelcontextprotocol\/harness\/memory\/(\w+)\/(.+)$/);
-  if (!match) {
+  const parsed = parseMemoryResourceUri(uri);
+  if (!parsed) {
     return null;
   }
 
-  const [, type, name] = match;
-  const dir = type === "briefs" ? briefsDir : type === "lessons" ? lessonsDir : null;
-
-  if (!dir) {
+  const scopeConfig = MEMORY_RESOURCE_SCOPES[parsed.scope];
+  if (!scopeConfig) {
     return null;
   }
 
   try {
-    const filePath = join(dir, `${name}.md`);
+    const filePath = join(scopeConfig.dir, `${parsed.name}.md`);
     const content = readFileSync(filePath, "utf-8");
     return {
       uri,
@@ -1334,14 +1493,36 @@ function createServer() {
     };
   });
 
-  // ListResourcesRequestSchema handler (Phase 2a: memory + graph resources with streaming support)
-  server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+  server.setRequestHandler(SubscriptionsListenRequestSchema, async (request) => {
+    const params = parseArguments(request?.params);
+
     try {
+      return {
+        result: buildSubscriptionsListenResult(params),
+      };
+    } catch (error) {
+      return {
+        error: {
+          code: -32602,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  });
+
+  // ListResourcesRequestSchema handler (Phase 2a: memory + graph resources with streaming support)
+  server.setRequestHandler(StreamingListResourcesRequestSchema, async (request) => {
+    try {
+      const { caller, policy } = buildMemoryAccessState(request.params);
+
       // Phase 2a: Support streaming request from client
       const wantsStreaming = request.params?.streaming === true;
 
       // Build all resources (memory + graph) with cache
-      const resources = await buildAllResources(cache);
+      const allResources = await buildAllResources(cache);
+      const resources = allResources.filter((resource) =>
+        isMemoryResourceAllowed(resource, caller, policy, true),
+      );
 
       // If client supports streaming, use chunked response
       if (wantsStreaming && server.notification) {
@@ -1377,25 +1558,6 @@ function createServer() {
           cacheScope: RESOURCE_CACHE_SCOPE,
         };
       }
-
-
-    // subscriptions/listen handler (Slice D)
-    server.setRequestHandler(SubscriptionsListenRequestSchema, async (request) => {
-      const params = parseArguments(request?.params);
-
-      try {
-        return {
-          result: buildSubscriptionsListenResult(params),
-        };
-      } catch (error) {
-        return {
-          error: {
-            code: -32602,
-            message: error instanceof Error ? error.message : String(error),
-          },
-        };
-      }
-    });
       // Fallback to buffered response (Phase 1 compatibility)
       return {
         resources,
@@ -1416,23 +1578,23 @@ function createServer() {
   // ReadResourceRequestSchema handler (Phase 2a: memory + graph resources)
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
     const uri = request.params.uri;
+    const { caller, policy } = buildMemoryAccessState(request.params);
 
     try {
       // Validate URI format
       if (!uri || typeof uri !== "string") {
-        return {
-          error: {
-            code: -32602, // INVALID_ARGUMENTS
-            message: "Invalid URI: must be a string",
-          },
-        };
+        throw new McpError(-32602, "Invalid URI: must be a string");
       }
 
       // Try memory resource first (Phase 1)
-      const memoryPattern = /^io\.modelcontextprotocol\/harness\/memory\/(\w+)\/(.+)$/;
+      const memoryPattern = MEMORY_RESOURCE_URI_PATTERN;
       if (memoryPattern.test(uri)) {
         const resource = readResource(uri);
         if (resource) {
+          const allowed = isMemoryResourceAllowed(resource, caller, policy, true);
+          if (!allowed) {
+            throw new McpError(-32603, `Resource not found: ${uri}`);
+          }
           return {
             contents: [
               {
@@ -1468,29 +1630,18 @@ function createServer() {
 
       // If neither pattern matched or resource not found
       if (!memoryPattern.test(uri) && !graphPattern.test(uri)) {
-        return {
-          error: {
-            code: -32602, // INVALID_ARGUMENTS
-            message: `Invalid URI format: ${uri}. Expected io.modelcontextprotocol/harness/{memory|graph}/...`,
-          },
-        };
+        throw new McpError(
+          -32602,
+          `Invalid URI format: ${uri}. Expected io.modelcontextprotocol/harness/{memory|graph}/...`,
+        );
       }
 
       // Resource not found
-      return {
-        error: {
-          code: -32603, // NOT_FOUND (mapped to INTERNAL in JSON-RPC)
-          message: `Resource not found: ${uri}`,
-        },
-      };
+      throw new McpError(-32603, `Resource not found: ${uri}`);
     } catch (error) {
+      if (error instanceof McpError) throw error;
       console.error("ReadResource error:", error.message);
-      return {
-        error: {
-          code: -32603, // INTERNAL
-          message: `Failed to read resource: ${error.message}`,
-        },
-      };
+      throw new McpError(-32603, `Failed to read resource: ${error.message}`);
     }
   });
 
@@ -1741,7 +1892,29 @@ function createServer() {
     }
 
     const result = runWrapper(toolName, cliArgs);
-    const structuredContent = toStructuredContent(result.payload);
+    let responsePayload = result.payload;
+
+    if (result.ok && MEMORY_TOOL_NAMES.has(toolName)) {
+      const { caller, policy } = buildMemoryAccessState(request.params);
+      const filtered = filterMemoryToolPayload(toolName, responsePayload, caller, policy);
+
+      if (filtered.status === "denied") {
+        const errorPayload = {
+          ok: false,
+          tool: toolName,
+          error: filtered.message,
+        };
+        return {
+          isError: true,
+          structuredContent: toStructuredContent(errorPayload),
+          ...buildToolCallTextPayload(errorPayload),
+        };
+      }
+
+      responsePayload = filtered.payload;
+    }
+
+    const structuredContent = toStructuredContent(responsePayload);
 
     // Audit command dispatch invocations (immutable .jsonl)
     // Note: Handler truncates output to 10KB for MCP response size limits;
@@ -1788,7 +1961,7 @@ function createServer() {
         tool: toolName,
         exitCode: result.exitCode,
         stderr: result.stderr || undefined,
-        result: result.payload,
+        result: responsePayload,
       };
 
       return {
@@ -1800,7 +1973,7 @@ function createServer() {
 
     return {
       structuredContent,
-      ...buildToolCallTextPayload(result.payload),
+      ...buildToolCallTextPayload(responsePayload),
     };
   });
 

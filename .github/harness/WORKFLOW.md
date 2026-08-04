@@ -5,6 +5,11 @@ new skills as operating controls, not optional extras.
 
 This playbook complements, not replaces, [HARNESS.md](./HARNESS.md) and [LOOPS.md](./LOOPS.md).
 
+Normalization and artifact immutability policy overlays:
+
+- [NORMALIZATION-PROFILE-MATRIX.md](./NORMALIZATION-PROFILE-MATRIX.md)
+- [IMMUTABILITY-MARKERS-POLICY.md](./IMMUTABILITY-MARKERS-POLICY.md)
+
 ## 0) Session Boot (Always)
 
 Skills: `context-engineering`, `understand-process`

@@ -132,21 +132,21 @@ const testConfig = {
   console.log('✅ Test 4: Template resolution with validated vars');
 }
 
-// ── Test 5: Invalid caller role does not bypass (Phase 2a: logs error) ──────
+// ── Test 5: Non-empty caller roles are preserved (Phase 2a: logs only) ─────
 {
   const mcpContext = { caller: { token: 'tok-hacker', role: 'superadmin' } };
   const caller = extractCallerIdentity(mcpContext);
 
-  assert.strictEqual(caller.valid, false, 'T5: Invalid role caught');
-  assert.ok(caller.errors.length > 0, 'T5: Errors populated');
-  assert.ok(caller.errors[0].includes('role'), 'T5: Error mentions role');
+  assert.strictEqual(caller.valid, true, 'T5: Non-empty role is accepted');
+  assert.deepStrictEqual(caller.errors, [], 'T5: No validation errors');
+  assert.strictEqual(caller.role, 'superadmin', 'T5: Role is preserved for audit logging');
 
-  // Phase 2a: auth still passes (logging-only)
+  // Phase 2a authorization remains logging-only.
   const auth = isAuthorized(caller, 'build', {});
-  assert.strictEqual(auth.authorized, true, 'T5: Phase 2a still passes invalid caller (logged)');
+  assert.strictEqual(auth.authorized, true, 'T5: Phase 2a authorizes caller (logging-only)');
   assert.strictEqual(auth.reason, 'phase-2a-logging-only', 'T5: Correct reason');
 
-  console.log('✅ Test 5: Invalid role detected + logged (Phase 2a enforcement deferred)');
+  console.log('✅ Test 5: Non-empty role preserved + logged (Phase 2a enforcement deferred)');
 }
 
 // ── Test 6: Template injection in var name rejected ────────────────────────

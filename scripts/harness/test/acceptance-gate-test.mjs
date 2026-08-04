@@ -22,6 +22,10 @@ mkdirSync(runsDir, { recursive: true });
 const tempDir = mkdtempSync(join(runsDir, 'acceptance-gate-test-'));
 
 try {
+  const missingMode = run([]);
+  assert.equal(missingMode.status, 1, 'missing mode should fail');
+  assert.match(missingMode.stderr, /Missing mode/, 'missing mode should explain how to proceed');
+
   const specPath = join(tempDir, 'sample.json');
   const filePath = join(tempDir, 'hello.txt');
 

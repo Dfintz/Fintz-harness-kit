@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join, relative, resolve } from "node:path";
+import { join, relative } from "node:path";
 
 import { repoRoot } from "./config.mjs";
 import { loadRegistry } from "./registry.mjs";
@@ -31,7 +31,7 @@ function readJson(path) {
 }
 
 function relativePath(path) {
-  return relative(repoRoot, path).replace(/\\/g, "/");
+  return relative(repoRoot, path).replaceAll("\\", "/");
 }
 
 function parseFrontmatter(text) {
@@ -345,7 +345,7 @@ function listChangedFiles(baseRef) {
     });
     for (const line of output.split(/\r?\n/)) {
       const trimmed = line.trim();
-      if (trimmed.length > 0) relPaths.add(trimmed.replace(/\\/g, "/"));
+      if (trimmed.length > 0) relPaths.add(trimmed.replaceAll("\\", "/"));
     }
   };
 
@@ -420,6 +420,101 @@ function validateChangedSurfaceCitations(findings, options = {}) {
   }
 }
 
+function classifyArtifactFamily(relPath) {
+  const normalized = relPath.replaceAll("\\", "/");
+  const lower = normalized.toLowerCase();
+  const filename = lower.split("/").pop() ?? lower;
+
+  if (lower.startsWith(".github/agents/")) {
+    return null;
+  }
+
+  if (filename.startsWith("architect-challenge-verdict") || filename.includes("-challenge-verdict")) {
+    return "challenge";
+  }
+  if (
+    filename.startsWith("review-stage") ||
+    filename.includes("review-breadth") ||
+    filename.includes("review-depth") ||
+    filename.includes("feedback-verdict")
+  ) {
+    return "review";
+  }
+  if (filename.includes("architecture-brief")) {
+    return "architect";
+  }
+  return null;
+}
+
+function validateImmutabilityMarkers(findings, options = {}) {
+  let changedFiles;
+  try {
+    changedFiles = listChangedFiles(options.baseRef);
+  } catch (error) {
+    addWarning(
+      findings,
+      "immutability-scan-failed",
+      "git",
+      `Unable to inspect changed files for immutability markers: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return;
+  }
+
+  for (const relPath of changedFiles) {
+    if (!relPath.toLowerCase().endsWith(".md")) continue;
+    const family = classifyArtifactFamily(relPath);
+    if (!family) continue;
+
+    const absolutePath = join(repoRoot, relPath);
+    if (!existsSync(absolutePath)) continue;
+
+    const text = readFileSync(absolutePath, "utf8");
+    const frontmatter = parseFrontmatter(text);
+    if (!frontmatter) {
+      addError(
+        findings,
+        "missing-artifact-frontmatter",
+        relPath,
+        `Artifact family "${family}" requires frontmatter markers (artifact_family, immutability).`,
+      );
+      continue;
+    }
+
+    const declaredFamily = String(frontmatter.artifact_family ?? "").trim().toLowerCase();
+    if (declaredFamily !== family) {
+      addError(
+        findings,
+        "artifact-family-mismatch",
+        relPath,
+        `artifact_family must be "${family}" for this file pattern (found "${declaredFamily || "<missing>"}").`,
+      );
+    }
+
+    const immutability = String(frontmatter.immutability ?? "").trim().toLowerCase();
+    if (!["mutable", "frozen", "append-only"].includes(immutability)) {
+      addError(
+        findings,
+        "invalid-immutability-marker",
+        relPath,
+        'immutability must be one of: "mutable", "frozen", "append-only".',
+      );
+      continue;
+    }
+
+    if (immutability === "frozen") {
+      const immutableSince = String(frontmatter.immutable_since ?? "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(immutableSince)) {
+        addError(
+          findings,
+          "missing-immutable-since",
+          relPath,
+          'immutable_since is required in YYYY-MM-DD format when immutability is "frozen".',
+        );
+      }
+    }
+  }
+}
+
 function renderFindings(findings) {
   if (findings.length === 0) {
     return "[docs-contracts] OK\n";
@@ -441,6 +536,9 @@ function main() {
   validateSkillEntries(registry, findings);
   validateCitedScripts(findings);
   validateNoExactDuplicateScriptBodies(findings);
+  validateImmutabilityMarkers(findings, {
+    baseRef: flags.changedSurfaceBase,
+  });
   if (flags.changedSurfaceWarnings) {
     validateChangedSurfaceCitations(findings, {
       baseRef: flags.changedSurfaceBase,

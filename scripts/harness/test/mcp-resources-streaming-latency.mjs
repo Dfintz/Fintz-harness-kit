@@ -13,6 +13,7 @@
  */
 
 import { ResourceCache } from '../mcp-cache.mjs';
+import { connectMcpStdioTestClient } from './mcp-stdio-test-client.mjs';
 
 /**
  * Simulate resource enumeration (Phase 1 memory + Phase 2a graph)
@@ -63,7 +64,7 @@ function benchmarkChunking(resources, chunkSize) {
 /**
  * Run benchmark for all chunk sizes
  */
-function runBenchmark() {
+function runMockBenchmark() {
   console.log('╔════════════════════════════════════════════════╗');
   console.log('║  MCP Streaming Latency Benchmark               ║');
   console.log('║  Phase 2a Validation                           ║');
@@ -133,7 +134,70 @@ function runBenchmark() {
 
   console.log(allPass ? '\n✓ All chunk sizes meet SLA\n' : '\n✗ Some chunk sizes exceed SLA\n');
 
-  process.exit(allPass ? 0 : 1);
+  return allPass;
 }
 
-runBenchmark();
+function percentile(sorted, percentileValue) {
+  const index = Math.ceil((percentileValue / 100) * sorted.length) - 1;
+  return sorted[Math.max(0, index)];
+}
+
+async function runLiveStreamingBenchmark() {
+  console.log('╔════════════════════════════════════════════════╗');
+  console.log('║  Live MCP Streaming Notification Benchmark     ║');
+  console.log('╚════════════════════════════════════════════════╝\n');
+
+  const chunkSizes = [25, 50, 100];
+  const iterations = 20;
+  const results = [];
+
+  for (const chunkSize of chunkSizes) {
+    let awaitingChunk = null;
+    const session = await connectMcpStdioTestClient({
+      name: `harness-mcp-streaming-latency-${chunkSize}`,
+      onNotification: (notification) => {
+        if (notification.params?.chunks?.length > 0 && awaitingChunk) {
+          awaitingChunk.resolve(performance.now() - awaitingChunk.startedAt);
+          awaitingChunk = null;
+        }
+      },
+    });
+
+    try {
+      const samples = [];
+      for (let iteration = 0; iteration < iterations; iteration += 1) {
+        const firstChunk = new Promise((resolveFirstChunk, rejectFirstChunk) => {
+          const timeout = setTimeout(() => {
+            if (awaitingChunk) {
+              awaitingChunk = null;
+              rejectFirstChunk(new Error(`No resource_chunk notification for chunk size ${chunkSize}`));
+            }
+          }, 5000);
+          awaitingChunk = {
+            startedAt: performance.now(),
+            resolve: (elapsedMs) => {
+              clearTimeout(timeout);
+              resolveFirstChunk(elapsedMs);
+            },
+          };
+        });
+
+        await session.client.listResources({ streaming: true, chunkSize });
+        samples.push(await firstChunk);
+      }
+
+      samples.sort((left, right) => left - right);
+      const p99 = percentile(samples, 99);
+      results.push({ chunkSize, p99, pass: p99 < 100 });
+      console.log(`  chunk size ${chunkSize}: p99 first chunk ${p99.toFixed(2)}ms ${p99 < 100 ? '✓' : '✗'}`);
+    } finally {
+      await session.close();
+    }
+  }
+
+  return results.every((result) => result.pass);
+}
+
+const mockPass = runMockBenchmark();
+const livePass = await runLiveStreamingBenchmark();
+process.exitCode = mockPass && livePass ? 0 : 1;

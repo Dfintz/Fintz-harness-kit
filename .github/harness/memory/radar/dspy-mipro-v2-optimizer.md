@@ -1,6 +1,6 @@
 ---
-summary: DSPy MIPRO v2 optimizer — replaces BootstrapFewShot for harness prompt optimization with better multi-stage, instruction-aware tuning
-status: parked
+summary: DSPy MIPROv2 optimizer — implemented instruction-aware prompt optimization for harness skill files
+status: adopted
 source: https://dspy.ai/learn/optimization/mipro/
 author_project: Stanford NLP / DSPy team
 captured: 2026-07-24
@@ -30,6 +30,7 @@ The harness has `dspy-bridge.mjs` and `dspy-optimize.py` / `dspy-optimize-ollama
 ## Decision Log
 
 | Date | Status | Decision | By |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 2026-07-24 | candidate | Initial capture | radar-pass |
 | 2026-07-24 | parked | Adoption blocked: MIPRO v2 requires ≥ 20 eval examples; harness eval suite has only 3 tasks. Must expand eval/tasks/ coverage before this can be trialed. Revisit when eval suite reaches ≥ 10 tasks. | radar-pass |
+| 2026-08-04 | adopted | Reevaluation found the technique already integrated: dspy-optimize.py imports and runs MIPROv2, and dspy-bridge.mjs exposes its invocation. The follow-up is not a replacement project; it is to expand representative eval sets and validate optimizer gains against held-out cases before relying on it for broader skill tuning. | ai-radar-triage |

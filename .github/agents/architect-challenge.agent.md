@@ -27,6 +27,10 @@ Independently challenge the proposed Architecture Brief and return a clear verdi
 
 Write `architect-challenge-verdict.md` with:
 
+- frontmatter markers:
+   - `artifact_family: challenge`
+   - `immutability: mutable|frozen|append-only`
+   - `immutable_since: YYYY-MM-DD` (required when `immutability: frozen`)
 - verdict
 - evidence
 - required revision or unblock step

@@ -26,6 +26,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveGraphProviderState } from "./graph-provider.mjs";
+import { readBriefMetadata, readMemorySummary } from "./memory-curate.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
@@ -33,7 +34,6 @@ const lessonsDir = join(repoRoot, ".github", "harness", "memory", "lessons");
 const briefsDir = join(repoRoot, ".github", "harness", "memory", "briefs");
 const configPath = join(repoRoot, "harness.config.json");
 const NON_LESSON_FILES = new Set(["_template.md", "readme.md"]);
-const BRIEF_STATUSES = ["active", "implemented", "superseded"];
 const TERMINAL_STATES = [
   "converged",
   "exhausted",
@@ -57,18 +57,21 @@ const APPROVAL_STATUSES = new Set([
   "not-required",
 ]);
 
+const NON_JOURNAL_RUN_ARTIFACTS = /\.manifest\.json(?:\.receipt\.json)?$/;
+
 function fail(message) {
   console.error(`[harness-report] ${message}`);
   process.exit(2);
 }
 
 function parseArgs(argv) {
-  const args = { json: false, html: true, out: undefined };
+  const args = { json: false, html: true, out: undefined, selfTest: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--json") args.json = true;
     else if (a === "--no-html") args.html = false;
     else if (a === "--out") args.out = argv[++i];
+    else if (a === "--self-test") args.selfTest = true;
     else fail(`Unknown option: ${a}`);
   }
   return args;
@@ -79,6 +82,7 @@ function loadJournals() {
   const journals = [];
   for (const file of readdirSync(runsDir)) {
     if (!file.endsWith(".json")) continue;
+    if (NON_JOURNAL_RUN_ARTIFACTS.test(file)) continue;
     const path = join(runsDir, file);
     try {
       const journal = JSON.parse(readFileSync(path, "utf8"));
@@ -134,7 +138,7 @@ function loadLessons() {
       let summary = "";
       try {
         mtimeMs = statSync(path).mtimeMs;
-        summary = stripHeading(firstLine(readFileSync(path, "utf8")));
+        summary = readMemorySummary(readFileSync(path, "utf8"));
       } catch {
         // unreadable lesson — skip its detail, still counted
       }
@@ -149,32 +153,60 @@ function loadLessons() {
   return { count: files.length, recent };
 }
 
+function summarizeBrief(name, content) {
+  const metadata = readBriefMetadata(content);
+  return {
+    name,
+    title: metadata.summary || name.replace(/\.md$/, ""),
+    status: metadata.status || "unknown",
+  };
+}
+
 function loadBriefs() {
   const files = listMarkdown(briefsDir, new Set(["readme.md"]));
   const briefs = files.map((name) => {
-    let status = "unknown";
-    let title = name.replace(/\.md$/, "");
     try {
-      const head = firstLine(readFileSync(join(briefsDir, name), "utf8"));
-      const matched = BRIEF_STATUSES.find((s) =>
-        new RegExp(String.raw`[—-]\s*${s}\s*$`, "i").test(head),
-      );
-      if (matched) status = matched;
-      const stripped = stripHeading(head)
-        .replace(/^Brief:\s*/i, "")
-        .replace(/\s*[—-]\s*(active|implemented|superseded)\s*$/i, "")
-        .trim();
-      if (stripped) title = stripped;
+      return summarizeBrief(name, readFileSync(join(briefsDir, name), "utf8"));
     } catch {
       // unreadable brief — keep filename as title
+      return summarizeBrief(name, "");
     }
-    return { name, title, status };
   });
   const byStatus = briefs.reduce(
     (acc, b) => ({ ...acc, [b.status]: (acc[b.status] ?? 0) + 1 }),
     {},
   );
   return { count: briefs.length, briefs, byStatus };
+}
+
+function runSelfTest() {
+  const cases = [
+    {
+      name: "frontmatter Brief metadata takes precedence",
+      pass: (() => {
+        const result = summarizeBrief(
+          "example.md",
+          "---\nsummary: \"Current brief\"\nstatus: active\n---\n# Brief: Legacy — implemented",
+        );
+        return result.title === "Current brief" && result.status === "active";
+      })(),
+    },
+    {
+      name: "legacy Brief metadata remains supported",
+      pass: (() => {
+        const result = summarizeBrief("legacy.md", "# Brief: Legacy — implemented");
+        return result.title === "Legacy" && result.status === "implemented";
+      })(),
+    },
+    {
+      name: "frontmatter lesson summary hides YAML delimiter",
+      pass: readMemorySummary("---\nsummary: \"Lesson summary\"\n---\n# Lesson") === "Lesson summary",
+    },
+  ];
+  for (const testCase of cases) {
+    console.log(`[harness-report] ${testCase.pass ? "PASS" : "FAIL"} ${testCase.name}`);
+  }
+  return cases.every((testCase) => testCase.pass) ? 0 : 1;
 }
 
 function loadGraph() {
@@ -1203,6 +1235,7 @@ function renderHtml(metrics) {
 // ---------- main ----------
 
 const args = parseArgs(process.argv.slice(2));
+if (args.selfTest) process.exit(runSelfTest());
 const journals = loadJournals();
 const metrics = computeMetrics(journals);
 metrics.memory = loadMemory();

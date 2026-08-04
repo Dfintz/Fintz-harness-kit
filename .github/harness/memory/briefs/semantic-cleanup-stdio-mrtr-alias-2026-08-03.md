@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief — Semantic Cleanup for stdio MRTR Command"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [semantic, cleanup, stdio, mrtr]
+---
 # Architecture Brief — Semantic Cleanup for stdio MRTR Command
 resource: package.json,scripts/harness/test/mcp-stdio-slice-b-mrtr-sdk-client-test.mjs
 

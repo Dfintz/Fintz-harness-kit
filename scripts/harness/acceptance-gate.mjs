@@ -323,10 +323,11 @@ function runVerify(flags, baselineMode = false) {
 function main() {
   const flags = parseArgs(process.argv.slice(2));
   const mode = flags._[0];
-  if (flags.help || !mode) {
+  if (flags.help) {
     usage();
     return;
   }
+  if (!mode) fail('Missing mode. Use scaffold, verify, or baseline; run with --help for usage.');
   if (mode === 'scaffold') return scaffold(flags);
   if (mode === 'verify') return runVerify(flags, false);
   if (mode === 'baseline') return runVerify(flags, true);

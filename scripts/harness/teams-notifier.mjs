@@ -171,36 +171,72 @@ function buildStageCompleteCard(opts) {
 
 /**
  * approval-needed card: loop waiting for human approval.
+ * If HARNESS_TEAMS_AGENT_URL is set, adds interactive action buttons.
+ * Otherwise, shows CLI commands (fallback).
  */
 function buildApprovalNeededCard(opts) {
   const { loop, stage, runId, note, requestedAt } = opts;
+  const hasAgent = Boolean(process.env.HARNESS_TEAMS_AGENT_URL);
+  const agentUrl = (process.env.HARNESS_TEAMS_AGENT_URL || '').replace(/\/$/, '');
+
   const approveCmd = `npm run harness:state -- approve --run-id ${runId || '<run-id>'} --decision approved --note "lgtm"`;
   const rejectCmd  = `npm run harness:state -- approve --run-id ${runId || '<run-id>'} --decision rejected --note "<reason>"`;
 
-  return {
-    $schema: CARD_SCHEMA,
-    type: 'AdaptiveCard',
-    version: CARD_VERSION,
-    body: [
-      container([
-        textBlock('🔔 Harness — Approval Needed', { size: 'Medium', weight: 'Bolder', color: COLOUR.warning }),
-        textBlock(`Loop **${loop || '—'}** | Stage **${stage || '—'}** is waiting for approval.`),
-      ], 'emphasis'),
-      separator(),
-      factSet([
-        ['Loop', loop || '—'],
-        ['Stage', stage || '—'],
-        ['Run ID', runId || '—'],
-        ['Requested', fmtTime(requestedAt)],
-        ...(note ? [['Note', note]] : []),
-      ]),
+  const bodyItems = [
+    container([
+      textBlock('🔔 Harness — Approval Needed', { size: 'Medium', weight: 'Bolder', color: COLOUR.warning }),
+      textBlock(`Loop **${loop || '—'}** | Stage **${stage || '—'}** is waiting for approval.`),
+    ], 'emphasis'),
+    separator(),
+    factSet([
+      ['Loop', loop || '—'],
+      ['Stage', stage || '—'],
+      ['Run ID', runId || '—'],
+      ['Requested', fmtTime(requestedAt)],
+      ...(note ? [['Note', note]] : []),
+    ]),
+  ];
+
+  if (hasAgent && runId) {
+    // Interactive buttons via Teams agent
+    bodyItems.push(
+      textBlock('Approve or reject this request:', { spacing: 'Medium', weight: 'Bolder' }),
+    );
+  } else {
+    // Fallback: CLI commands
+    bodyItems.push(
       textBlock('To approve or reject, run one of these commands:', { spacing: 'Medium', weight: 'Bolder' }),
       container([
         textBlock(`**Approve:** \`${approveCmd}\``, { wrap: true }),
         textBlock(`**Reject:**  \`${rejectCmd}\``, { wrap: true, spacing: 'Small' }),
       ]),
-      textBlock('Interactive approval buttons require Power Automate (Phase 3).', { subtle: true, spacing: 'Medium' }),
-    ],
+    );
+  }
+
+  const actions = [];
+  if (hasAgent && runId) {
+    actions.push(
+      {
+        type: 'Action.OpenUrl',
+        title: '✅ Approve',
+        url: `${agentUrl}/teams-agent/action?action=approve&runId=${runId}&reason=approved+via+Teams+card&ts=${Date.now()}`,
+        style: 'positive',
+      },
+      {
+        type: 'Action.OpenUrl',
+        title: '❌ Reject',
+        url: `${agentUrl}/teams-agent/action?action=reject&runId=${runId}&reason=rejected+via+Teams+card&ts=${Date.now()}`,
+        style: 'destructive',
+      },
+    );
+  }
+
+  return {
+    $schema: CARD_SCHEMA,
+    type: 'AdaptiveCard',
+    version: CARD_VERSION,
+    body: bodyItems,
+    ...(actions.length > 0 ? { actions } : {}),
   };
 }
 

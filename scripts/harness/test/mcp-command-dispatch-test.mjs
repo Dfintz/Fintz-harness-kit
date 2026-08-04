@@ -17,6 +17,7 @@ import { join } from "node:path";
 
 const __dirname = import.meta.dirname;
 const repoRoot = join(__dirname, "..", "..", "..");
+const testConfigPath = join(repoRoot, ".harness-test-config.json");
 
 // Helper: Run mcp tool via wrapper
 function runMcpTool(toolName, args) {
@@ -43,7 +44,6 @@ function runMcpTool(toolName, args) {
 
 // Helper: Create temporary test harness config
 function createTestConfig(overrides = {}) {
-  const testConfigPath = join(repoRoot, ".harness-test-config.json");
   const config = {
     project: {
       name: "harness-test",
@@ -171,12 +171,14 @@ async function runAll() {
     testEmptyCommand();
 
     console.log("\n✅ All tests passed!\n");
-    process.exit(0);
   } catch (error) {
     console.error("\n❌ Test failed:");
     console.error(error.message);
     console.error(error.stack);
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    rmSync(testConfigPath, { force: true });
+    delete process.env.HARNESS_CONFIG_PATH;
   }
 }
 

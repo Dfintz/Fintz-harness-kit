@@ -1,3 +1,12 @@
+---
+summary: "MCP Slice D Subscriptions Listen Brief"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [mcp, slice, subscriptions, listen]
+---
 # MCP Slice D Subscriptions Listen Brief
 resource: scripts/harness/mcp-server.mjs, scripts/harness/http-adapter.mjs, scripts/harness/mcp-cache.mjs, scripts/harness/test/mcp-http-slice-c-tasks-test.mjs, scripts/harness/test/mcp-resources-streaming-test.mjs, .github/harness/MCP-INTEGRATION.md, package.json
 

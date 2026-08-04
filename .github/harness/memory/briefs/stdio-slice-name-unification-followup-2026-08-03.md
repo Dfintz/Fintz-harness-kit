@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief — Stdio Slice Naming Follow-up Pass"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [stdio, slice, name, unification]
+---
 # Architecture Brief — Stdio Slice Naming Follow-up Pass
 resource: package.json,.github/harness/memory/briefs/semantic-cleanup-stdio-mrtr-alias-2026-08-03.md
 

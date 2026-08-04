@@ -4,6 +4,10 @@ date: 2026-07-28
 reviewer: harness-architect-challenge
 brief: mcp-command-dispatch-architecture-brief.md
 confidence: 92%
+status: implemented
+artifact_family: challenge
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architect Challenge Verdict: MCP Command Dispatch Server

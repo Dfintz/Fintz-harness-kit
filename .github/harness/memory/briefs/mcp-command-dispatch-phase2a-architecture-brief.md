@@ -1,5 +1,5 @@
 ---
-status: approved-revised
+status: implemented
 date: 2026-07-28
 revised: 2026-07-28
 stage: Architect
@@ -8,6 +8,9 @@ ownership: harness-team
 resource: .github/harness/memory/briefs/mcp-command-dispatch-phase2a-architecture-brief.md
 confidence: 92%
 architect-challenge-verdict: APPROVED (mandatory revisions completed)
+artifact_family: architect
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architecture Brief: MCP Command Dispatch Phase 2a

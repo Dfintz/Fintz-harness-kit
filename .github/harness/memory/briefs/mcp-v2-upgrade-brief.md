@@ -1,6 +1,6 @@
 ---
 owner: harness-team
-status: INVESTIGATE
+status: implemented
 priority: medium
 created: 2026-07-25
 updated: 2026-07-25

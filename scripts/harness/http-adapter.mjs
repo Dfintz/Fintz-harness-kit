@@ -35,12 +35,18 @@
 import { createServer } from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { timingSafeEqual, createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { mcpToolSpecs } from './mcp-contracts.mjs';
 import { loadConfig } from './config.mjs';
-import { validateIssuerBinding } from './mcp-auth-validator.mjs';
+import { extractCallerIdentity, validateIssuerBinding } from './mcp-auth-validator.mjs';
+import {
+  buildCallerAccessContext,
+  evaluateMemoryAccess,
+  loadMemoryAccessPolicy,
+} from './memory-access-control.mjs';
 import {
   buildServerDiscoverPayload,
   buildMrtrInputRequiredResult,
@@ -55,6 +61,7 @@ const repoRoot = resolve(harnessDir, '..', '..');
 const mcpToolsPath = join(harnessDir, 'mcp-tools.mjs');
 const SPAWN_MAX_BUFFER = 16 * 1024 * 1024;
 const MRTR_PENDING_REQUESTS = new Map();
+const MEMORY_TOOL_NAMES = new Set(['memory-list', 'memory-search', 'memory-read']);
 
 const VERSION = '2.6.0';
 
@@ -173,6 +180,124 @@ function normalizeHeaderValue(value) {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function splitListValue(value) {
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[;,]/)
+    .map(entry => entry.trim())
+    .filter(Boolean);
+}
+
+function readHeaderByName(req, headerName) {
+  if (typeof headerName !== 'string' || !headerName.trim()) return undefined;
+  const raw = req.headers[headerName.toLowerCase()];
+  if (Array.isArray(raw)) return raw.join(',');
+  return normalizeHeaderValue(raw);
+}
+
+function resolveCallerHeaders(config) {
+  const defaults = {
+    id: 'x-harness-caller-id',
+    role: 'x-harness-caller-role',
+    teams: 'x-ms-groups',
+  };
+
+  const callerHeaders = config?.callerHeaders && typeof config.callerHeaders === 'object'
+    ? config.callerHeaders
+    : {};
+
+  return {
+    id: callerHeaders.id,
+    role: callerHeaders.role,
+    teams: callerHeaders.teams,
+  };
+}
+
+function buildCallerFromRequest(req, config) {
+  const headers = resolveCallerHeaders(config);
+  const headerCaller = {
+    id: readHeaderByName(req, headers.id),
+    role: readHeaderByName(req, headers.role),
+    teams: splitListValue(readHeaderByName(req, headers.teams)),
+  };
+
+  const callerInfo = extractCallerIdentity({ caller: headerCaller });
+  return buildCallerAccessContext(callerInfo, { caller: headerCaller });
+}
+
+function readSafeMemoryFile(path) {
+  if (typeof path !== 'string') return '';
+  const normalized = path.replaceAll('\\', '/').trim();
+  if (!normalized.startsWith('.github/harness/memory/') || normalized.includes('..')) {
+    return '';
+  }
+
+  const absolutePath = resolve(repoRoot, normalized);
+  try {
+    return readFileSync(absolutePath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function isAllowedMemoryEntry(entry, caller, policy) {
+  const path = typeof entry.path === 'string' ? entry.path : '';
+  const content = typeof entry.content === 'string' ? entry.content : readSafeMemoryFile(path);
+
+  const verdict = evaluateMemoryAccess(
+    {
+      scope: typeof entry.scope === 'string' ? entry.scope : '',
+      path,
+      tags: Array.isArray(entry.tags) ? entry.tags : [],
+      content,
+    },
+    caller,
+    policy,
+  );
+
+  return verdict.allowed;
+}
+
+function applyMemoryAclToToolResult(toolName, toolResult, req, config) {
+  if (!MEMORY_TOOL_NAMES.has(toolName)) {
+    return { ok: true, result: toolResult };
+  }
+
+  const policy = loadMemoryAccessPolicy(repoRoot);
+  if (policy.enabled !== true) {
+    return { ok: true, result: toolResult };
+  }
+
+  const caller = buildCallerFromRequest(req, config);
+
+  if (toolName === 'memory-list' || toolName === 'memory-search') {
+    const entries = Array.isArray(toolResult?.entries) ? toolResult.entries : [];
+    const filteredEntries = entries.filter(entry => isAllowedMemoryEntry(entry, caller, policy));
+    return {
+      ok: true,
+      result: {
+        ...toolResult,
+        entries: filteredEntries,
+        count: filteredEntries.length,
+      },
+    };
+  }
+
+  if (toolName === 'memory-read') {
+    const allowed = isAllowedMemoryEntry(toolResult || {}, caller, policy);
+    if (!allowed) {
+      return {
+        ok: false,
+        status: 404,
+        code: 'ACCESS_DENIED',
+        error: 'Memory entry not found or access denied.',
+      };
+    }
+  }
+
+  return { ok: true, result: toolResult };
 }
 
 function buildMcpMethodNotFound(method) {
@@ -398,7 +523,7 @@ function parseInputResponses(params, body) {
   return undefined;
 }
 
-function handleMcpToolsCall(route, body) {
+function handleMcpToolsCall(req, route, body, config) {
   if (!route.toolName) {
     return {
       status: 400,
@@ -483,12 +608,20 @@ function handleMcpToolsCall(route, body) {
     };
   }
 
+  const acl = applyMemoryAclToToolResult(route.toolName, dispatch.result, req, config);
+  if (!acl.ok) {
+    return {
+      status: acl.status,
+      payload: toMcpResponseEnvelope(route.id, buildMcpInternalError(`${acl.code}: ${acl.error}`)),
+    };
+  }
+
   return {
     status: 200,
     payload: toMcpResponseEnvelope(route.id, {
       result: {
         tool: route.toolName,
-        output: dispatch.result,
+        output: acl.result,
       },
     }),
   };
@@ -552,7 +685,7 @@ async function handleMcpRequest(req, res, config) {
   }
 
   if (route.method === 'tools/call') {
-    const callResult = handleMcpToolsCall(route, body);
+    const callResult = handleMcpToolsCall(req, route, body, config);
     json(res, callResult.status, callResult.payload);
     return;
   }
@@ -612,7 +745,13 @@ async function handleToolInvokeRequest(req, res, config, toolName) {
     return;
   }
 
-  json(res, 200, { ok: true, tool: toolName, result: dispatch.result });
+  const acl = applyMemoryAclToToolResult(toolName, dispatch.result, req, config);
+  if (!acl.ok) {
+    json(res, acl.status, { error: acl.error, code: acl.code });
+    return;
+  }
+
+  json(res, 200, { ok: true, tool: toolName, result: acl.result });
 }
 
 // ---------------------------------------------------------------------------
@@ -974,6 +1113,9 @@ function showHelp() {
       HARNESS_OAUTH_REQUIRE_ISSUER_BINDING: 'Require issuer in client metadata validation (default true when hardening enabled)',
       HARNESS_OAUTH_ALLOW_API_KEY_FALLBACK: 'Declare API-key compatibility mode in OAuth metadata (default true)',
       HARNESS_OAUTH_CIMD_ENABLED: 'Expose client metadata document migration hints (default true)',
+      HARNESS_CALLER_ID_HEADER: 'Caller id header for ACL context (default x-harness-caller-id)',
+      HARNESS_CALLER_ROLE_HEADER: 'Caller role header for ACL context (default x-harness-caller-role)',
+      HARNESS_CALLER_TEAMS_HEADER: 'Caller teams/groups header for ACL context (default x-ms-groups)',
     },
     endpoints: {
       'GET /healthz': 'Liveness probe',
@@ -996,6 +1138,11 @@ async function main() {
   const maxBodyBytes = parsePositiveInt(process.env.HARNESS_HTTP_MAX_BODY_BYTES, 1024 * 1024);
   const harnessConfig = loadConfig();
   const oauthHardening = resolveOAuthHardeningConfig(baseUrl, harnessConfig);
+  const callerHeaders = {
+    id: process.env.HARNESS_CALLER_ID_HEADER || 'x-harness-caller-id',
+    role: process.env.HARNESS_CALLER_ROLE_HEADER || 'x-harness-caller-role',
+    teams: process.env.HARNESS_CALLER_TEAMS_HEADER || 'x-ms-groups',
+  };
 
   // Schema-only mode: print OpenAPI spec and exit
   if (flags['schema-only']) {
@@ -1012,7 +1159,7 @@ async function main() {
     );
   }
 
-  const config = { expectedKeyBuffer, maxBodyBytes, baseUrl, oauthHardening };
+  const config = { expectedKeyBuffer, maxBodyBytes, baseUrl, oauthHardening, callerHeaders };
 
   const server = createServer(async (req, res) => {
     try {
@@ -1033,6 +1180,7 @@ async function main() {
       tools: mcpToolSpecs.length,
       auth: expectedKeyBuffer ? 'api-key (X-Harness-API-Key or Authorization: Bearer)' : 'none (dev mode)',
       oauthStub: `http://${host}:${port}/.well-known/oauth-authorization-server`,
+      callerHeaders,
     }, null, 2) + '\n');
   });
 

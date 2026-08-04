@@ -1,7 +1,7 @@
 ---
 date: 2026-07-28
 stage: Understand
-status: DISCOVERY
+status: implemented
 confidence: 85%
 resource: .github/harness/memory/briefs/mcp-command-dispatch-phase2-discovery.md
 ---

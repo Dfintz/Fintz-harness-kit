@@ -27,6 +27,7 @@
  * Exit codes: 0 ok / fresh, 1 stale (status) or not-found, 2 usage/config error.
  */
 import { execSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import {
   existsSync,
   readFileSync,
@@ -34,7 +35,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { CONFIG_PATH, repoRoot } from "./config.mjs";
 import {
   buildGraphGenUiPayload,
@@ -99,6 +100,51 @@ function loadGraphContext(flags) {
   } catch (error) {
     die(error instanceof Error ? error.message : String(error), 1);
   }
+}
+
+function loadGraphForResourceAdapter() {
+  return loadGraphForQuery({ repoRoot, configPath });
+}
+
+export function listLayers() {
+  const { graph } = loadGraphForResourceAdapter();
+  return (graph.layers ?? []).map((layer) => ({
+    id: layer.id,
+    name: layer.name,
+    nodeCount: layer.nodeIds?.length ?? 0,
+  }));
+}
+
+export function listLayerNodes(layerName) {
+  const { graph } = loadGraphForResourceAdapter();
+  const normalizedName = String(layerName ?? "").toLowerCase();
+  const layer = (graph.layers ?? []).find(
+    (entry) =>
+      entry.id.toLowerCase() === normalizedName ||
+      entry.name.toLowerCase() === normalizedName,
+  );
+  if (!layer) return [];
+
+  const nodesById = new Map((graph.nodes ?? []).map((node) => [node.id, node]));
+  return (layer.nodeIds ?? []).map((id) => nodesById.get(id) ?? { id });
+}
+
+export function isHealthy() {
+  try {
+    loadGraphForResourceAdapter();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getMetadata() {
+  const { graph } = loadGraphForResourceAdapter();
+  return {
+    timestamp: graph.generatedAt ?? graph.timestamp ?? null,
+    nodeCount: graph.nodes?.length ?? 0,
+    layerCount: graph.layers?.length ?? 0,
+  };
 }
 
 function git(args) {
@@ -852,4 +898,5 @@ function main() {
   }
 }
 
-main();
+const isMainModule = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) main();

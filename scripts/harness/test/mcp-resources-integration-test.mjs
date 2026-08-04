@@ -8,14 +8,14 @@
  * - ReadResource: Valid reads, NOT_FOUND errors, INVALID_ARGUMENTS errors
  */
 
-import { fork } from "child_process";
-import { join } from "path";
-import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { connectMcpStdioTestClient } from "./mcp-stdio-test-client.mjs";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const repoRoot = join(__dirname, "..", "..", "..");
+const repoRoot = process.cwd();
+const policyPath = join(repoRoot, ".github", "harness", "memory", "access-policy.json");
+const restrictedEntryName = "mcp-resources-acl-test-entry";
+const restrictedEntryPath = join(repoRoot, ".github", "harness", "memory", "lessons", `${restrictedEntryName}.md`);
 
 // Track test results
 const results = {
@@ -27,68 +27,18 @@ const results = {
 /**
  * Start MCP server in subprocess and run test
  */
-async function runMcpTest(testName, method, params = {}) {
-  return new Promise((resolve) => {
-    console.log(`  Testing: ${testName}...`);
-
-    const server = fork(join(repoRoot, "scripts", "harness", "mcp-server.mjs"), [], {
-      silent: true,
-      stdio: ["pipe", "pipe", "pipe", "ipc"],
-    });
-
-    let output = "";
-    let error = "";
-
-    server.stdout.on("data", (data) => {
-      output += data.toString();
-    });
-
-    server.stderr.on("data", (data) => {
-      error += data.toString();
-    });
-
-    server.on("close", (code) => {
-      try {
-        // Parse JSON-RPC response
-        const lines = output.split("\n").filter((l) => l.trim());
-        if (lines.length === 0) {
-          throw new Error("No output from server");
-        }
-
-        const lastLine = lines[lines.length - 1];
-        const response = JSON.parse(lastLine);
-
-        resolve({ response, error, code });
-      } catch (e) {
-        resolve({
-          response: null,
-          error: e.message,
-          code: -1,
-        });
-      }
-    });
-
-    // Send MCP request
-    const request = {
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      ...(Object.keys(params).length > 0 && { params }),
-    };
-
-    server.stdin.write(JSON.stringify(request) + "\n");
-    server.stdin.end();
-
-    // Timeout
-    setTimeout(() => {
-      server.kill();
-      resolve({
-        response: null,
-        error: "Timeout",
-        code: -2,
-      });
-    }, 5000);
-  });
+async function runMcpTest(client, getStderr, testName, method, params = {}) {
+  console.log(`  Testing: ${testName}...`);
+  try {
+    const result = method === "resources/list"
+      ? await client.listResources(params)
+      : await client.readResource(params);
+    return { response: { result }, error: null };
+  } catch (error) {
+    const serverError = getStderr();
+    const message = error instanceof Error ? error.message : String(error);
+    return { response: null, error: serverError ? `${message}\n${serverError}` : message };
+  }
 }
 
 /**
@@ -105,120 +55,173 @@ function assert(condition, message) {
   }
 }
 
+function resourceErrorMessage(result) {
+  if (typeof result?.error === "string") return result.error;
+  const structuredError = result?.response?.result?.error;
+  return typeof structuredError?.message === "string" ? structuredError.message : "";
+}
+
+function prepareRestrictedMemoryFixture() {
+  const policyBackup = readFileSync(policyPath, "utf8");
+  const policy = JSON.parse(policyBackup);
+  writeFileSync(policyPath, `${JSON.stringify({ ...policy, enabled: true }, null, 2)}\n`, "utf8");
+  writeFileSync(restrictedEntryPath, "---\ntags: [hr]\n---\n# Restricted resource\n", "utf8");
+  return policyBackup;
+}
+
+function restoreRestrictedMemoryFixture(policyBackup) {
+  writeFileSync(policyPath, policyBackup, "utf8");
+  if (existsSync(restrictedEntryPath)) rmSync(restrictedEntryPath, { force: true });
+}
+
 /**
  * Run all integration tests
  */
 async function runTests() {
   console.log("🧪 MCP Resources API Integration Tests (Phase 1)\n");
+  const policyBackup = prepareRestrictedMemoryFixture();
+  const session = await connectMcpStdioTestClient({
+    name: "harness-mcp-resources-integration-test",
+  });
+  const { client, stderr } = session;
 
-  // Test 1: ListResources returns valid structure
-  console.log("📋 ListResources Tests:");
-  const listResult = await runMcpTest("ListResources returns valid response", "resources/list");
-  const listResponse = listResult.response;
+  try {
+    // Test 1: ListResources returns valid structure
+    console.log("📋 ListResources Tests:");
+    const listResult = await runMcpTest(client, stderr, "ListResources returns valid response", "resources/list");
+    const listResponse = listResult.response;
 
-  if (listResponse && listResponse.result) {
-    assert(Array.isArray(listResponse.result.resources), "Response.result.resources is array");
-    assert(listResponse.result.resources.length > 0, `Enumerated ${listResponse.result.resources.length} resources`);
+    if (listResponse && listResponse.result) {
+      const resources = listResponse.result.resources;
+      assert(Array.isArray(resources), "Response.result.resources is array");
+      assert(
+        resources.length > 0,
+        `Enumerated ${resources.length} resources${stderr() ? `\n${stderr()}` : ""}`,
+      );
 
-    if (listResponse.result.resources.length > 0) {
-      const firstResource = listResponse.result.resources[0];
-      assert(firstResource.uri, "Resource has uri field");
-      assert(firstResource.name, "Resource has name field");
-      assert(firstResource.mimeType === "text/markdown", "Resource mimeType is text/markdown");
-    }
-  } else {
-    assert(false, `ListResources returned error or invalid response: ${listResult.error}`);
-  }
+      const memoryResource = resources.find((resource) => resource.uri.includes("/memory/"));
+      const graphResource = resources.find((resource) => resource.uri.includes("/graph/"));
+      assert(memoryResource, "Memory resource is listed");
+      assert(graphResource, "Graph resource is listed");
 
-  // Test 2: ReadResource valid path
-  console.log("\n📖 ReadResource Tests:");
-  
-  // Get a valid resource URI from ListResources
-  let validResourceUri = null;
-  if (listResponse && listResponse.result && listResponse.result.resources.length > 0) {
-    validResourceUri = listResponse.result.resources[0].uri;
-  }
-
-  if (validResourceUri) {
-    const readResult = await runMcpTest(
-      `ReadResource with valid URI (${validResourceUri})`,
-      "resources/read",
-      { uri: validResourceUri }
-    );
-    const readResponse = readResult.response;
-
-    if (readResponse && readResponse.result) {
-      // MCP spec: ReadResourceResult has contents array
-      assert(Array.isArray(readResponse.result.contents), "Response has contents array");
-      
-      if (Array.isArray(readResponse.result.contents) && readResponse.result.contents.length > 0) {
-        const content = readResponse.result.contents[0];
-        assert(content.uri === validResourceUri, "Content uri matches request uri");
-        assert(content.mimeType === "text/markdown", "Content mimeType is text/markdown");
-        assert(typeof content.text === "string", "Content text is string");
-        assert(content.text.length > 0, "Content text is not empty");
+      for (const resource of [memoryResource, graphResource].filter(Boolean)) {
+        assert(resource.uri, `${resource.name} has uri field`);
+        assert(resource.name, `${resource.uri} has name field`);
+        assert(
+          resource.mimeType === "text/markdown" || resource.mimeType === "application/json",
+          `${resource.uri} has a supported MIME type`,
+        );
       }
     } else {
-      assert(false, `ReadResource returned error: ${readResult.error}`);
+      assert(false, `ListResources returned error or invalid response: ${listResult.error}`);
     }
-  } else {
-    assert(false, "No valid resource URI available for testing");
-  }
+
+    // Test 2: Read listed memory and graph resources through the public SDK seam.
+    console.log("\n📖 ReadResource Tests:");
+    const readableResources = listResponse?.result?.resources?.filter((resource) =>
+      resource.uri.includes("/memory/") || resource.uri.includes("/graph/"),
+    ) ?? [];
+    const memoryResource = readableResources.find((resource) => resource.uri.includes("/memory/"));
+    const graphResource = readableResources.find((resource) => resource.uri.includes("/graph/"));
+
+    if (!memoryResource || !graphResource) {
+      assert(false, "Resource list must contain both memory and graph resources for read proof");
+    }
+
+    for (const resource of [memoryResource, graphResource].filter(Boolean)) {
+      const readResult = await runMcpTest(
+        client,
+        stderr,
+        `ReadResource with valid URI (${resource.uri})`,
+        "resources/read",
+        { uri: resource.uri },
+      );
+      const readResponse = readResult.response;
+
+      if (readResponse && readResponse.result) {
+        assert(Array.isArray(readResponse.result.contents), `${resource.uri} returns contents array`);
+
+        if (Array.isArray(readResponse.result.contents) && readResponse.result.contents.length > 0) {
+          const content = readResponse.result.contents[0];
+          assert(content.uri === resource.uri, `${resource.uri} content URI matches request`);
+          assert(content.mimeType === resource.mimeType, `${resource.uri} content MIME type matches resource`);
+          assert(typeof content.text === "string", `${resource.uri} content text is string`);
+          assert(content.text.length > 0, `${resource.uri} content is not empty`);
+        }
+      } else {
+        assert(false, `ReadResource returned error: ${readResult.error}`);
+      }
+    }
 
   // Test 3: ReadResource NOT_FOUND error path
-  const notFoundResult = await runMcpTest(
+    const notFoundResult = await runMcpTest(
+      client,
+      stderr,
     "ReadResource with invalid URI (NOT_FOUND)",
     "resources/read",
     { uri: "io.modelcontextprotocol/harness/memory/briefs/does-not-exist" }
   );
-  const notFoundResponse = notFoundResult.response;
-
-  if (notFoundResponse && notFoundResponse.error) {
-    assert(notFoundResponse.error.code === -32603, "Error code is -32603 (NOT_FOUND)");
-    assert(notFoundResponse.error.message, "Error message is present");
-    console.log(`    Error message: "${notFoundResponse.error.message}"`);
-  } else if (notFoundResponse && notFoundResponse.result && notFoundResponse.result.error) {
-    assert(notFoundResponse.result.error.code === -32603, "Error code is -32603 (NOT_FOUND)");
-    assert(notFoundResponse.result.error.message, "Error message is present");
-    console.log(`    Error message: "${notFoundResponse.result.error.message}"`);
-  } else {
-    console.log(`    Response structure:`, JSON.stringify(notFoundResponse, null, 2));
-    assert(false, "ReadResource should return error for NOT_FOUND case");
-  }
+    assert(
+      resourceErrorMessage(notFoundResult).includes("Resource not found"),
+      "SDK surfaces Resource not found for an unknown resource",
+    );
 
   // Test 4: ReadResource INVALID_ARGUMENTS error path
-  const invalidResult = await runMcpTest(
+    const invalidResult = await runMcpTest(
+      client,
+      stderr,
     "ReadResource with malformed URI (INVALID_ARGUMENTS)",
     "resources/read",
     { uri: "malformed-uri-no-slashes" }
   );
-  const invalidResponse = invalidResult.response;
+    assert(
+      resourceErrorMessage(invalidResult).includes("Invalid URI format"),
+      "SDK surfaces Invalid URI format for a malformed URI",
+    );
 
-  if (invalidResponse && invalidResponse.error) {
-    assert(invalidResponse.error.code === -32602, "Error code is -32602 (INVALID_ARGUMENTS)");
-    assert(invalidResponse.error.message, "Error message is present");
-    console.log(`    Error message: "${invalidResponse.error.message}"`);
-  } else if (invalidResponse && invalidResponse.result && invalidResponse.result.error) {
-    assert(invalidResponse.result.error.code === -32602, "Error code is -32602 (INVALID_ARGUMENTS)");
-    assert(invalidResponse.result.error.message, "Error message is present");
-    console.log(`    Error message: "${invalidResponse.result.error.message}"`);
-  } else {
-    console.log(`    Response structure:`, JSON.stringify(invalidResponse, null, 2));
-    assert(false, "ReadResource should return error for INVALID_ARGUMENTS case");
-  }
+    // Test 5: Resource listings enforce tag-based ACLs.
+    const restrictedUri = `io.modelcontextprotocol/harness/memory/lessons/${restrictedEntryName}`;
+    const deniedListResult = await runMcpTest(
+      client,
+      stderr,
+      "ListResources hides restricted entries from unauthorized callers",
+      "resources/list",
+      { context: { caller: { id: "engineering-user", role: "engineering", teams: ["engineering"] } } },
+    );
+    const deniedResources = deniedListResult.response?.result?.resources ?? [];
+    assert(
+      !deniedResources.some((resource) => resource.uri === restrictedUri),
+      "Unauthorized callers do not receive restricted resource metadata",
+    );
+
+    const allowedListResult = await runMcpTest(
+      client,
+      stderr,
+      "ListResources retains restricted entries for authorized callers",
+      "resources/list",
+      { context: { caller: { id: "hr-user", role: "hr", teams: ["hr"] } } },
+    );
+    const allowedResources = allowedListResult.response?.result?.resources ?? [];
+    assert(
+      allowedResources.some((resource) => resource.uri === restrictedUri),
+      "Authorized callers receive restricted resource metadata",
+    );
 
   // Summary
   console.log("\n📊 Test Summary:");
   console.log(`  Passed: ${results.passed}`);
   console.log(`  Failed: ${results.failed}`);
 
-  if (results.failed === 0) {
-    console.log("\n✅ All integration tests PASSED");
-    process.exit(0);
-  } else {
+    if (results.failed === 0) {
+      console.log("\n✅ All integration tests PASSED");
+      return;
+    }
     console.log("\n❌ Some tests FAILED:");
     results.errors.forEach((err) => console.log(err));
-    process.exit(1);
+    throw new Error("MCP resources integration assertions failed");
+  } finally {
+    await session.close();
+    restoreRestrictedMemoryFixture(policyBackup);
   }
 }
 

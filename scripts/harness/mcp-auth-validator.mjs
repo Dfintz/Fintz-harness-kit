@@ -14,6 +14,12 @@ function extractCallerIdentity(mcpContext = {}) {
   const caller = mcpContext?.caller || {};
   const token = caller?.token || '';
   const role = caller?.role || 'auditor'; // Default to auditor (least privilege) for unauthenticated callers
+  let teams = [];
+  if (Array.isArray(caller?.teams)) {
+    teams = caller.teams;
+  } else if (typeof caller?.team === 'string') {
+    teams = caller.team.split(',').map((item) => item.trim()).filter(Boolean);
+  }
 
   // Phase 2a validation: Only check presence and format
   // Phase 2c will add JWT decode, token signing verification, etc.
@@ -26,20 +32,26 @@ function extractCallerIdentity(mcpContext = {}) {
     valid = false;
   }
 
-  // Check 2: Role must be one of known roles
-  const validRoles = ['executor', 'auditor', 'restricted'];
-  if (!validRoles.includes(role)) {
-    errors.push(`auth.role must be one of: ${validRoles.join(', ')}`);
+  // Check 2: Role must be a non-empty string
+  if (typeof role !== 'string' || role.trim().length === 0) {
+    errors.push('auth.role must be a non-empty string');
     valid = false;
   }
 
-  // Extract caller ID (use first 16 chars of token if available, else 'anonymous')
-  const callerId = (token && typeof token === 'string') ? `caller-${token.substring(0, 16)}` : 'anonymous';
+  // Extract caller ID with explicit id/userId precedence
+  let explicitId = null;
+  if (typeof caller?.id === 'string' && caller.id.trim().length > 0) {
+    explicitId = caller.id.trim();
+  } else if (typeof caller?.userId === 'string' && caller.userId.trim().length > 0) {
+    explicitId = caller.userId.trim();
+  }
+  const callerId = explicitId || ((token && typeof token === 'string') ? `caller-${token.substring(0, 16)}` : 'anonymous');
 
   return {
     callerId,
     token,
     role,
+    teams,
     valid,
     errors,
   };
@@ -80,6 +92,7 @@ function getCallerAuditInfo(caller, commandName, config) {
     id: caller.callerId,
     tokenHash,
     role: caller.role,
+    teams: Array.isArray(caller.teams) ? caller.teams : [],
     authorized: auth.authorized,
   };
 }

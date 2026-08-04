@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [package, command, surface, trim]
+---
 ## Architecture Brief
 resource: package.json,.github/harness/HARNESS.md,.github/harness/WORKFLOW.md,.github/harness/registry.json,README.md,AGENTS.md,scripts/harness/harness-help.mjs
 

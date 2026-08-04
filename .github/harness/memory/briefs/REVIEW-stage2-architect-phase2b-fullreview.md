@@ -3,6 +3,10 @@ stage: architect
 date: 2026-07-27
 model: gpt-5.6-luna (Decision Framework Architecture)
 resource: .github/harness/memory/briefs/phase2b-evaluation-*.md, scripts/harness/prompt-router.mjs, harness.config.json, .github/instructions/07-FEEDBACK.md
+status: implemented
+artifact_family: review
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architecture Brief: Phase 2b Governance Artifact Review

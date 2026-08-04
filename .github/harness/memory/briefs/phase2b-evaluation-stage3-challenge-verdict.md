@@ -4,6 +4,10 @@ stage: architect-challenge
 date: 2026-07-27
 model: gpt-5.3-codex (codex reasoning for decision logic validation)
 brief: phase2b-evaluation-architecture-brief.md
+status: implemented
+artifact_family: challenge
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architect Challenge Verdict: Phase 2b Evaluation Decision Framework

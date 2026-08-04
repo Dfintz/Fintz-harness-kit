@@ -1,3 +1,12 @@
+---
+summary: "Slice B Run Bundle Warning Suppression And Checks 2026-08-03"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [slice, run, bundle, warning]
+---
 # Slice B Run Bundle Warning Suppression And Checks 2026-08-03
 resource: scripts/harness/prompt-router.mjs, scripts/harness/test/prompt-router-run-bundle-test.mjs, package.json
 

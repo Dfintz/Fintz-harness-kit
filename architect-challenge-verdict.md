@@ -1,3 +1,9 @@
+---
+artifact_family: challenge
+immutability: frozen
+immutable_since: 2026-08-04
+---
+
 # Architect Challenge Verdict
 
 ## Verdict

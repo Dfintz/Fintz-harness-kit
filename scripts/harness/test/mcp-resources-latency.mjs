@@ -7,71 +7,17 @@
  * Runs 100 iterations of each operation and reports latency distribution.
  */
 
-import { fork } from "child_process";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const repoRoot = join(__dirname, "..", "..", "..");
+import { connectMcpStdioTestClient } from "./mcp-stdio-test-client.mjs";
 
 const ITERATIONS = 100;
 const P99_THRESHOLD_MS = 100; // Phase 1 requirement: <100ms p99
 
 /**
- * Simulate MCP client request via stdin/stdout
+ * Execute a request through an initialized MCP SDK client.
  */
-function sendMcpRequest(method, params = {}) {
-  return new Promise((resolve, reject) => {
-    const server = fork(join(repoRoot, "scripts", "harness", "mcp-server.mjs"), [], {
-      silent: false,
-      stdio: ["pipe", "pipe", "pipe", "ipc"],
-    });
-
-    let output = "";
-    let error = "";
-
-    server.stdout.on("data", (data) => {
-      output += data.toString();
-    });
-
-    server.stderr.on("data", (data) => {
-      error += data.toString();
-    });
-
-    server.on("close", (code) => {
-      if (code !== 0 && error) {
-        reject(new Error(`MCP server error: ${error}`));
-      } else {
-        try {
-          // Parse JSON-RPC response from server stdout
-          const lines = output.split("\n").filter((l) => l.trim());
-          const lastLine = lines[lines.length - 1];
-          const response = JSON.parse(lastLine);
-          resolve(response);
-        } catch (e) {
-          reject(new Error(`Failed to parse MCP response: ${e.message}`));
-        }
-      }
-    });
-
-    // Send MCP request as JSON-RPC
-    const request = {
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      ...(Object.keys(params).length > 0 && { params }),
-    };
-
-    server.stdin.write(JSON.stringify(request) + "\n");
-    server.stdin.end();
-
-    // Timeout after 5 seconds
-    setTimeout(() => {
-      server.kill();
-      reject(new Error("MCP request timeout"));
-    }, 5000);
-  });
+async function sendMcpRequest(client, method, params = {}) {
+  if (method === "resources/list") return client.listResources(params);
+  return client.readResource(params);
 }
 
 /**
@@ -90,77 +36,72 @@ async function benchmarkLatency() {
   console.log(`Target: <${P99_THRESHOLD_MS}ms p99`);
   console.log(`Iterations: ${ITERATIONS}\n`);
 
-  // Benchmark ListResources
-  console.log("📊 Testing ListResources...");
-  const listLatencies = [];
-  for (let i = 0; i < ITERATIONS; i++) {
-    const start = process.hrtime.bigint();
-    try {
-      await sendMcpRequest("resources/list");
-      const end = process.hrtime.bigint();
-      const latencyMs = Number(end - start) / 1_000_000;
-      listLatencies.push(latencyMs);
-      process.stdout.write(".");
-    } catch (error) {
-      console.error(`\n❌ ListResources iteration ${i + 1} failed:`, error.message);
-      process.exit(1);
-    }
-  }
-  console.log("\n");
+  const session = await connectMcpStdioTestClient({
+    name: "harness-mcp-resources-latency-test",
+  });
 
-  // Benchmark ReadResource
-  console.log("📊 Testing ReadResource...");
-  const readLatencies = [];
-  for (let i = 0; i < ITERATIONS; i++) {
-    const start = process.hrtime.bigint();
-    try {
-      // Use a known brief URI
-      await sendMcpRequest("resources/read", {
-        uri: "io.modelcontextprotocol/harness/memory/briefs/mcp-2026-07-28-alignment-brief",
-      });
+  try {
+    const listed = await session.client.listResources();
+    const readableResource = listed.resources.find((resource) =>
+      resource.uri.includes("/memory/") || resource.uri.includes("/graph/"),
+    );
+    if (!readableResource) {
+      throw new Error("No readable MCP resource is available; cannot measure resource read latency.");
+    }
+
+    // Benchmark ready-client ListResources calls.
+    console.log("📊 Testing ListResources...");
+    const listLatencies = [];
+    for (let i = 0; i < ITERATIONS; i++) {
+      const start = process.hrtime.bigint();
+      await sendMcpRequest(session.client, "resources/list");
       const end = process.hrtime.bigint();
-      const latencyMs = Number(end - start) / 1_000_000;
-      readLatencies.push(latencyMs);
-      process.stdout.write(".");
-    } catch (error) {
-      // If brief doesn't exist, still count as valid (error response is fast)
-      const end = process.hrtime.bigint();
-      const latencyMs = Number(end - start) / 1_000_000;
-      readLatencies.push(latencyMs);
+      listLatencies.push(Number(end - start) / 1_000_000);
       process.stdout.write(".");
     }
-  }
-  console.log("\n");
+    console.log("\n");
+
+    // Benchmark ready-client ReadResource calls for a resource proven by list.
+    console.log("📊 Testing ReadResource...");
+    const readLatencies = [];
+    for (let i = 0; i < ITERATIONS; i++) {
+      const start = process.hrtime.bigint();
+      await sendMcpRequest(session.client, "resources/read", { uri: readableResource.uri });
+      const end = process.hrtime.bigint();
+      readLatencies.push(Number(end - start) / 1_000_000);
+      process.stdout.write(".");
+    }
+    console.log("\n");
 
   // Report results
-  const listSorted = listLatencies.sort((a, b) => a - b);
-  const readSorted = readLatencies.sort((a, b) => a - b);
+    const listSorted = listLatencies.sort((a, b) => a - b);
+    const readSorted = readLatencies.sort((a, b) => a - b);
 
-  const listP99 = percentile(listSorted, 99);
-  const readP99 = percentile(readSorted, 99);
+    const listP99 = percentile(listSorted, 99);
+    const readP99 = percentile(readSorted, 99);
 
-  console.log("📈 Results:\n");
-  console.log("ListResources:");
-  console.log(`  Min:    ${listSorted[0].toFixed(2)}ms`);
-  console.log(`  Median: ${percentile(listSorted, 50).toFixed(2)}ms`);
-  console.log(`  p99:    ${listP99.toFixed(2)}ms ${listP99 <= P99_THRESHOLD_MS ? "✅" : "❌"}`);
+    console.log("📈 Results:\n");
+    console.log("ListResources:");
+    console.log(`  Min:    ${listSorted[0].toFixed(2)}ms`);
+    console.log(`  Median: ${percentile(listSorted, 50).toFixed(2)}ms`);
+    console.log(`  p99:    ${listP99.toFixed(2)}ms ${listP99 <= P99_THRESHOLD_MS ? "✅" : "❌"}`);
 
-  console.log("\nReadResource:");
-  console.log(`  Min:    ${readSorted[0].toFixed(2)}ms`);
-  console.log(`  Median: ${percentile(readSorted, 50).toFixed(2)}ms`);
-  console.log(`  p99:    ${readP99.toFixed(2)}ms ${readP99 <= P99_THRESHOLD_MS ? "✅" : "❌"}`);
+    console.log("\nReadResource:");
+    console.log(`  Min:    ${readSorted[0].toFixed(2)}ms`);
+    console.log(`  Median: ${percentile(readSorted, 50).toFixed(2)}ms`);
+    console.log(`  p99:    ${readP99.toFixed(2)}ms ${readP99 <= P99_THRESHOLD_MS ? "✅" : "❌"}`);
 
-  // Gate check
-  console.log("\n🎯 Phase 1 Gate Check:");
-  const listPass = listP99 <= P99_THRESHOLD_MS;
-  const readPass = readP99 <= P99_THRESHOLD_MS;
+    // Gate check
+    console.log("\n🎯 Phase 1 Gate Check:");
+    const listPass = listP99 <= P99_THRESHOLD_MS;
+    const readPass = readP99 <= P99_THRESHOLD_MS;
 
-  if (listPass && readPass) {
+    if (!listPass || !readPass) {
+      throw new Error("One or more ready-client resource operations exceed the p99 latency requirement.");
+    }
     console.log("✅ PASS: Both operations meet <100ms p99 requirement");
-    process.exit(0);
-  } else {
-    console.log("❌ FAIL: One or more operations exceed latency requirement");
-    process.exit(1);
+  } finally {
+    await session.close();
   }
 }
 

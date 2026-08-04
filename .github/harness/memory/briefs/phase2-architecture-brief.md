@@ -1,10 +1,13 @@
 ---
 owner: harness-team
-status: READY-FOR-CHALLENGE
+status: implemented
 priority: medium
 created: 2026-07-27
 updated: 2026-07-27
 resource: scripts/harness/mcp-server.mjs,scripts/harness/mcp-contracts.mjs,scripts/harness/test,scripts/harness/graph.mjs,.github/MCP-INTEGRATION.md,package.json
+artifact_family: architect
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architecture Brief: Phase 2 — Streaming + Graph Resources (MCP 2026-07-28 RC) [REVISED POST-CHALLENGE]

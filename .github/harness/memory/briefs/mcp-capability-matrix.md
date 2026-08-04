@@ -2,6 +2,7 @@
 type: COMPARISON_MATRIX
 title: MCP Capability Matrix - Current vs. Upgraded
 created: 2026-07-25
+status: implemented
 ---
 
 # MCP Capability Matrix: v1.29.0 vs. v2-Aligned Upgrades

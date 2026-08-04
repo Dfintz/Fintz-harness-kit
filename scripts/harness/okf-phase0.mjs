@@ -94,6 +94,7 @@ function listMarkdownFilesRecursive(dirPath) {
   const files = [];
   const entries = readdirSync(safeDirPath, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.isDirectory() && entry.name === 'quarantine') continue;
     const absolutePath = assertUnderMemoryRoot(join(safeDirPath, entry.name));
     if (entry.isDirectory()) {
       files.push(...listMarkdownFilesRecursive(absolutePath));
@@ -164,20 +165,35 @@ function inspectMarkdownSignals(content) {
   const lines = content.split('\n');
   const hasFrontmatter = (lines[0] || '').trim() === '---';
   let hasType = false;
+  let malformedFrontmatter = false;
+  let duplicateType = false;
+  let blankType = false;
 
   if (hasFrontmatter) {
+    let closingFound = false;
+    let typeCount = 0;
     for (let i = 1; i < Math.min(lines.length, 80); i += 1) {
       const line = lines[i].trim();
-      if (line === '---') break;
-      if (/^type\s*:\s*\S+/i.test(line)) {
-        hasType = true;
+      if (line === '---') {
+        closingFound = true;
+        break;
+      }
+      if (/^type\s*:/i.test(line)) {
+        typeCount += 1;
+        if (/^type\s*:\s*\S+/i.test(line)) hasType = true;
+        else blankType = true;
       }
     }
+    malformedFrontmatter = !closingFound;
+    duplicateType = typeCount > 1;
   }
 
   return {
     hasFrontmatter,
     hasType,
+    malformedFrontmatter,
+    duplicateType,
+    blankType,
     hasLegacyTimestamp: /^timestamp\s*:/im.test(content),
     hasLegacyCitationsHeading: /^#\s+Citations\s*$/im.test(content),
   };
@@ -186,6 +202,9 @@ function inspectMarkdownSignals(content) {
 function okfConformanceStats(scans) {
   let missingFrontmatter = 0;
   let missingType = 0;
+  let malformedFrontmatter = 0;
+  let duplicateType = 0;
+  let blankType = 0;
 
   for (const scan of scans) {
     const signals = scan.signals;
@@ -193,6 +212,9 @@ function okfConformanceStats(scans) {
       missingFrontmatter += 1;
       continue;
     }
+    if (signals.malformedFrontmatter) malformedFrontmatter += 1;
+    if (signals.duplicateType) duplicateType += 1;
+    if (signals.blankType) blankType += 1;
     if (!signals.hasType) {
       missingType += 1;
     }
@@ -202,6 +224,9 @@ function okfConformanceStats(scans) {
     totalConceptDocs: scans.length,
     missingFrontmatter,
     missingType,
+    malformedFrontmatter,
+    duplicateType,
+    blankType,
     fullyConformant: scans.length - missingFrontmatter - missingType,
   };
 }
@@ -248,7 +273,7 @@ function buildReport(options = {}) {
     graphStatus = 'warn';
   }
   const okfConformancePass =
-    okfConformance.missingFrontmatter === 0 && okfConformance.missingType === 0;
+    okfConformance.missingFrontmatter === 0 && okfConformance.missingType === 0 && okfConformance.malformedFrontmatter === 0 && okfConformance.duplicateType === 0 && okfConformance.blankType === 0;
   const legacyMarkersPresent = legacy.timestampFieldCount > 0 || legacy.citationsHeadingCount > 0;
   const phase1ReadyBase = graphFresh && hardFlagged === 0;
   const strictOkf = options.strictOkf === true;

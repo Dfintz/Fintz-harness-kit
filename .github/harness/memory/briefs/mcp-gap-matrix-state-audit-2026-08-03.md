@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief — MCP Gap Matrix State Audit (2026-08-03)"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [mcp, gap, matrix, state]
+---
 # Architecture Brief — MCP Gap Matrix State Audit (2026-08-03)
 
 resource: .github/harness/MCP-INTEGRATION.md, scripts/harness/http-adapter.mjs, scripts/harness/mcp-server.mjs, scripts/harness/mcp-contracts.mjs, scripts/harness/mcp-auth-validator.mjs, scripts/harness/test/mcp-http-slice-a-test.mjs, scripts/harness/test/mcp-http-slice-b-mrtr-test.mjs, scripts/harness/test/mcp-http-slice-c-tasks-test.mjs, scripts/harness/test/mcp-http-slice-d-subscriptions-test.mjs, scripts/harness/test/mcp-http-slice-e-oauth-hardening-test.mjs

@@ -1,3 +1,12 @@
+---
+summary: "Architecture Brief"
+type: brief
+status: implemented
+source: human
+created: 2026-08-04
+updated: 2026-08-04
+tags: [holistic, command, skill, quality]
+---
 ## Architecture Brief
 resource: package.json,.github/harness/HARNESS.md,.github/harness/LOOPS.md,.github/harness/WORKFLOW.md,.github/harness/MCP-INTEGRATION.md,.github/harness/registry.json,.github/instructions/02-UNDERSTAND-WORKFLOW.md,.github/instructions/03-ARCHITECT.md,.github/instructions/04-IMPLEMENT.md,.github/instructions/05-REVIEW-BREADTH.md,scripts/harness/harness-mcp-tasks.mjs,.github/harness/loops/feature-cycle.json,.github/harness/loops/review-fix.json
 

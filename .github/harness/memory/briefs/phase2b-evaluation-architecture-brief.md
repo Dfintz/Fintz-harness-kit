@@ -1,11 +1,14 @@
 ---
 owner: harness-team
-status: ARCHITECTURE-APPROVED
+status: implemented
 priority: medium
 created: 2026-07-27
 updated: 2026-07-27
 revised: 2026-07-27 (Stage 3 Challenge revisions applied)
 resource: scripts/harness/graph-resources.mjs, scripts/harness/mcp-server.mjs, .github/harness/memory/briefs/phase2-architecture-brief.md
+artifact_family: architect
+immutability: frozen
+immutable_since: 2026-08-04
 ---
 
 # Architecture Brief: Phase 2b Evaluation — Decision Framework
