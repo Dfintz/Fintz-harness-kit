@@ -54,3 +54,20 @@ See `mcp-resources-cache-benchmark.mjs` for validation of:
 - Concurrent read safety
 - Flush mechanism determinism
 
+## Sidecar Validator Edge Cases
+
+The sidecar validator regression fixture is `sidecar-validator-edge-cases-test.mjs`.
+
+Expected failure codes asserted by this test:
+
+- `missing-sidecar` - fixture skill is present but `agents/openai.yaml` is absent.
+- `invalid-sidecar-yaml` - unsupported YAML shape (for example scalar instead of object mapping).
+- `invalid-sidecar-contract` - schema contract violation (for example missing policy key, missing `behavior_class`, or wrong scalar types).
+- `invalid-sidecar-policy-semantics` - policy class and invocation flag disagree (for example explicit-only class with implicit invocation set to true).
+- `invalid-model-invoked-allowlist` - sidecar declared `model-invoked-eligible` for a skill not listed in `harness.config.json` `sidecarPolicy.modelInvokedEligibleSkills`.
+- `invalid-pilot-sidecar-policy` - strict pilot mode (`--strict-pilot-policy`) detected a pilot skill that is not `user-invoked-only`.
+
+Strict command:
+
+- `npm run harness:docs:check:strict-pilot`
+

@@ -28,6 +28,19 @@ Required outputs:
 - stage route decision
 - clearer naming note captured when documentation-only alias language is used
 
+Phase-boundary decision tree (continue vs clear vs handoff vs subagent vs compact):
+
+```text
+Need another step?
+├─ No -> continue and finalize the current stage output
+└─ Yes
+  ├─ Context is stale/contradictory? -> clear assumptions, re-anchor, continue
+  ├─ Different ownership/policy/tool contract? -> handoff
+  ├─ Parallel read-only exploration useful? -> subagent
+  ├─ Context window pressure? -> compact
+  └─ Otherwise -> continue
+```
+
 Surface selection rule:
 
 - Always-on norms -> repo instructions
@@ -237,6 +250,14 @@ Wayfinder-like epic planning adapter:
 | Prompt/routing/retrieval quality issues | add `eval-first-tuning`                                                   |
 | External AI technique adoption          | `ai-techniques-radar` + `eval-first-tuning` before implementation         |
 | Feature ready to ship (live proof)      | add `pr` (verify-before-ship, optional during trial)                      |
+
+## Writing-For-Agents Principle
+
+Treat writing-for-agents as documentation style guidance, not as a runtime behavior feature.
+
+- Prefer imperative steps with explicit inputs and outputs.
+- Prefer short, scannable sections tied to concrete command or file references.
+- Keep one decision per bullet so handoffs are machine-readable and deterministic.
 
 ## Default Command Sequence (Route -> Plan -> Execute)
 

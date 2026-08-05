@@ -90,6 +90,26 @@ the other as reference — do not load both copies of the same skill.
 | Copilot / Codex            | `.github/skills/*/SKILL.md` | `.github/copilot-instructions.md`, `.github/instructions/` |
 | Other agents (Cursor, etc) | `.github/skills/*/SKILL.md` | `AGENTS.md` (repo root), `.github/instructions/`           |
 
+Codex metadata sidecars are supported for local `.github` skills.
+
+- Optional path: `.github/skills/<skill>/agents/openai.yaml`
+- Contract: `.github/harness/schemas/skill-openai-sidecar.schema.json`
+- Required keys: `interface.display_name`, `interface.short_description`, `policy.allow_implicit_invocation`, `policy.behavior_class`
+- Behavior classes:
+   - `user-invoked-only` -> must set `allow_implicit_invocation: false`
+   - `explicit-invocation-required` -> must set `allow_implicit_invocation: false`
+   - `model-invoked-eligible` -> must set `allow_implicit_invocation: true` and be allowlisted in `harness.config.json` `sidecarPolicy.modelInvokedEligibleSkills`
+- Enforcement: `npm run harness:skills:sidecars:check` and `npm run harness:docs:check`
+- Strict pilot enforcement mode: `npm run harness:docs:check:strict-pilot` (fails if any pilot skill sidecar is not `user-invoked-only`)
+- Allowlist drift report: `npm run harness:skills:allowlist:report` (use `harness:skills:allowlist:drift-check` for non-zero exit on drift)
+- Runtime boundary: sidecar policy is contract-validated metadata; prompt routing and stage sequencing remain owned by `harness.config.json` and `scripts/harness/prompt-router.mjs`
+
+Current model-invoked-eligible core subset:
+
+- `context-engineering`
+- `deterministic-validation`
+- `understand-process`
+
 Workflow-stage skills (`architect`, `implement`, `review-breadth`, `review-depth`, `feedback`) exist
 only under `.claude/skills/` as invocable commands; non-Claude agents get identical content from the
 corresponding `.github/instructions/0*.md` file. Those instruction files define reusable stage
@@ -126,6 +146,8 @@ The harness stage files follow a few public, cross-vendor agent-design rules:
    guardrails, or changing destructive defaults is never auto-approved.
 5. **Specialize only when the contract changes.** Extra agents or skills are justified by different
    tools, policy, or outputs, not by preference alone.
+6. **Write for agents first.** Keep instructions and skills scannable, imperative, and test-linked;
+   prefer explicit inputs/outputs over narrative prose.
 
 ---
 
@@ -215,6 +237,29 @@ tenancy, caching, or infrastructure. Trivial one-file typo/doc fixes may skip st
    used, residual risk) per `02-UNDERSTAND-WORKFLOW.md`, plus the stage artifacts needed by the next
    pass.
 
+### Phase-Boundary Decision Tree
+
+Use this compact routing rule whenever a stage finishes and you need the next move.
+
+```text
+Need another step?
+├─ No -> continue current stage output and finalize
+└─ Yes
+   ├─ Context is wrong/stale/contradictory? -> clear and restate assumptions, then continue
+   ├─ Different ownership/policy/tool contract needed? -> handoff
+   ├─ Focused parallel read-only exploration helps? -> subagent
+   ├─ Context window pressure blocks correctness? -> compact
+   └─ Otherwise -> continue in the current stage
+```
+
+Decision notes:
+
+- `continue`: default path when constraints and ownership remain valid.
+- `clear`: reset local assumptions and regenerate only the minimum context needed.
+- `handoff`: switch when output contract, tool permissions, or role ownership changes.
+- `subagent`: parallel evidence gathering, not policy transfer.
+- `compact`: summarize artifacts/state to preserve continuity under context pressure.
+
 ---
 
 ## Skill Routing
@@ -237,6 +282,8 @@ description and the files being touched.
 | `teach-agent` | Machine-first guidance curation, promotion gates, and agent teachability |
 | `setup-harness-bootstrap` | Adopting the harness in a new repository or workflow surface |
 | `retrieval-quality-ops` | A/B evaluation of retrieval stacks (vector-only vs contextual+BM25+rerank) |
+| `wait-what` | Pilot, user-invoked only: re-pitch one unclear response in simpler wording without changing technical meaning |
+| `to-questionnaire` | Pilot, user-invoked only: convert one request scope into a concise stakeholder questionnaire |
 | `remember` _(Claude Code only)_ | Persisting reusable lessons and Architecture Briefs to harness memory. Non-Claude agents: follow the write protocol in `memory/README.md` directly. |
 | `run-loop` _(Claude Code only)_ | Native execution of workflow loops using checked-in loop JSON and guardrails. Non-Claude agents: follow the loop JSON as protocol per `LOOPS.md § Native Execution`. |
 | `pr` | PR creation, verification, and review-before-ship workflow |

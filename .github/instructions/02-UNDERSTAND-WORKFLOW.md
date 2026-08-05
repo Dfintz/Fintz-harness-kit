@@ -108,3 +108,11 @@ For non-trivial tasks, include an Understand status line in your completion summ
 - Understand tools used: chat, explain, diff, domain, onboard (as applicable)
 - Residual risk: low, medium, or high with one-line reason
 
+## Writing-For-Agents Style
+
+Keep Understand outputs machine-friendly:
+
+- Prefer imperative phrasing over narrative prose.
+- Keep one claim per bullet with direct evidence.
+- Reference exact commands or files when stating a conclusion.
+

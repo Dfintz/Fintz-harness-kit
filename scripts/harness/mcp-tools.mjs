@@ -197,10 +197,20 @@ function readMemoryEntries(scope) {
 }
 
 function runCli(cliPath, args) {
+  const maxBufferBytes = Number.parseInt(
+    process.env.HARNESS_CLI_MAX_BUFFER_BYTES ?? "16777216",
+    10,
+  );
+  const safeMaxBufferBytes =
+    Number.isFinite(maxBufferBytes) && maxBufferBytes > 0
+      ? maxBufferBytes
+      : 16777216;
+
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: safeMaxBufferBytes,
   });
 
   const stdout = (result.stdout || "").trim();

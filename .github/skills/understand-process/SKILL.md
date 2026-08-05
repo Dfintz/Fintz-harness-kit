@@ -108,6 +108,12 @@ Use this concise template in final summaries for non-trivial tasks:
 - If graph freshness cannot be restored, proceed with caution and explicitly report confidence loss.
 - Keep graph-derived conclusions testable and tied to concrete files/modules.
 
+## Writing-For-Agents Style
+
+- Write compact, imperative notes that can be parsed quickly by another agent.
+- Keep one finding per bullet and attach evidence immediately.
+- Prefer deterministic command output over interpretive summaries.
+
 ## Usage Scenarios
 
 ### Scenario 1: I need to understand the blast radius of a database change before implementing.

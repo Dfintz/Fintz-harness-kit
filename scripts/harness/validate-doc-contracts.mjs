@@ -3,10 +3,24 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 
-import { repoRoot } from "./config.mjs";
+import { loadConfig, repoRoot } from "./config.mjs";
 import { loadRegistry } from "./registry.mjs";
 
 const packageJsonPath = join(repoRoot, "package.json");
+const skillsRoot = join(repoRoot, ".github", "skills");
+const sidecarSchemaPath = join(repoRoot, ".github", "harness", "schemas", "skill-openai-sidecar.schema.json");
+const userInvokedPilotSkills = new Set(["wait-what", "to-questionnaire"]);
+
+function getModelInvokedAllowlist() {
+  const config = loadConfig();
+  const configured = config?.sidecarPolicy?.modelInvokedEligibleSkills;
+  if (!Array.isArray(configured)) return new Set();
+  const normalized = configured
+    .filter((entry) => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return new Set(normalized);
+}
 
 function walkFiles(startPath, matcher, results = []) {
   if (!existsSync(startPath)) return results;
@@ -322,11 +336,17 @@ function validateNoExactDuplicateScriptBodies(findings) {
 function parseArgs(argv) {
   const flags = {
     changedSurfaceWarnings: false,
+    sidecarOnly: false,
+    strictPilotPolicy: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--changed-surface-warnings") {
       flags.changedSurfaceWarnings = true;
+    } else if (arg === "--sidecar-only") {
+      flags.sidecarOnly = true;
+    } else if (arg === "--strict-pilot-policy") {
+      flags.strictPilotPolicy = true;
     } else if (arg === "--changed-surface-base") {
       flags.changedSurfaceBase = argv[i + 1];
       i += 1;
@@ -515,6 +535,308 @@ function validateImmutabilityMarkers(findings, options = {}) {
   }
 }
 
+function coerceYamlScalar(rawValue) {
+  const value = rawValue.trim();
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function parseStrictTwoLevelYaml(yamlText, subject, findings) {
+  const root = {};
+  let currentSection = null;
+  const lines = yamlText.split(/\r?\n/);
+
+  for (let lineNumber = 0; lineNumber < lines.length; lineNumber += 1) {
+    const rawLine = lines[lineNumber];
+    if (!rawLine.trim() || rawLine.trim().startsWith("#")) {
+      continue;
+    }
+
+    if (rawLine.includes("\t")) {
+      addError(
+        findings,
+        "invalid-sidecar-yaml",
+        subject,
+        `Tabs are not allowed in sidecar YAML (line ${lineNumber + 1}).`,
+      );
+      return null;
+    }
+
+    if (/^\S[^:]*:\s*$/.test(rawLine)) {
+      const sectionName = rawLine.slice(0, rawLine.indexOf(":"));
+      if (Object.hasOwn(root, sectionName)) {
+        addError(
+          findings,
+          "duplicate-sidecar-key",
+          subject,
+          `Duplicate top-level key "${sectionName}" in sidecar YAML.`,
+        );
+        return null;
+      }
+      root[sectionName] = {};
+      currentSection = sectionName;
+      continue;
+    }
+
+    if (/^\s{2}\S[^:]*:\s*.+$/.test(rawLine)) {
+      if (!currentSection) {
+        addError(
+          findings,
+          "invalid-sidecar-yaml",
+          subject,
+          `Nested key appears before any top-level section (line ${lineNumber + 1}).`,
+        );
+        return null;
+      }
+      const trimmed = rawLine.trim();
+      const separator = trimmed.indexOf(":");
+      const key = trimmed.slice(0, separator).trim();
+      const value = coerceYamlScalar(trimmed.slice(separator + 1));
+      if (Object.hasOwn(root[currentSection], key)) {
+        addError(
+          findings,
+          "duplicate-sidecar-key",
+          subject,
+          `Duplicate key "${currentSection}.${key}" in sidecar YAML.`,
+        );
+        return null;
+      }
+      root[currentSection][key] = value;
+      continue;
+    }
+
+    addError(
+      findings,
+      "invalid-sidecar-yaml",
+      subject,
+      `Unsupported YAML shape at line ${lineNumber + 1}; expected strict two-level mapping.`,
+    );
+    return null;
+  }
+
+  return root;
+}
+
+function validateSchemaValue(value, schema, path, findings, subject) {
+  if (!schema || typeof schema !== "object") return;
+
+  if (Object.hasOwn(schema, "const") && value !== schema.const) {
+    addError(findings, "invalid-sidecar-contract", subject, `${path} must be ${JSON.stringify(schema.const)}.`);
+    return;
+  }
+
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    addError(
+      findings,
+      "invalid-sidecar-contract",
+      subject,
+      `${path} must be one of: ${schema.enum.map((item) => JSON.stringify(item)).join(", ")}.`,
+    );
+    return;
+  }
+
+  const expectedType = schema.type;
+  if (expectedType === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      addError(findings, "invalid-sidecar-contract", subject, `${path} must be an object.`);
+      return;
+    }
+
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    for (const requiredKey of required) {
+      if (!Object.hasOwn(value, requiredKey)) {
+        addError(findings, "invalid-sidecar-contract", subject, `${path}.${requiredKey} is required.`);
+      }
+    }
+
+    const properties = schema.properties && typeof schema.properties === "object" ? schema.properties : {};
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!Object.hasOwn(properties, key)) {
+          addError(findings, "invalid-sidecar-contract", subject, `${path}.${key} is not allowed by schema.`);
+        }
+      }
+    }
+
+    for (const [propertyName, propertySchema] of Object.entries(properties)) {
+      if (!Object.hasOwn(value, propertyName)) continue;
+      validateSchemaValue(value[propertyName], propertySchema, `${path}.${propertyName}`, findings, subject);
+    }
+    return;
+  }
+
+  if (expectedType === "string") {
+    if (typeof value !== "string") {
+      addError(findings, "invalid-sidecar-contract", subject, `${path} must be a string.`);
+      return;
+    }
+    if (typeof schema.minLength === "number" && value.length < schema.minLength) {
+      addError(findings, "invalid-sidecar-contract", subject, `${path} must have length >= ${schema.minLength}.`);
+    }
+    if (typeof schema.maxLength === "number" && value.length > schema.maxLength) {
+      addError(findings, "invalid-sidecar-contract", subject, `${path} must have length <= ${schema.maxLength}.`);
+    }
+    if (typeof schema.pattern === "string") {
+      const regex = new RegExp(schema.pattern);
+      if (!regex.test(value)) {
+        addError(findings, "invalid-sidecar-contract", subject, `${path} does not match required pattern.`);
+      }
+    }
+    return;
+  }
+
+  if (expectedType === "boolean") {
+    if (typeof value !== "boolean") {
+      addError(findings, "invalid-sidecar-contract", subject, `${path} must be a boolean.`);
+    }
+  }
+}
+
+function validateSidecarPolicySemantics(parsed, skillSlug, sidecarRelPath, findings, options = {}) {
+  const policy = parsed?.policy;
+  if (!policy || typeof policy !== "object") return;
+
+  const behaviorClass = policy.behavior_class;
+  const allowImplicit = policy.allow_implicit_invocation;
+  const modelInvokedAllowlist = options.modelInvokedAllowlist ?? new Set();
+
+  if (behaviorClass === "model-invoked-eligible" && allowImplicit !== true) {
+    addError(
+      findings,
+      "invalid-sidecar-policy-semantics",
+      sidecarRelPath,
+      "policy.behavior_class=model-invoked-eligible requires policy.allow_implicit_invocation=true.",
+    );
+  }
+
+  if (
+    (behaviorClass === "explicit-invocation-required" || behaviorClass === "user-invoked-only") &&
+    allowImplicit !== false
+  ) {
+    addError(
+      findings,
+      "invalid-sidecar-policy-semantics",
+      sidecarRelPath,
+      `policy.behavior_class=${behaviorClass} requires policy.allow_implicit_invocation=false.`,
+    );
+  }
+
+  if (userInvokedPilotSkills.has(skillSlug) && behaviorClass !== "user-invoked-only") {
+    addError(
+      findings,
+      "invalid-sidecar-policy-class",
+      sidecarRelPath,
+      `Pilot skill "${skillSlug}" must declare policy.behavior_class=user-invoked-only.`,
+    );
+  }
+
+  if (behaviorClass === "model-invoked-eligible" && !modelInvokedAllowlist.has(skillSlug)) {
+    addError(
+      findings,
+      "invalid-model-invoked-allowlist",
+      sidecarRelPath,
+      `Skill "${skillSlug}" must be listed in harness.config.json sidecarPolicy.modelInvokedEligibleSkills to use model-invoked-eligible.`,
+    );
+  }
+
+  if (modelInvokedAllowlist.has(skillSlug) && behaviorClass !== "model-invoked-eligible") {
+    addError(
+      findings,
+      "allowlisted-skill-policy-mismatch",
+      sidecarRelPath,
+      `Allowlisted skill "${skillSlug}" must declare policy.behavior_class=model-invoked-eligible.`,
+    );
+  }
+}
+
+function isPilotSkill(skillText) {
+  const frontmatter = parseFrontmatter(skillText) ?? {};
+  const headingMatch = skillText.match(/^#\s+(.+)$/m);
+  const heading = headingMatch ? headingMatch[1] : "";
+  const description = String(frontmatter.description ?? "");
+  if (/\(pilot\)/i.test(heading)) return true;
+  if (/^optional\s+user-invoked\b/i.test(description)) return true;
+  return false;
+}
+
+function validateStrictPilotPolicy(parsed, skillText, sidecarRelPath, findings) {
+  if (!isPilotSkill(skillText)) return;
+  const behaviorClass = parsed?.policy?.behavior_class;
+  if (behaviorClass !== "user-invoked-only") {
+    addError(
+      findings,
+      "invalid-pilot-sidecar-policy",
+      sidecarRelPath,
+      "Pilot skills must declare policy.behavior_class=user-invoked-only.",
+    );
+  }
+}
+
+function validateSkillSidecarContracts(findings, options = {}) {
+  if (!existsSync(sidecarSchemaPath)) {
+    addError(
+      findings,
+      "missing-sidecar-schema",
+      ".github/harness/schemas/skill-openai-sidecar.schema.json",
+      "Sidecar schema file does not exist.",
+    );
+    return;
+  }
+
+  const schema = readJson(sidecarSchemaPath);
+  const modelInvokedAllowlist = options.modelInvokedAllowlist ?? new Set();
+  if (!existsSync(skillsRoot)) {
+    addWarning(findings, "missing-skills-root", ".github/skills", "Skills root not found; sidecar validation skipped.");
+    return;
+  }
+
+  const skillDirs = readdirSync(skillsRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  for (const skillDir of skillDirs) {
+    const skillRoot = join(skillsRoot, skillDir.name);
+    const skillDoc = join(skillRoot, "SKILL.md");
+    if (!existsSync(skillDoc)) continue;
+
+    const sidecarPath = join(skillRoot, "agents", "openai.yaml");
+    const sidecarRelPath = relativePath(sidecarPath);
+    if (!existsSync(sidecarPath)) {
+      addError(findings, "missing-sidecar", sidecarRelPath, "Every .github skill must provide agents/openai.yaml.");
+      continue;
+    }
+
+    const sidecarText = readFileSync(sidecarPath, "utf8");
+    const parsed = parseStrictTwoLevelYaml(sidecarText, sidecarRelPath, findings);
+    if (!parsed) continue;
+
+    validateSchemaValue(parsed, schema, "sidecar", findings, sidecarRelPath);
+    validateSidecarPolicySemantics(parsed, skillDir.name, sidecarRelPath, findings, {
+      modelInvokedAllowlist,
+    });
+    if (options.strictPilotPolicy) {
+      const skillText = readFileSync(skillDoc, "utf8");
+      validateStrictPilotPolicy(parsed, skillText, sidecarRelPath, findings);
+    }
+  }
+
+  for (const allowlistedSkill of modelInvokedAllowlist) {
+    const skillDocPath = join(skillsRoot, allowlistedSkill, "SKILL.md");
+    if (!existsSync(skillDocPath)) {
+      addError(
+        findings,
+        "missing-allowlisted-skill",
+        `harness.config.json sidecarPolicy.modelInvokedEligibleSkills.${allowlistedSkill}`,
+        "Allowlisted skill does not exist under .github/skills.",
+      );
+    }
+  }
+}
+
 function renderFindings(findings) {
   if (findings.length === 0) {
     return "[docs-contracts] OK\n";
@@ -528,22 +850,30 @@ function renderFindings(findings) {
 
 function main() {
   const flags = parseArgs(process.argv.slice(2));
-  const registry = loadRegistry();
   const findings = [];
-  validateWorkflowStages(registry, findings);
-  validateLoopReferences(registry, findings);
-  validateRegistryTooling(registry, findings);
-  validateSkillEntries(registry, findings);
-  validateCitedScripts(findings);
-  validateNoExactDuplicateScriptBodies(findings);
-  validateImmutabilityMarkers(findings, {
-    baseRef: flags.changedSurfaceBase,
-  });
-  if (flags.changedSurfaceWarnings) {
-    validateChangedSurfaceCitations(findings, {
+  const modelInvokedAllowlist = getModelInvokedAllowlist();
+  if (!flags.sidecarOnly) {
+    const registry = loadRegistry();
+    validateWorkflowStages(registry, findings);
+    validateLoopReferences(registry, findings);
+    validateRegistryTooling(registry, findings);
+    validateSkillEntries(registry, findings);
+    validateCitedScripts(findings);
+    validateNoExactDuplicateScriptBodies(findings);
+    validateImmutabilityMarkers(findings, {
       baseRef: flags.changedSurfaceBase,
     });
+    if (flags.changedSurfaceWarnings) {
+      validateChangedSurfaceCitations(findings, {
+        baseRef: flags.changedSurfaceBase,
+      });
+    }
   }
+
+  validateSkillSidecarContracts(findings, {
+    strictPilotPolicy: flags.strictPilotPolicy,
+    modelInvokedAllowlist,
+  });
 
   process.stdout.write(renderFindings(findings));
   if (findings.some((finding) => finding.level === "error")) {
