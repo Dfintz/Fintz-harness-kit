@@ -35,6 +35,18 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 - `npm run harness:grade`
 - `npm run harness:otel`
 
+## Harness Test Aggregates
+
+- `npm run test:harness:core`
+- `npm run test:mcp:dispatch`
+
+## Graph Freshness and Fallback Surfaces
+
+- `npm run harness:graph -- status`
+- `npm run harness:graph -- provider-status`
+- `npm run harness:graph:refresh:once`
+- `npm run harness:graph:refresh:loop -- --run-once`
+
 ## Compatibility Aliases
 
 - `harness:run` -> `harness:loop`

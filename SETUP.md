@@ -214,7 +214,21 @@ UNDERSTAND_PLUGIN_ROOT=/abs/path/to/understand-anything-plugin \
 npm run harness:graph:provider
 npm run harness:graph:genui
 npm run harness:graph:parity -- --local-only
+
+# One-shot local freshness remediation (no daemon loop):
+npm run harness:graph:refresh:once
+
+# Freshness gate check (exit 0 when fresh, 1 when stale):
+npm run harness:graph -- status
+
+# If provider status is degraded, inspect degradation reason and provider/query selection:
+npm run harness:graph -- provider-status
 ```
+
+Stale/fallback operator runbook:
+- If `harness:graph -- status` reports stale, run `harness:graph:refresh:once` and re-check status.
+- If provider readiness reports degraded, use `harness:graph -- provider-status` to confirm active provider, query fallback target, and remediation hints.
+- Treat stale graph output as reduced-confidence context for non-trivial changes until freshness is restored.
 
 ### 6. (Optional) MCP integration
 
@@ -252,9 +266,21 @@ export HARNESS_LURKR_COMMAND="npx lurkr scan ."
 # Warning-mode run (never fails if scanner is missing/unconfigured):
 npm run harness:security:lurkr
 
+# Deterministic before/after drift report (base ref vs HEAD):
+npm run harness:security:lurkr:diff -- --base HEAD~1 --output .github/harness/runs/lurkr-diff-report.json
+
 # Required mode (fails on missing config or scan failure):
 node scripts/harness/lurkr-check.mjs --required
+
+# Required drift mode (fails on missing config or non-zero scan on either side):
+node scripts/harness/lurkr-diff.mjs --required --base HEAD~1
 ```
+
+The differential workflow checks out the base ref into a temporary git worktree, runs the same scanner command on both snapshots, and writes a deterministic line-based drift report that can be attached to review artifacts.
+
+Interpretation note:
+- A report can still show non-zero scanner exit codes for both base and head in some environments.
+- If the run no longer emits DEP0190 warnings, the shell-deprecation hardening path is still considered effective even when scanner findings or runtime checks fail.
 
 Lurkr remains optional and is not required for baseline harness commands.
 
