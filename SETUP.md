@@ -260,8 +260,9 @@ Use Lurkr as an opt-in static capability-risk scan in local checks or CI:
 - Wrapper script: `scripts/harness/lurkr-check.mjs`
 
 ```bash
-# Configure your scanner command once (example):
-export HARNESS_LURKR_COMMAND="npx lurkr scan ."
+# Install the Python CLI once, then configure the scanner command:
+python -m pip install lurkr
+export HARNESS_LURKR_COMMAND="lurkr scan --path . --output .github/harness/runs/lurkr-report.json"
 
 # Warning-mode run (never fails if scanner is missing/unconfigured):
 npm run harness:security:lurkr

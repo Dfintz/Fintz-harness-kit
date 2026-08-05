@@ -1,3 +1,8 @@
+---
+type: brief
+status: implemented
+---
+
 # Feedback Verdict Record - T2 Contextual Embeddings Pilot
 resource: .github/harness/memory/briefs/t2-contextual-embeddings-pilot-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-implementation-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-review-breadth-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-review-depth-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-pilot-run-2026-08-05.json
 

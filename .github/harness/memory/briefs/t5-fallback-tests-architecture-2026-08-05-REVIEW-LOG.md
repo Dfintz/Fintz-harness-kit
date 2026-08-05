@@ -1,3 +1,8 @@
+---
+type: brief
+status: implemented
+---
+
 # Cross-Model Review Log (plan)
 
 > Cross-model plan review of `t5-fallback-tests-architecture-2026-08-05.md`. The _what_ lives in the subject;

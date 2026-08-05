@@ -39,6 +39,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 try:
     import requests
@@ -47,11 +48,96 @@ except ImportError:
     sys.exit(2)
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+DEFAULT_OLLAMA_API_BASE = "http://localhost:11434"
+
+
+def resolve_repo_path(path: str) -> Path:
+    """Resolve a CLI path only when it stays inside the repository."""
+    candidate = Path(path).expanduser()
+    resolved = (candidate if candidate.is_absolute() else REPO_ROOT / candidate).resolve()
+    try:
+        resolved.relative_to(REPO_ROOT)
+    except ValueError as error:
+        raise ValueError(f"Path must stay inside {REPO_ROOT}: {path}") from error
+    return resolved
+
+
+def normalize_ollama_api_base(api_base: str) -> str:
+    """Accept only local Ollama endpoints to prevent CLI-controlled SSRF."""
+    parsed = urlparse(api_base)
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname not in LOOPBACK_HOSTS
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("--api-base must be an http loopback endpoint without credentials")
+    return api_base.rstrip("/")
+
+
+def run_self_test() -> None:
+    if not resolve_repo_path('scripts/harness/dspy-optimize-ollama.py').is_file():
+        raise ValueError('optimizer source is missing')
+    if normalize_ollama_api_base(DEFAULT_OLLAMA_API_BASE) != DEFAULT_OLLAMA_API_BASE:
+        raise ValueError('default Ollama endpoint was not preserved')
+    if '"untrusted"' not in prompt_data('untrusted'):
+        raise ValueError('prompt data was not JSON serialized')
+    try:
+        normalize_ollama_api_base('https://example.com')
+    except ValueError:
+        return
+    raise ValueError('non-loopback endpoint was accepted')
+
+
+def prompt_data(value: str) -> str:
+    """Serialize untrusted prompt data so templates retain fixed instructions."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def evaluation_prompt(instruction: str, task_input: str, task_expected: str) -> str:
+    return """Instruction data (JSON):
+<instruction>{instruction}</instruction>
+
+Task data (JSON):
+<task>{task}</task>
+
+Expected-output data (JSON):
+<expected-output>{expected}</expected-output>
+
+Based on the instruction and task data, generate the correct output:""".format(
+        instruction=prompt_data(instruction),
+        task=prompt_data(task_input),
+        expected=prompt_data(task_expected),
+    )
+
+
+def improvement_prompt(seed_instruction: str, best_score: float, passed: int, total: int) -> str:
+    return """You are an AI instructor optimization system. Given this skill instruction data (JSON):
+
+<instruction>{instruction}</instruction>
+
+And these test results: {score:.1%} passing ({passed}/{total} tasks correct)
+
+Suggest ONE specific improvement to the instruction that would help it pass more tests. Be concrete and brief.
+Your improvement should be 1-2 sentences. Start with 'IMPROVEMENT:'""".format(
+        instruction=prompt_data(seed_instruction),
+        score=best_score,
+        passed=passed,
+        total=total,
+    )
+
+
 def load_file(path: str) -> str:
     """Load text file."""
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            return f.read()
+        return resolve_repo_path(path).read_text(encoding='utf-8')
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(2)
     except FileNotFoundError:
         print(f"ERROR: File not found: {path}", file=sys.stderr)
         sys.exit(2)
@@ -63,9 +149,15 @@ def load_file(path: str) -> str:
 def save_file(path: str, content: str) -> None:
     """Save text file."""
     try:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        candidate = Path(path).expanduser()
+        output_path = (candidate if candidate.is_absolute() else REPO_ROOT / candidate).resolve()
+        if not output_path.is_relative_to(REPO_ROOT):
+            raise ValueError(f"Path must stay inside {REPO_ROOT}: {path}")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding='utf-8')
+    except ValueError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(2)
     except Exception as e:
         print(f"ERROR: Failed to write {path}: {e}", file=sys.stderr)
         sys.exit(2)
@@ -74,15 +166,14 @@ def save_file(path: str, content: str) -> None:
 def load_eval_set(path: str) -> dict[str, Any]:
     """Load eval set JSON. Accepts both 'tasks' and 'tests' array keys."""
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = json.loads(resolve_repo_path(path).read_text(encoding='utf-8'))
         # Normalise: accept 'tests' as an alias for 'tasks' (harness eval-sets use 'tests')
         if 'tests' in data and 'tasks' not in data:
             data['tasks'] = data['tests']
         if not isinstance(data.get('tasks'), list) or len(data['tasks']) == 0:
             raise ValueError("eval set must have 'tasks' or 'tests' array with at least 1 task")
         return data
-    except json.JSONDecodeError as e:
+    except ValueError as e:
         print(f"ERROR: Failed to parse eval set JSON: {e}", file=sys.stderr)
         sys.exit(2)
     except Exception as e:
@@ -99,6 +190,32 @@ def _ollama_model_name(model: str) -> str:
     if ':' not in model:
         model = model + ':latest'
     return model
+
+
+def score_expected_output(expected_raw: str, actual: str) -> bool:
+    if not expected_raw:
+        return True
+
+    import re
+    mentions = re.sub(r'^(?:should|must)\s+\w+[:\s]+', '', expected_raw, flags=re.IGNORECASE)
+    phrases = [phrase.strip() for phrase in re.split(r'[,;]', mentions) if phrase.strip()]
+    stop_words = {
+        'the','a','an','in','on','at','to','for','of','and','or','but',
+        'is','are','was','were','be','been','have','has','had','do','does',
+        'did','will','would','could','should','may','might','vs','by',
+        'from','with','as','that','this','it','its','if','when','how',
+        'what','where','why','who','which','not','no','any','each','per'
+    }
+    key_words = {
+        word.lower()
+        for phrase in phrases
+        for word in re.split(r'\W+', phrase)
+        if word and word.lower() not in stop_words and len(word) > 2
+    }
+    if not key_words:
+        return expected_raw.lower() in actual
+    matched = sum(1 for word in key_words if word in actual)
+    return matched >= max(1, int(len(key_words) * 0.4))
 
 
 def evaluate_instruction(
@@ -124,13 +241,7 @@ def evaluate_instruction(
             task_input = task.get('input', '') or task.get('prompt', '')
             task_expected = task.get('expectedOutput', '') or task.get('expected', '')
             # Generate plan using instruction
-            prompt = f"""Instruction: {instruction}
-
-Task: {task_input}
-
-Expected output: {task_expected}
-
-Based on the instruction and task, generate the correct output:"""
+            prompt = evaluation_prompt(instruction, task_input, task_expected)
             
             response = requests.post(
                 f"{api_base}/api/generate",
@@ -153,40 +264,9 @@ Based on the instruction and task, generate the correct output:"""
             
             output = response.json().get('response', '').strip()
             
-            # Keyword-based eval: extract key concepts from expectedOutput and check coverage
             expected_raw = task.get('expectedOutput', '')
             actual = output.lower()
-            
-            if not expected_raw:
-                passed = True
-            else:
-                import re
-                # Strip "Should mention:" / "Must mention:" / "Should include:" prefix
-                mentions = re.sub(r'^(?:should|must)\s+\w+[:\s]+', '', expected_raw, flags=re.IGNORECASE)
-                # Split on commas/semicolons to get phrases
-                phrases = [p.strip() for p in re.split(r'[,;]', mentions) if p.strip()]
-                # Extract individual significant words (ignore stop words and short words)
-                stop_words = {
-                    'the','a','an','in','on','at','to','for','of','and','or','but',
-                    'is','are','was','were','be','been','have','has','had','do','does',
-                    'did','will','would','could','should','may','might','vs','by',
-                    'from','with','as','that','this','it','its','if','when','how',
-                    'what','where','why','who','which','not','no','any','each','per'
-                }
-                key_words = set()
-                for phrase in phrases:
-                    words = [w.lower() for w in re.split(r'\W+', phrase)
-                             if w and w.lower() not in stop_words and len(w) > 2]
-                    key_words.update(words)
-                
-                if not key_words:
-                    passed = expected_raw.lower() in actual
-                else:
-                    # Pass if at least 40% of significant words appear in model output
-                    matched = sum(1 for w in key_words if w in actual)
-                    threshold = max(1, int(len(key_words) * 0.4))
-                    passed = matched >= threshold
-            
+            passed = score_expected_output(expected_raw, actual)
             results.append({'passed': passed, 'output': output})
         except requests.exceptions.Timeout:
             results.append({'passed': False, 'error': 'Timeout'})
@@ -232,14 +312,12 @@ def optimize_instruction(
     for trial in range(num_trials):
         try:
             # Ask LLM to suggest an improvement
-            prompt = f"""You are an AI instructor optimization system. Given this skill instruction:
-
-{seed_instruction}
-
-And these test results: {best_score:.1%} passing ({baseline_eval['passed']}/{baseline_eval['total']} tasks correct)
-
-Suggest ONE specific improvement to the instruction that would help it pass more tests. Be concrete and brief.
-Your improvement should be 1-2 sentences. Start with 'IMPROVEMENT:'"""
+            prompt = improvement_prompt(
+                seed_instruction,
+                best_score,
+                baseline_eval['passed'],
+                baseline_eval['total'],
+            )
             
             response = requests.post(
                 f"{api_base}/api/generate",
@@ -296,7 +374,7 @@ def main():
     parser.add_argument('--eval-set', help='Eval set JSON file')
     parser.add_argument('--output', help='Output file for optimized instruction')
     parser.add_argument('--model', default='qwen2.5:latest', help='Ollama model')
-    parser.add_argument('--api-base', default='http://localhost:11434', help='Ollama API base URL')
+    parser.add_argument('--api-base', default=DEFAULT_OLLAMA_API_BASE, help='Ollama API base URL')
     parser.add_argument('--trials', type=int, default=5, help='Number of optimization trials')
     parser.add_argument('--max-trials', type=int, help='Alias for --trials (for compatibility)')
     parser.add_argument('--check-deps', action='store_true', help='Check dependencies')
@@ -321,7 +399,12 @@ def main():
     
     # --self-test
     if args.self_test:
-        print("✓ Self-test passed (no dependencies needed)")
+        try:
+            run_self_test()
+        except (OSError, ValueError) as error:
+            print(f"✗ Self-test failed: {error}")
+            sys.exit(1)
+        print("✓ Self-test passed")
         sys.exit(0)
     
     # --optimize
@@ -336,6 +419,11 @@ def main():
     print(f"Loading eval set from {args.eval_set}...")
     eval_set = load_eval_set(args.eval_set)
     
+    try:
+        api_base = normalize_ollama_api_base(args.api_base)
+    except ValueError as error:
+        parser.error(str(error))
+
     print(f"Starting optimization with {args.model}...")
     start_time = time.time()
     
@@ -343,7 +431,7 @@ def main():
         instruction,
         eval_set,
         args.model,
-        args.api_base,
+        api_base,
         args.trials
     )
     

@@ -5,9 +5,11 @@ status: active
 source: human
 created: 2026-08-05
 updated: 2026-08-05
-tags: [architecture, p1, security, checklist, lurkr]artifact_family: architect
+tags: [architecture, p1, security, checklist, lurkr]
+artifact_family: architect
 immutability: frozen
-immutable_since: 2026-08-05---
+immutable_since: 2026-08-05
+---
 # Architecture Brief - P1 Security Evidence Checklist
 resource: .github/harness/memory/briefs/wayfinder-30-60-90-milestones-2026-08-05.md, .github/harness/memory/radar/hermes-security-evidence-checklist.md, .github/harness/memory/briefs/t4-differential-security-architecture-2026-08-05.md, scripts/harness/lurkr-diff.mjs, .github/instructions/05-REVIEW-BREADTH.md, SETUP.md
 

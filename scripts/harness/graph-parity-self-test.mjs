@@ -139,6 +139,7 @@ function runDockerMatrix(results) {
       'run',
       '--rm',
       '--no-deps',
+      '--quiet',
       '-e',
       `HARNESS_GRAPH_PROVIDER=${provider}`,
       'harness-dashboard',

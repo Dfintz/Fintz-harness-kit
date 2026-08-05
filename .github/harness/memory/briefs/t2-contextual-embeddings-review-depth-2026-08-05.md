@@ -1,3 +1,10 @@
+---
+type: brief
+status: implemented
+artifact_family: review
+immutability: mutable
+---
+
 # Review Depth - Gate Ledger and Structural Findings - T2
 resource: .github/harness/memory/briefs/t2-contextual-embeddings-pilot-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-implementation-2026-08-05.md, .github/harness/memory/briefs/t2-contextual-embeddings-review-breadth-2026-08-05.md, scripts/harness/vector-search.mjs, scripts/harness/file-search.mjs, scripts/harness/doc-ingest.mjs
 

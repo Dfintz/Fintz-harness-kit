@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 
 export function parseArgs(argv) {
@@ -79,7 +80,25 @@ function resolveWindowsExecutable(executable) {
     }
   }
 
-  return executable;
+  return executable.toLowerCase() === "lurkr"
+    ? resolveWindowsLurkrExecutable() ?? executable
+    : executable;
+}
+
+function resolveWindowsLurkrExecutable() {
+  const userScripts = spawnSync(
+    "python",
+    ["-c", "import sysconfig; print(sysconfig.get_path('scripts', 'nt_user'))"],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    },
+  );
+  if (userScripts.status !== 0 || typeof userScripts.stdout !== "string") {
+    return null;
+  }
+  const executable = join(userScripts.stdout.trim(), "lurkr.exe");
+  return existsSync(executable) ? executable : null;
 }
 
 function toNpmExecInvocation(parsed) {

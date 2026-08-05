@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
@@ -59,6 +59,33 @@ function normalizeLines(text) {
     .map((line) => line.trim())
     .filter((line) => !/^npm error A complete log of this run can be found in:/i.test(line))
     .filter((line) => line.length > 0);
+}
+
+function lurkrFindingLines(parsed, cwd) {
+  if (basename(parsed.executable).toLowerCase() !== "lurkr") return null;
+  const outputFlag = parsed.args.indexOf("--output");
+  const output = parsed.args[outputFlag + 1];
+  if (output !== ".github/harness/runs/lurkr-report.json") return null;
+  const outputPath = join(cwd, ".github", "harness", "runs", "lurkr-report.json");
+  if (!existsSync(outputPath)) return null;
+
+  try {
+    const report = JSON.parse(readFileSync(outputPath, "utf8"));
+    if (!Array.isArray(report.findings)) return null;
+    return report.findings
+      .map((finding) =>
+        JSON.stringify({
+          ruleId: finding?.rule_id ?? null,
+          severity: finding?.severity ?? null,
+          file: finding?.file ?? null,
+          line: finding?.line ?? null,
+          message: finding?.message ?? null,
+        }),
+      )
+      .sort();
+  } catch {
+    return null;
+  }
 }
 
 function diffLines(baseLines, headLines) {
@@ -210,11 +237,14 @@ function buildDiffReport(context) {
     headRef,
     baseScan,
     headScan,
+    parsed,
   } = context;
-  const baseOutput = `${baseScan.stdout ?? ""}${baseScan.stderr ?? ""}`;
-  const headOutput = `${headScan.stdout ?? ""}${headScan.stderr ?? ""}`;
-  const baseLines = normalizeLines(baseOutput);
-  const headLines = normalizeLines(headOutput);
+    const baseLines =
+      lurkrFindingLines(parsed, tempWorktree) ??
+      normalizeLines(`${baseScan.stdout ?? ""}${baseScan.stderr ?? ""}`);
+    const headLines =
+      lurkrFindingLines(parsed, repoRoot) ??
+      normalizeLines(`${headScan.stdout ?? ""}${headScan.stderr ?? ""}`);
   const drift = diffLines(baseLines, headLines);
 
   const report = {
@@ -246,7 +276,7 @@ function buildDiffReport(context) {
       removed: drift.removed,
     },
     notes: [
-      "Diff is line-based over scanner stdout/stderr and is deterministic for stable scanner output.",
+      "Diff is line-based over Lurkr JSON findings when available, otherwise scanner stdout/stderr.",
       "Use this report as an evidence artifact for pre/post security drift in review stages.",
     ],
   };
@@ -320,6 +350,7 @@ function main() {
       headRef: scanResult.headRef,
       baseScan,
       headScan,
+      parsed: scanner.parsed,
     });
 
     writeReport(outputPath, report);

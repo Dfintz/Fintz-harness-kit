@@ -1,3 +1,10 @@
+---
+type: brief
+status: implemented
+artifact_family: review
+immutability: mutable
+---
+
 # Review Breadth Findings - T2 Contextual Embeddings Pilot
 resource: .github/harness/memory/briefs/t2-contextual-embeddings-pilot-2026-08-05.md, scripts/harness/vector-search.mjs, scripts/harness/file-search.mjs, scripts/harness/doc-ingest.mjs, .github/harness/eval-sets/t2-contextual-embeddings-pilot.json, .github/harness/memory/briefs/t2-contextual-embeddings-pilot-run-2026-08-05.json
 

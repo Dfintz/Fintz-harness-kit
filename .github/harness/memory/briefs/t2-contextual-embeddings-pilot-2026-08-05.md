@@ -1,3 +1,8 @@
+---
+type: brief
+status: implemented
+---
+
 <!-- markdownlint-disable MD022 -->
 # Architecture Brief - T2 Contextual Embeddings Eval-First Pilot
 resource: .github/harness/memory/briefs/wayfinder-decision-map-2026-08-05.md, .github/harness/memory/radar/anthropic-contextual-embeddings-and-fusion-retrieval.md, scripts/harness/doc-ingest.mjs, scripts/harness/file-search.mjs, scripts/harness/vector-search.mjs, .github/instructions/02-UNDERSTAND-WORKFLOW.md

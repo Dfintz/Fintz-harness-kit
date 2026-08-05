@@ -1,4 +1,6 @@
 ---
+type: brief
+status: implemented
 artifact_family: challenge
 immutability: frozen
 immutable_since: 2026-08-05
