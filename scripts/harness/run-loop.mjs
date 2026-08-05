@@ -12,16 +12,33 @@
  */
 import { execSync, spawnSync } from "node:child_process";
 import {
+  closeSync,
     existsSync,
     mkdirSync,
+  openSync,
     readFileSync,
     readdirSync,
+  unlinkSync,
     writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeCliCommand } from "./command-validation.mjs";
 import { resolveTokens } from "./config.mjs";
+import {
+  acquireLease,
+  appendLeaseEvent,
+  buildLeaseOwner,
+  ensureLeaseHistory,
+  expireLease,
+  heartbeatLease,
+  isLeaseExpired,
+  leaseSnapshot,
+  leaseSnapshotMatches,
+  loadLeaseConfig,
+  normalizedLease,
+  releaseLease,
+} from "./lease-envelope.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -29,6 +46,8 @@ const loopsDir = join(repoRoot, ".github", "harness", "loops");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const HEAD_CHARS = 2000;
 const TAIL_CHARS = 6000;
+let leaseConfig = null;
+let leaseOwner = null;
 
 function fail(message) {
   console.error(`[run-loop] ${message}`);
@@ -301,12 +320,45 @@ function invokeAgent(agentCmd, prompt) {
     );
 }
 
-function writeJournal(journalFile, record) {
+function writeJournal(journalFile, record, { suppressWarning = false } = {}) {
   try {
     mkdirSync(runsDir, { recursive: true });
     writeFileSync(journalFile, JSON.stringify(record, null, 2));
+    return null;
   } catch (err) {
-    console.warn(`[run-loop] could not write run journal: ${err.message}`);
+    if (!suppressWarning) {
+      console.warn(`[run-loop] could not write run journal: ${err.message}`);
+    }
+    return err;
+  }
+}
+
+function withJournalLock(journalFile, operation) {
+  const lockPath = `${journalFile}.lock`;
+  let fd = null;
+  try {
+    fd = openSync(lockPath, "wx");
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      fail(
+        `Resume takeover aborted: journal lock already exists (${lockPath}). Active takeover conflict.`,
+      );
+    }
+    fail(
+      `Resume takeover aborted: cannot acquire journal lock ${lockPath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  try {
+    return operation();
+  } finally {
+    try {
+      if (fd !== null) {
+        closeSync(fd);
+      }
+      unlinkSync(lockPath);
+    } catch {
+      // best-effort lock cleanup
+    }
   }
 }
 
@@ -332,6 +384,15 @@ function resolveResumeJournal(loopName, resumeValue) {
           candidate?.kind === "convergence" &&
           candidate?.terminalState === null
         ) {
+          const candidateLease = normalizedLease(candidate.lease);
+          const claimedByOtherOwner =
+            candidateLease &&
+            candidateLease.owner !== leaseOwner &&
+            !isLeaseExpired(candidateLease) &&
+            !leaseConfig.forceReap;
+          if (claimedByOtherOwner) {
+            continue;
+          }
           return candidatePath;
         }
       } catch {
@@ -376,7 +437,29 @@ function loadResumableRecord(loopName, resumeValue) {
   if (!Array.isArray(record.iterations)) {
     fail("Resume journal is invalid: missing iterations array.");
   }
-  return { journalPath, record };
+  ensureLeaseHistory(record);
+
+  const nowIso = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  let takeoverSnapshot = null;
+  if (!lease) {
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, "acquired", {
+      reason: "resume-legacy-no-lease",
+    });
+  } else if (lease.owner === leaseOwner) {
+    heartbeatLease(record, leaseConfig, nowIso);
+  } else if (!isLeaseExpired(lease) && !leaseConfig.forceReap) {
+    fail(
+      `Resume journal has active lease owned by ${lease.owner} until ${lease.expiresAt}. Set HARNESS_LOOP_FORCE_REAP=true only for emergency takeover.`,
+    );
+  } else {
+    takeoverSnapshot = leaseSnapshot(lease);
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, "reaped", {
+      previousOwner: lease.owner,
+      reason: leaseConfig.forceReap ? "force-reap" : "expired-lease",
+    });
+  }
+  return { journalPath, record, takeoverSnapshot };
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -388,6 +471,14 @@ if (!args.name)
   fail(
     'Usage: run-loop.mjs <loop-name> [--check-only] [--max-iterations N] [--agent "<cmd>"] [--resume <latest|journal-path>]',
   );
+
+try {
+  leaseConfig = loadLeaseConfig();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const ownerStartedAt = new Date().toISOString();
+leaseOwner = buildLeaseOwner(ownerStartedAt);
 
 const loop = loadLoop(args.name);
 let maxIterations = loop.maxIterations;
@@ -428,6 +519,7 @@ const record =
       resumedFrom: null,
     },
     terminalState: null,
+    leaseHistory: [],
     iterations: [],
   };
 if (!record.recovery || typeof record.recovery !== "object") {
@@ -438,8 +530,13 @@ if (!record.recovery || typeof record.recovery !== "object") {
     resumedFrom: null,
   };
 }
+ensureLeaseHistory(record);
 if (resumed) {
   record.recovery.resumedFrom = journalFile;
+} else {
+  acquireLease(record, leaseOwner, leaseConfig, startedAt.toISOString(), "acquired", {
+    reason: "new-run",
+  });
 }
 
 console.log(`[run-loop] loop "${loop.name}" — ${loop.description}`);
@@ -448,12 +545,114 @@ if (baseline.commit) {
     `[run-loop] baseline ${baseline.commit.slice(0, 12)}${baseline.dirty ? " (working tree DIRTY — uncommitted changes will mix with loop fixes)" : ""}`,
   );
 }
-writeJournal(journalFile, record);
+if (resumePayload?.takeoverSnapshot) {
+  const takeoverWriteError = withJournalLock(journalFile, () => {
+    let latest;
+    try {
+      latest = JSON.parse(readFileSync(journalFile, "utf8"));
+    } catch (error) {
+      fail(
+        `Failed locked CAS check for reaped lease at ${journalFile}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (!leaseSnapshotMatches(latest.lease, resumePayload.takeoverSnapshot)) {
+      fail(
+        "Resume takeover aborted: journal lease changed during takeover attempt (active-lease conflict).",
+      );
+    }
+    return writeJournal(journalFile, record, {
+      suppressWarning: true,
+    });
+  });
+  if (takeoverWriteError) {
+    fail(
+      `Could not write run journal during takeover: ${takeoverWriteError.message}`,
+    );
+  }
+} else {
+  const initialWriteError = writeJournal(journalFile, record, {
+    suppressWarning: true,
+  });
+  if (initialWriteError) {
+    fail(`Could not write run journal: ${initialWriteError.message}`);
+  }
+}
 
-function finish(terminalState, exitCode, message) {
-  record.terminalState = terminalState;
-  record.finishedAt = new Date().toISOString();
+function heartbeatCheckpoint(tag) {
+  if (!record.lease) return true;
+  const nowIso = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  if (!lease) {
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, "acquired", {
+      reason: `recovered-malformed-lease-${tag}`,
+    });
+  } else if (lease.owner !== leaseOwner) {
+    finish(
+      "blocked",
+      1,
+      `blocked at ${tag}: lease owner drift detected (${lease.owner} != ${leaseOwner}).`,
+      "owner-drift",
+    );
+    return false;
+  } else if (isLeaseExpired(lease)) {
+    finish(
+      "blocked",
+      1,
+      `blocked at ${tag}: lease expired at ${lease.expiresAt}.`,
+      "lease-expired",
+    );
+    return false;
+  } else {
+    heartbeatLease(record, leaseConfig, nowIso);
+  }
+
+  const heartbeatWriteError = writeJournal(journalFile, record, {
+    suppressWarning: true,
+  });
+  if (heartbeatWriteError) {
+    finish(
+      "blocked",
+      1,
+      `blocked at ${tag}: heartbeat write failed (${heartbeatWriteError.message}).`,
+      "heartbeat-write-failed",
+    );
+    return false;
+  }
+  return true;
+}
+
+function finish(terminalState, exitCode, message, reason = null) {
+  const finishedAt = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  let resolvedState = terminalState;
+  let resolvedReason = reason;
+  if (lease && isLeaseExpired(lease, Date.parse(finishedAt))) {
+    resolvedState = "blocked";
+    resolvedReason = "lease-expired";
+    message =
+      `lease expired at ${lease.expiresAt} before terminal write; forcing blocked terminal state. ` +
+      message;
+  }
+
+  record.terminalState = resolvedState;
+  record.finishedAt = finishedAt;
   record.recovery.lastCheckpointAt = record.finishedAt;
+  if (record.lease) {
+    if (resolvedState === "blocked") {
+      expireLease(record, resolvedReason ?? "blocked", finishedAt);
+    } else {
+      releaseLease(record, finishedAt);
+    }
+  }
+  if (resolvedReason) {
+    appendLeaseEvent(record, {
+      event: "terminal",
+      at: finishedAt,
+      owner: normalizedLease(record.lease)?.owner ?? leaseOwner,
+      terminalState: resolvedState,
+      reason: resolvedReason,
+    });
+  }
   writeJournal(journalFile, record);
   const log = exitCode === 0 ? console.log : console.error;
   log(`[run-loop] ${message}`);
@@ -475,6 +674,9 @@ if (startIteration > maxIterations) {
   );
 }
 for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
+  if (!heartbeatCheckpoint(`iteration-${iteration}-start`)) {
+    break;
+  }
   console.log(`[run-loop] iteration ${iteration}/${maxIterations}`);
   const results = runChecks(loop);
   lastFailures = results.filter((r) => !r.pass);
@@ -492,6 +694,10 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   });
   record.recovery.lastCheckpointAt = new Date().toISOString();
   writeJournal(journalFile, record);
+
+  if (!heartbeatCheckpoint(`iteration-${iteration}-post-checks`)) {
+    break;
+  }
 
   if (lastFailures.length === 0) {
     finish(

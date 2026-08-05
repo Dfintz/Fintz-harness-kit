@@ -44,6 +44,9 @@ const DEFAULT_TIMEOUT_MS = Number(process.env.HARNESS_EMBED_TIMEOUT_MS || 60000)
 const DEFAULT_CHUNK_SIZE = Number(process.env.HARNESS_FS_CHUNK_SIZE || 2000);
 const DEFAULT_CHUNK_OVERLAP = Number(process.env.HARNESS_FS_CHUNK_OVERLAP || 200);
 const DEFAULT_MAX_FILE_BYTES = Number(process.env.HARNESS_FS_MAX_FILE_BYTES || 512 * 1024);
+const DEFAULT_CONTEXTUAL_FS = /^(1|true|yes|on)$/i.test(
+  String(process.env.HARNESS_FS_CONTEXTUAL_EMBEDDINGS || 'false')
+);
 const DEFAULT_FS_EXTENSIONS = (process.env.HARNESS_FS_EXTENSIONS ||
   '.md,.txt,.js,.mjs,.ts,.py,.sh,.yaml,.yml,.json,.toml,.ini,.cfg,.log,.csv,.xml,.html,.css,.rs,.go,.java,.rb,.php,.c,.cpp,.h'
 ).split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
@@ -262,6 +265,17 @@ function chunkText(text, chunkSize, overlap) {
   return chunks;
 }
 
+function buildContextualFsEmbeddingText({ relPath, chunkIndex, chunkTotal, chunkText }) {
+  return [
+    'Filesystem chunk embedding context',
+    `path: ${relPath}`,
+    `chunk: ${chunkIndex + 1}/${chunkTotal}`,
+    '',
+    'content:',
+    chunkText,
+  ].join('\n');
+}
+
 /**
  * Walk a directory tree and produce chunk documents for the vector index.
  * Skips binaries, oversized files, and common noise directories.
@@ -271,6 +285,10 @@ function readFilesystemDocuments(fsRoot, options = {}) {
   const chunkSize = Number(options.chunkSize || DEFAULT_CHUNK_SIZE);
   const chunkOverlap = Number(options.chunkOverlap || DEFAULT_CHUNK_OVERLAP);
   const maxFileBytes = Number(options.maxFileBytes || DEFAULT_MAX_FILE_BYTES);
+  const contextualFs =
+    options.contextualFs === undefined
+      ? DEFAULT_CONTEXTUAL_FS
+      : !['0', 'false', 'no', 'off'].includes(String(options.contextualFs).toLowerCase());
   const allowedExtensions = Array.isArray(options.extensions) ? options.extensions : DEFAULT_FS_EXTENSIONS;
   const extSet = new Set(allowedExtensions.map(e => e.startsWith('.') ? e : `.${e}`));
   const resolvedRoot = resolve(fsRoot);
@@ -344,6 +362,15 @@ function readFilesystemDocuments(fsRoot, options = {}) {
           chunkTotal: chunks.length,
           sourceMtimeMs: stat.mtimeMs,
           text: chunk,
+          embeddingText: contextualFs
+            ? buildContextualFsEmbeddingText({
+                relPath,
+                chunkIndex: ci,
+                chunkTotal: chunks.length,
+                chunkText: chunk,
+              })
+            : chunk,
+          contextualized: contextualFs,
         });
       }
     }
@@ -472,6 +499,7 @@ function buildCorpus(scopes, options) {
       chunkOverlap: options.chunkOverlap,
       maxFileBytes: options.maxFileBytes,
       extensions: options.extensions,
+      contextualFs: options.contextualFs,
     });
     corpus.push(...fsDocs);
   }
@@ -554,8 +582,13 @@ function summarizeDocuments(documents) {
 }
 
 async function buildOrUpdateIndex(options) {
+  const startedAtMs = Date.now();
   const hasFs = options.fsRoot || (typeof options.scope === 'string' && options.scope.includes('fs'));
   const scopes = parseScopeSelection(options.scope, options.defaultScope || DEFAULT_SCOPE, Boolean(hasFs));
+  const contextualFsEnabled =
+    options.contextualFs === undefined
+      ? DEFAULT_CONTEXTUAL_FS
+      : !['0', 'false', 'no', 'off'].includes(String(options.contextualFs).toLowerCase());
   const selectedScopes = new Set(scopes);
   const provider = resolveProvider(options.provider);
   const host = resolveProviderHost(options.host, provider);
@@ -574,15 +607,38 @@ async function buildOrUpdateIndex(options) {
     chunkSize: options.chunkSize,
     chunkOverlap: options.chunkOverlap,
     maxFileBytes: options.maxFileBytes,
+    contextualFs: contextualFsEnabled,
     extensions: options.extensions,
   });
 
   const selectedResults = [];
   const docsToEmbed = [];
   let reusedCount = 0;
+  let selectedEmbeddingChars = 0;
+  const selectedEmbeddingCharsByScope = {};
+  let selectedEmbeddingCharsRaw = 0;
+  const selectedEmbeddingCharsRawByScope = {};
+  let selectedContextualDocCount = 0;
 
   for (const doc of corpusDocs) {
-    const embeddingInput = truncateText(doc.text, maxTextChars);
+    const contextualizedFsText =
+      contextualFsEnabled && doc.scope === 'fs'
+        ? buildContextualFsEmbeddingText({
+            relPath: String(doc.name || doc.path || ''),
+            chunkIndex: Number(doc.chunkIndex || 0),
+            chunkTotal: Number(doc.chunkTotal || 1),
+            chunkText: String(doc.text || ''),
+          })
+        : null;
+    const rawEmbeddingInput = String(contextualizedFsText || doc.embeddingText || doc.text || '')
+      .replaceAll('\r', '')
+      .trim();
+    if (contextualizedFsText) selectedContextualDocCount += 1;
+    const embeddingInput = truncateText(rawEmbeddingInput, maxTextChars);
+    selectedEmbeddingChars += embeddingInput.length;
+    selectedEmbeddingCharsByScope[doc.scope] = (selectedEmbeddingCharsByScope[doc.scope] || 0) + embeddingInput.length;
+    selectedEmbeddingCharsRaw += rawEmbeddingInput.length;
+    selectedEmbeddingCharsRawByScope[doc.scope] = (selectedEmbeddingCharsRawByScope[doc.scope] || 0) + rawEmbeddingInput.length;
     const textHash = sha256(`${doc.id}\n${embeddingInput}`);
     const existingDoc = existingById.get(doc.id);
     const canReuse =
@@ -599,6 +655,7 @@ async function buildOrUpdateIndex(options) {
         summary: doc.summary,
         path: doc.path,
         sourceMtimeMs: doc.sourceMtimeMs,
+        contextualized: Boolean(contextualizedFsText || doc.contextualized),
       });
       reusedCount += 1;
       continue;
@@ -620,6 +677,9 @@ async function buildOrUpdateIndex(options) {
       summary: item.doc.summary,
       path: item.doc.path,
       sourceMtimeMs: item.doc.sourceMtimeMs,
+      contextualized: Boolean(
+        contextualFsEnabled && item.doc.scope === 'fs' ? true : item.doc.contextualized
+      ),
       textHash: item.textHash,
       model,
       embedding,
@@ -649,6 +709,7 @@ async function buildOrUpdateIndex(options) {
       graphGeneratedAt: graphMeta.graphGeneratedAt,
       graphNodeCount: graphMeta.graphNodeCount,
       graphDocumentCount: graphMeta.graphDocumentCount,
+      fsContextualEmbeddings: contextualFsEnabled,
     },
     documents,
     stats: summarizeDocuments(documents),
@@ -667,6 +728,11 @@ async function buildOrUpdateIndex(options) {
     maxTextChars,
     stats: saved.stats,
     selectedCorpusCount: corpusDocs.length,
+    selectedEmbeddingChars,
+    selectedEmbeddingCharsByScope,
+    selectedEmbeddingCharsRaw,
+    selectedEmbeddingCharsRawByScope,
+    selectedContextualDocCount,
     reusedCount,
     embeddedCount: docsToEmbed.length,
     carryForwardCount: carryForward.length,
@@ -675,6 +741,7 @@ async function buildOrUpdateIndex(options) {
       existingDocuments.filter(document => selectedScopes.has(document.scope)).length -
         selectedResults.length
     ),
+    indexingDurationMs: Date.now() - startedAtMs,
     graph: graphMeta,
     updatedAt: saved.updatedAt,
   };
@@ -744,6 +811,7 @@ function buildStatusPayload() {
 }
 
 async function runSemanticSearch(options) {
+  const startedAtMs = Date.now();
   const query = String(options.query || '').trim();
   if (!query) {
     throw new Error('search requires --query');
@@ -796,6 +864,7 @@ async function runSemanticSearch(options) {
       chunkSize: options.chunkSize,
       chunkOverlap: options.chunkOverlap,
       maxFileBytes: options.maxFileBytes,
+      contextualFs: options.contextualFs,
       extensions: options.extensions,
       timeoutMs,
       verbose: options.verbose,
@@ -873,6 +942,7 @@ async function runSemanticSearch(options) {
     returnedCount: results.length,
     skippedDimensionMismatch,
     skippedModelMismatch,
+    searchDurationMs: Date.now() - startedAtMs,
     results,
   };
 }
@@ -898,6 +968,8 @@ function showHelp() {
       '--chunk-size': `Characters per filesystem chunk (default ${DEFAULT_CHUNK_SIZE}). Env: HARNESS_FS_CHUNK_SIZE.`,
       '--chunk-overlap': `Overlap between consecutive chunks (default ${DEFAULT_CHUNK_OVERLAP}). Env: HARNESS_FS_CHUNK_OVERLAP.`,
       '--max-file-bytes': `Max file size to index, bytes (default ${DEFAULT_MAX_FILE_BYTES}). Env: HARNESS_FS_MAX_FILE_BYTES.`,
+      '--contextual-fs': `Contextualize filesystem chunk embedding input (default ${DEFAULT_CONTEXTUAL_FS}). Env: HARNESS_FS_CONTEXTUAL_EMBEDDINGS.`,
+      '--no-contextual-fs': 'Disable filesystem contextual embedding input for this run.',
       '--ext': 'Comma-separated extensions for fs scope (e.g. .md,.py,.js).',
       '--model': 'Embedding model name (default nomic-embed-text)',
       '--host': 'Ollama host URL (default http://localhost:11434)',
@@ -939,6 +1011,9 @@ async function main() {
   }
 
   if (command === 'index') {
+    let contextualFs;
+    if (flags['no-contextual-fs']) contextualFs = false;
+    else if (flags['contextual-fs']) contextualFs = true;
     const payload = await buildOrUpdateIndex({
       scope: flags.scope,
       provider: flags.provider,
@@ -951,6 +1026,7 @@ async function main() {
       chunkSize: flags['chunk-size'] ? Number(flags['chunk-size']) : undefined,
       chunkOverlap: flags['chunk-overlap'] ? Number(flags['chunk-overlap']) : undefined,
       maxFileBytes: flags['max-file-bytes'] ? Number(flags['max-file-bytes']) : undefined,
+      contextualFs,
       extensions: flags.ext ? String(flags.ext).split(',').map(e => e.trim()) : undefined,
       timeoutMs: flags['timeout-ms'],
       verbose: Boolean(flags.verbose),
@@ -961,6 +1037,9 @@ async function main() {
   }
 
   if (command === 'search') {
+    let contextualFs;
+    if (flags['no-contextual-fs']) contextualFs = false;
+    else if (flags['contextual-fs']) contextualFs = true;
     const payload = await runSemanticSearch({
       query: flags.query,
       scope: flags.scope,
@@ -976,6 +1055,7 @@ async function main() {
       chunkSize: flags['chunk-size'] ? Number(flags['chunk-size']) : undefined,
       chunkOverlap: flags['chunk-overlap'] ? Number(flags['chunk-overlap']) : undefined,
       maxFileBytes: flags['max-file-bytes'] ? Number(flags['max-file-bytes']) : undefined,
+      contextualFs,
       extensions: flags.ext ? String(flags.ext).split(',').map(e => e.trim()) : undefined,
       timeoutMs: flags['timeout-ms'],
       noAutoIndex: Boolean(flags['no-auto-index']),

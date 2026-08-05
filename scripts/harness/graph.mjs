@@ -369,7 +369,7 @@ function cmdStatus(graphContext, flags) {
     );
     if (!s.fresh && s.commitsBehind) {
       console.log(
-        "  → refresh incrementally with /understand and commit the updated graph.",
+        "  → refresh with /understand or run `npm run harness:graph:refresh:once`, then commit the updated graph.",
       );
     }
   }

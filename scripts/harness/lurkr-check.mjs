@@ -1,68 +1,15 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-
-function parseArgs(argv) {
-  const flags = {
-    required: false,
-    command: null,
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--required") {
-      flags.required = true;
-    } else if (arg === "--command") {
-      flags.command = argv[i + 1] ?? null;
-      i += 1;
-    }
-  }
-  return flags;
-}
+import {
+  assertSafeCommand,
+  parseArgs,
+  parseCommandLine,
+  runScanner,
+  shellCommandFromFlags,
+} from "./lurkr-core.mjs";
 
 function fail(message, code = 1) {
   process.stderr.write(`[lurkr] ${message}\n`);
   process.exit(code);
-}
-
-function shellCommandFromFlags(flags) {
-  if (typeof flags.command === "string" && flags.command.trim().length > 0) {
-    return flags.command.trim();
-  }
-  const envCommand = process.env.HARNESS_LURKR_COMMAND;
-  if (typeof envCommand === "string" && envCommand.trim().length > 0) {
-    return envCommand.trim();
-  }
-  return null;
-}
-
-function parseCommandLine(commandLine) {
-  const tokens = String(commandLine ?? "")
-    .trim()
-    .match(/(?:"[^"]*"|'[^']*'|[^\s]+)/g);
-  if (!tokens || tokens.length === 0) {
-    return null;
-  }
-  const normalized = tokens.map((token) => token.replace(/^['"]|['"]$/g, ""));
-  const executable = normalized[0];
-  const args = normalized.slice(1);
-  if (!executable || executable.trim().length === 0) {
-    return null;
-  }
-  return { executable, args };
-}
-
-function isSafeToken(token) {
-  return /^[A-Za-z0-9_./:@-]+$/.test(token);
-}
-
-function assertSafeCommand(parsed) {
-  const tokens = [parsed.executable, ...parsed.args];
-  for (const token of tokens) {
-    if (!isSafeToken(token)) {
-      throw new Error(
-        `unsafe token in configured command: ${JSON.stringify(token)}. Use plain executable/args only.`,
-      );
-    }
-  }
 }
 
 function run() {
@@ -90,10 +37,7 @@ function run() {
   }
   assertSafeCommand(parsed);
 
-  const child = spawnSync(parsed.executable, parsed.args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const child = runScanner(parsed);
 
   if (typeof child.stdout === "string" && child.stdout.trim().length > 0) {
     process.stdout.write(child.stdout);

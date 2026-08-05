@@ -196,6 +196,19 @@ async function extractText(filePath, options = {}) {
   }
 }
 
+function buildContextualOutput(filePath, text) {
+  const normalizedPath = resolve(filePath).replaceAll('\\', '/');
+  const extension = extname(filePath).toLowerCase() || '(none)';
+  return [
+    'Ingestion context envelope',
+    `path: ${normalizedPath}`,
+    `extension: ${extension}`,
+    '',
+    'content:',
+    text,
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
@@ -220,6 +233,7 @@ function showHelp() {
     flags: {
       '--file <path>': 'File to extract text from (required)',
       '--output-file <path>': 'Write extracted text to file instead of stdout',
+      '--contextual': 'Wrap extracted text in a contextual metadata envelope',
       '--vision-model <name>': `Ollama vision model for images (default: ${DEFAULT_VISION_MODEL})`,
       '--json': 'Wrap output in JSON {ok, file, ext, words, text}',
     },
@@ -241,6 +255,7 @@ function showHelp() {
     examples: [
       'node scripts/harness/doc-ingest.mjs probe',
       'node scripts/harness/doc-ingest.mjs --file report.pdf',
+      'node scripts/harness/doc-ingest.mjs --file report.pdf --contextual',
       'node scripts/harness/doc-ingest.mjs --file invoice.xlsx --json',
       'node scripts/harness/doc-ingest.mjs --file diagram.png --vision-model moondream',
       'npm run harness:doc:ingest -- --file slides.pdf --output-file /tmp/slides.txt',
@@ -277,6 +292,10 @@ async function main() {
   } catch (err) {
     process.stderr.write(`[doc-ingest] Extraction failed: ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
+  }
+
+  if (flags.contextual) {
+    text = buildContextualOutput(filePath, text);
   }
 
   const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;

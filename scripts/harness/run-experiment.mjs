@@ -30,18 +30,44 @@
  *             3 stuck (no improvement for noImprovementStop iterations).
  */
 import { execSync, execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertSafeCliCommand } from './command-validation.mjs';
 import { resolveTokens } from './config.mjs';
 import { classifyGitCommand } from './git-guard.mjs';
+import {
+  acquireLease,
+  appendLeaseEvent,
+  buildLeaseOwner,
+  ensureLeaseHistory,
+  expireLease,
+  heartbeatLease,
+  isLeaseExpired,
+  leaseSnapshot,
+  leaseSnapshotMatches,
+  loadLeaseConfig,
+  normalizedLease,
+  releaseLease,
+} from './lease-envelope.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const loopsDir = join(repoRoot, '.github', 'harness', 'loops');
 const runsDir = join(repoRoot, '.github', 'harness', 'runs');
 const HEAD_CHARS = 2000;
 const TAIL_CHARS = 6000;
+let leaseConfig = null;
+let leaseOwner = null;
 
 function fail(message) {
   console.error(`[run-experiment] ${message}`);
@@ -332,8 +358,39 @@ function writeJournal(journalFile, record) {
   try {
     mkdirSync(runsDir, { recursive: true });
     writeFileSync(journalFile, JSON.stringify(record, null, 2));
+    return null;
   } catch (err) {
     console.warn(`[run-experiment] could not write journal: ${err.message}`);
+    return err;
+  }
+}
+
+function withJournalLock(journalFile, operation) {
+  const lockPath = `${journalFile}.lock`;
+  let fd = null;
+  try {
+    fd = openSync(lockPath, 'wx');
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      fail(
+        `Resume takeover aborted: journal lock already exists (${lockPath}). Active takeover conflict.`
+      );
+    }
+    fail(
+      `Resume takeover aborted: cannot acquire journal lock ${lockPath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  try {
+    return operation();
+  } finally {
+    try {
+      if (fd !== null) {
+        closeSync(fd);
+      }
+      unlinkSync(lockPath);
+    } catch {
+      // best-effort lock cleanup
+    }
   }
 }
 
@@ -359,6 +416,15 @@ function resolveResumeJournal(loopName, resumeValue) {
           candidate?.kind === 'experiment' &&
           candidate?.terminalState === null
         ) {
+          const candidateLease = normalizedLease(candidate.lease);
+          const claimedByOtherOwner =
+            candidateLease &&
+            candidateLease.owner !== leaseOwner &&
+            !isLeaseExpired(candidateLease) &&
+            !leaseConfig.forceReap;
+          if (claimedByOtherOwner) {
+            continue;
+          }
           return candidatePath;
         }
       } catch {
@@ -399,7 +465,29 @@ function loadResumableRecord(loopName, resumeValue) {
   if (!Array.isArray(record.iterations)) {
     fail('Resume journal is invalid: missing iterations array.');
   }
-  return { journalPath, record };
+  ensureLeaseHistory(record);
+
+  const nowIso = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  let takeoverSnapshot = null;
+  if (!lease) {
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, 'acquired', {
+      reason: 'resume-legacy-no-lease',
+    });
+  } else if (lease.owner === leaseOwner) {
+    heartbeatLease(record, leaseConfig, nowIso);
+  } else if (!isLeaseExpired(lease) && !leaseConfig.forceReap) {
+    fail(
+      `Resume journal has active lease owned by ${lease.owner} until ${lease.expiresAt}. Set HARNESS_LOOP_FORCE_REAP=true only for emergency takeover.`
+    );
+  } else {
+    takeoverSnapshot = leaseSnapshot(lease);
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, 'reaped', {
+      previousOwner: lease.owner,
+      reason: leaseConfig.forceReap ? 'force-reap' : 'expired-lease',
+    });
+  }
+  return { journalPath, record, takeoverSnapshot };
 }
 
 const args = parseArgs(process.argv.slice(2));
@@ -411,6 +499,14 @@ if (!args.name)
   fail(
     'Usage: run-experiment.mjs <name> [--measure-only] [--max-iterations N] [--agent "<cmd>"] [--resume <latest|journal-path>]'
   );
+
+try {
+  leaseConfig = loadLeaseConfig();
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+const ownerStartedAt = new Date().toISOString();
+leaseOwner = buildLeaseOwner(ownerStartedAt);
 
 const loop = loadLoop(args.name);
 let maxIterations = loop.maxIterations;
@@ -453,6 +549,7 @@ const record =
       resumedFrom: null,
     },
     terminalState: null,
+    leaseHistory: [],
     metric: { name: loop.metric.name ?? loop.name, direction },
     iterations: [],
   };
@@ -466,7 +563,12 @@ if (!record.recovery || typeof record.recovery !== 'object') {
 }
 if (resumed) {
   record.recovery.resumedFrom = journalFile;
+} else {
+  acquireLease(record, leaseOwner, leaseConfig, startedAt.toISOString(), 'acquired', {
+    reason: 'new-run',
+  });
 }
+ensureLeaseHistory(record);
 
 console.log(`[run-experiment] "${loop.name}" — ${loop.description}`);
 console.log(`[run-experiment] target: ${targetFiles.join(', ')}`);
@@ -476,17 +578,116 @@ if (baseline.dirty) {
   );
 }
 
-function finish(terminalState, exitCode, message) {
-  record.terminalState = terminalState;
-  record.finishedAt = new Date().toISOString();
+function finish(terminalState, exitCode, message, reason = null) {
+  const finishedAt = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  let resolvedState = terminalState;
+  let resolvedReason = reason;
+  if (lease && isLeaseExpired(lease, Date.parse(finishedAt))) {
+    resolvedState = 'blocked';
+    resolvedReason = 'lease-expired';
+    message =
+      `lease expired at ${lease.expiresAt} before terminal write; forcing blocked terminal state. ` +
+      message;
+  }
+
+  record.terminalState = resolvedState;
+  record.finishedAt = finishedAt;
   record.recovery.lastCheckpointAt = record.finishedAt;
+  if (record.lease) {
+    if (resolvedState === 'blocked') {
+      expireLease(record, resolvedReason ?? 'blocked', finishedAt);
+    } else {
+      releaseLease(record, finishedAt);
+    }
+  }
+  if (resolvedReason) {
+    appendLeaseEvent(record, {
+      event: 'terminal',
+      at: finishedAt,
+      owner: normalizedLease(record.lease)?.owner ?? leaseOwner,
+      terminalState: resolvedState,
+      reason: resolvedReason,
+    });
+  }
   writeJournal(journalFile, record);
   const log = exitCode === 0 ? console.log : console.error;
   log(`[run-experiment] ${message}`);
   log(`[run-experiment] journal: ${journalFile}`);
   process.exit(exitCode);
 }
-writeJournal(journalFile, record);
+
+if (resumePayload?.takeoverSnapshot) {
+  const takeoverWriteError = withJournalLock(journalFile, () => {
+    let latest;
+    try {
+      latest = JSON.parse(readFileSync(journalFile, 'utf8'));
+    } catch (error) {
+      fail(
+        `Failed locked CAS check for reaped lease at ${journalFile}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    if (!leaseSnapshotMatches(latest.lease, resumePayload.takeoverSnapshot)) {
+      fail('Resume takeover aborted: journal lease changed during takeover attempt (active-lease conflict).');
+    }
+    return writeJournal(journalFile, record);
+  });
+  if (takeoverWriteError) {
+    fail(`Could not write experiment journal during takeover: ${takeoverWriteError.message}`);
+  }
+} else {
+  const initialWriteError = writeJournal(journalFile, record);
+  if (initialWriteError) {
+    fail(`Could not write experiment journal: ${initialWriteError.message}`);
+  }
+}
+
+function heartbeatCheckpoint(tag) {
+  if (!record.lease) return true;
+  const nowIso = new Date().toISOString();
+  const lease = normalizedLease(record.lease);
+  if (!lease) {
+    acquireLease(record, leaseOwner, leaseConfig, nowIso, 'acquired', {
+      reason: `recovered-malformed-lease-${tag}`,
+    });
+  } else if (lease.owner !== leaseOwner) {
+    finish(
+      'blocked',
+      1,
+      `blocked at ${tag}: lease owner drift detected (${lease.owner} != ${leaseOwner}).`,
+      'owner-drift'
+    );
+    return false;
+  } else if (isLeaseExpired(lease)) {
+    finish('blocked', 1, `blocked at ${tag}: lease expired at ${lease.expiresAt}.`, 'lease-expired');
+    return false;
+  } else {
+    heartbeatLease(record, leaseConfig, nowIso);
+  }
+
+  const heartbeatWriteError = writeJournal(journalFile, record);
+  if (heartbeatWriteError) {
+    const blockedAt = new Date().toISOString();
+    record.terminalState = 'blocked';
+    record.finishedAt = blockedAt;
+    record.recovery.lastCheckpointAt = blockedAt;
+    expireLease(record, 'heartbeat-write-failed', blockedAt);
+    appendLeaseEvent(record, {
+      event: 'terminal',
+      at: blockedAt,
+      owner: normalizedLease(record.lease)?.owner ?? leaseOwner,
+      terminalState: 'blocked',
+      reason: 'heartbeat-write-failed',
+    });
+    writeJournal(journalFile, record);
+    console.error(
+      `[run-experiment] blocked at ${tag}: heartbeat write failed (${heartbeatWriteError.message}).`
+    );
+    console.error(`[run-experiment] journal: ${journalFile}`);
+    process.exit(1);
+  }
+  return true;
+}
 
 let baseMetricValue;
 let best;
@@ -502,6 +703,9 @@ if (resumed) {
     `[run-experiment] resumed baseline ${record.metric.name} = ${baseMetricValue}, best so far ${best} (goal: ${direction})`
   );
 } else {
+  if (!heartbeatCheckpoint('baseline-preflight')) {
+    process.exit(1);
+  }
   console.log('[run-experiment] measuring baseline…');
   const baseMeasure = measureMetric(loop);
   if (baseMeasure.value === null) {
@@ -544,6 +748,9 @@ if (startIteration > maxIterations) {
   );
 }
 for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
+  if (!heartbeatCheckpoint(`iteration-${iteration}-start`)) {
+    break;
+  }
   console.log(
     `[run-experiment] iteration ${iteration}/${maxIterations} — best ${record.metric.name}=${best}`
   );
@@ -587,6 +794,10 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
   record.recovery.lastCheckpointAt = new Date().toISOString();
   writeJournal(journalFile, record);
+
+  if (!heartbeatCheckpoint(`iteration-${iteration}-post-checks`)) {
+    break;
+  }
 
   if (!improved && noImprovementStreak >= noImprovementStop) {
     record.metric.best = best;

@@ -18,6 +18,8 @@ export class ResourceCache {
   constructor(ttlMs = 5 * 60 * 1000) {
     this.ttlMs = ttlMs; // 5 minutes default
     this.cache = new Map(); // key -> { data, expiry }
+    this.hits = 0;
+    this.misses = 0;
   }
 
   /**
@@ -27,14 +29,19 @@ export class ResourceCache {
    */
   get(key) {
     const entry = this.cache.get(key);
-    if (!entry) return null;
+    if (!entry) {
+      this.misses += 1;
+      return null;
+    }
 
     // Check expiry
     if (Date.now() > entry.expiry) {
       this.cache.delete(key);
+      this.misses += 1;
       return null;
     }
 
+    this.hits += 1;
     return entry.data;
   }
 
@@ -43,10 +50,11 @@ export class ResourceCache {
    * @param {string} key - Cache key
    * @param {Array} data - Resource array to cache
    */
-  set(key, data) {
+  set(key, data, ttlMs = this.ttlMs) {
+    const entryTtl = Number.isFinite(Number(ttlMs)) ? Math.max(1, Math.trunc(Number(ttlMs))) : this.ttlMs;
     this.cache.set(key, {
       data,
-      expiry: Date.now() + this.ttlMs,
+      expiry: Date.now() + entryTtl,
     });
   }
 
@@ -73,6 +81,8 @@ export class ResourceCache {
    */
   _flushCache() {
     this.cache.clear();
+    this.hits = 0;
+    this.misses = 0;
   }
 
   /**
@@ -80,10 +90,14 @@ export class ResourceCache {
    * @returns {Object} - Size, keys, hit rate tracking
    */
   stats() {
+    const total = this.hits + this.misses;
     return {
       size: this.cache.size,
       keys: Array.from(this.cache.keys()),
       ttlMs: this.ttlMs,
+      hits: this.hits,
+      misses: this.misses,
+      hitRate: total > 0 ? this.hits / total : 0,
     };
   }
 }
