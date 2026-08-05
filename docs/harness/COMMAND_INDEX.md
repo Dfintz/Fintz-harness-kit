@@ -30,6 +30,7 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 ## Quality Measurement Surfaces
 
 - `npm run harness:docs:check`
+- `npm run test:harness:doc:quality`
 - `npm run harness:acceptance -- <subcommand>`
 - `npm run harness:report`
 - `npm run harness:grade`

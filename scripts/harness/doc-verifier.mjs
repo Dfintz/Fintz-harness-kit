@@ -128,6 +128,14 @@ function wordCount(text) {
   return stripped.split(/\s+/).filter(w => w.length > 0).length;
 }
 
+function countPhraseOccurrences(text, phrase) {
+  if (!phrase || !String(phrase).trim()) return 0;
+  const escaped = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(escaped, 'gi');
+  const matches = text.match(pattern);
+  return matches ? matches.length : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Verifier
 // ---------------------------------------------------------------------------
@@ -206,7 +214,38 @@ function verifyDocument(text, options) {
     }
   }
 
-  const ok = findings.every(f => f.pass);
+  // 5. Warning-first no-ai-slop phrase checks
+  const noAiSlop = options.noAiSlop || {};
+  const noAiSlopEnabled = Boolean(noAiSlop.enabled);
+  if (noAiSlopEnabled) {
+    const mode = String(noAiSlop.mode || 'warn').toLowerCase() === 'error' ? 'error' : 'warn';
+    const bannedPhrases = Array.isArray(noAiSlop.bannedPhrases)
+      ? noAiSlop.bannedPhrases.map(value => String(value).trim()).filter(Boolean)
+      : [];
+    const searchableText = text
+      .replace(/```[\s\S]*?```/g, ' ')
+      .replace(STRIP_MD, ' ')
+      .toLowerCase();
+
+    if (bannedPhrases.length > 0) {
+      const matches = bannedPhrases
+        .map(phrase => ({ phrase, count: countPhraseOccurrences(searchableText, phrase.toLowerCase()) }))
+        .filter(entry => entry.count > 0);
+
+      findings.push({
+        rule: 'no-ai-slop-phrase',
+        severity: mode,
+        pass: matches.length === 0,
+        detail: matches.length === 0
+          ? 'No banned low-signal phrases detected.'
+          : `Detected ${matches.length} banned phrase pattern(s): ${matches.map(entry => `"${entry.phrase}" x${entry.count}`).join(', ')}.`,
+        mode,
+        matches,
+      });
+    }
+  }
+
+  const ok = findings.every(f => (f.severity || 'error') !== 'error' || f.pass);
   return { ok, totalWords, readability: fk, findings };
 }
 
@@ -222,9 +261,25 @@ function parseArgs(argv) {
     if (arg === '--help') { flags.help = true; continue; }
     const key = arg.slice(2);
     const next = argv[i + 1];
-    if (next && !next.startsWith('--')) { flags[key] = next; i += 1; } else { flags[key] = true; }
+    if (next && !next.startsWith('--')) {
+      if (flags[key] === undefined) {
+        flags[key] = next;
+      } else if (Array.isArray(flags[key])) {
+        flags[key].push(next);
+      } else {
+        flags[key] = [flags[key], next];
+      }
+      i += 1;
+    } else {
+      flags[key] = true;
+    }
   }
   return flags;
+}
+
+function toArray(value) {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
 }
 
 function printJson(payload, exitCode) {
@@ -246,6 +301,9 @@ function showHelp() {
       '--min-words <n>': 'Minimum total word count',
       '--max-words <n>': 'Maximum total word count',
       '--require-section <heading>': 'Assert a heading is present (repeatable)',
+      '--no-ai-slop': 'Enable no-ai-slop phrase checks (warning-first by default)',
+      '--no-ai-slop-mode <warn|error>': 'Set no-ai-slop severity mode',
+      '--ban-phrase <text>': 'Additional banned phrase for no-ai-slop checks (repeatable)',
       '--list-sections': 'Print all detected section headings and word counts, then exit',
     },
     scoreGuide: {
@@ -310,10 +368,14 @@ async function main() {
 
   // Load thresholds: config file first, then CLI flags override
   const cfgVerifier = loadDocWorkflowConfig();
+  const cfgNoAiSlop = cfgVerifier.noAiSlop || {};
+
+  const cliRequiredSections = toArray(flags['require-section']);
+  const cliBannedPhrases = toArray(flags['ban-phrase']);
 
   const requiredSections = [
     ...(Array.isArray(cfgVerifier.requiredSections) ? cfgVerifier.requiredSections : []),
-    ...(flags['require-section'] ? [flags['require-section']] : []),
+    ...cliRequiredSections,
   ];
 
   const wordThresholds = cfgVerifier.wordCountThresholds || {};
@@ -327,13 +389,34 @@ async function main() {
     : cfgVerifier.minScore !== undefined ? cfgVerifier.minScore
     : 60;
 
+  const noAiSlopEnabled = flags['no-ai-slop'] === true
+    ? true
+    : Boolean(cfgNoAiSlop.enabled);
+  const noAiSlopMode = flags['no-ai-slop-mode'] !== undefined
+    ? flags['no-ai-slop-mode']
+    : cfgNoAiSlop.mode !== undefined
+      ? cfgNoAiSlop.mode
+      : 'warn';
+  const noAiSlopPhrases = [
+    ...(Array.isArray(cfgNoAiSlop.bannedPhrases) ? cfgNoAiSlop.bannedPhrases : []),
+    ...cliBannedPhrases,
+  ];
+
   const result = verifyDocument(text, {
     minScore,
     minWords,
     maxWords,
     requiredSections,
     sectionWordCounts: wordThresholds.sections || {},
+    noAiSlop: {
+      enabled: noAiSlopEnabled,
+      mode: noAiSlopMode,
+      bannedPhrases: noAiSlopPhrases,
+    },
   });
+
+  const errorFailures = result.findings.filter(f => !f.pass && (f.severity || 'error') === 'error').length;
+  const warningFindings = result.findings.filter(f => !f.pass && (f.severity || 'error') === 'warn').length;
 
   printJson({
     ok: result.ok,
@@ -342,10 +425,13 @@ async function main() {
     score: result.readability.score,
     scoreLabel: scoreLabel(result.readability.score),
     totalWords: result.totalWords,
+    warningCount: warningFindings,
     findings: result.findings,
     summary: result.ok
-      ? `All ${result.findings.length} check(s) passed.`
-      : `${result.findings.filter(f => !f.pass).length} of ${result.findings.length} check(s) failed.`,
+      ? (warningFindings > 0
+        ? `All error-level checks passed with ${warningFindings} warning finding(s).`
+        : `All ${result.findings.length} check(s) passed.`)
+      : `${errorFailures} error-level check(s) failed${warningFindings > 0 ? `; ${warningFindings} warning finding(s) also reported` : ''}.`,
   }, result.ok ? 0 : 1);
 }
 
