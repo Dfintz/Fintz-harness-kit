@@ -214,6 +214,11 @@ export function writeApproval(approval, options) {
     note: typeof approval.note === 'string' ? approval.note.trim() : null,
     decidedBy: typeof approval.decidedBy === 'string' ? approval.decidedBy.trim() : null,
     decidedAt: approval.decidedAt || nowIso(),
+    kind: typeof approval.kind === 'string' ? approval.kind.trim() : null,
+    operation: typeof approval.operation === 'string' ? approval.operation.trim() : null,
+    maintenanceManifest: normalizeMaintenanceManifest(approval.maintenanceManifest),
+    preStateRef: typeof approval.preStateRef === 'string' ? approval.preStateRef.trim() : null,
+    postStateRef: typeof approval.postStateRef === 'string' ? approval.postStateRef.trim() : null,
   };
 
   const file = approvalsPath(dir);
@@ -229,6 +234,11 @@ export function writeApproval(approval, options) {
         note: record.note,
         requestedAt: current.approval?.requestedAt || null,
         decidedAt: record.decidedAt,
+        kind: record.kind,
+        operation: record.operation,
+        maintenanceManifest: record.maintenanceManifest,
+        preStateRef: record.preStateRef,
+        postStateRef: record.postStateRef,
       },
     }, options);
   }
@@ -237,8 +247,39 @@ export function writeApproval(approval, options) {
 }
 
 // ---------------------------------------------------------------------------
-// Internal normalizer
+// Internal normalizers
 // ---------------------------------------------------------------------------
+
+function normalizeMaintenanceManifest(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const path = typeof raw.path === 'string' ? raw.path.trim() : null;
+  const summary = typeof raw.summary === 'string' ? raw.summary.trim() : null;
+  if (!path && !summary) return null;
+  return {
+    ...(path ? { path } : {}),
+    ...(summary ? { summary } : {}),
+  };
+}
+
+export function evaluateMaintenanceApproval(request, options) {
+  const req = request && typeof request === 'object' ? request : {};
+  const isMaintenanceAction = req.kind === 'destructive-memory-maintenance';
+  if (!isMaintenanceAction) {
+    return { ok: true, approval: normalizeApprovalField(readStageState(options)?.approval) };
+  }
+
+  const approval = normalizeApprovalField(readStageState(options)?.approval);
+  const approved = approval.required === true && approval.status === 'approved';
+  if (!approved) {
+    return {
+      ok: false,
+      reason: 'destructive memory maintenance requires approval',
+      approval,
+    };
+  }
+
+  return { ok: true, approval };
+}
 
 function normalizeApprovalField(raw) {
   const a = raw && typeof raw === 'object' ? raw : {};
@@ -250,6 +291,11 @@ function normalizeApprovalField(raw) {
     note: typeof a.note === 'string' ? a.note : null,
     requestedAt: typeof a.requestedAt === 'string' ? a.requestedAt : null,
     decidedAt: typeof a.decidedAt === 'string' ? a.decidedAt : null,
+    kind: typeof a.kind === 'string' ? a.kind : null,
+    operation: typeof a.operation === 'string' ? a.operation : null,
+    maintenanceManifest: normalizeMaintenanceManifest(a.maintenanceManifest),
+    preStateRef: typeof a.preStateRef === 'string' ? a.preStateRef : null,
+    postStateRef: typeof a.postStateRef === 'string' ? a.postStateRef : null,
   };
 }
 

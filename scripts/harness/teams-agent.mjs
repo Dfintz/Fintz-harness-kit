@@ -124,7 +124,7 @@ function parseApprovalCommand(text) {
 // ---------------------------------------------------------------------------
 
 async function handleApprovalDecision(decision) {
-  const { type, runId, reason, userId } = decision;
+  const { type, runId, reason, userId, kind, operation, maintenanceManifest, preStateRef, postStateRef } = decision;
 
   if (!runId) {
     return {
@@ -134,14 +134,19 @@ async function handleApprovalDecision(decision) {
   }
 
   try {
+    const normalizedDecision = type === 'approve' ? 'approved' : 'rejected';
     // Write approval to stage-state
     writeApproval({
       runId,
-      status: type === 'approve' ? 'approved' : 'rejected',
-      decision: type,
-      reason: reason || `${type}d via Teams agent`,
+      decision: normalizedDecision,
+      note: reason || `${normalizedDecision} via Teams agent`,
       decidedBy: userId || 'teams-agent',
       decidedAt: new Date().toISOString(),
+      kind,
+      operation,
+      maintenanceManifest,
+      preStateRef,
+      postStateRef,
     });
 
     log('info', 'Approval recorded', { runId, type, userId });

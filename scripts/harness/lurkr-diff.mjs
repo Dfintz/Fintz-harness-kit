@@ -103,9 +103,82 @@ function writeSkipReport(outputPath, reason, extras = {}) {
     status: "skipped",
     reason,
     outputPath,
+    checklist: {
+      policy: "evidence-only",
+      items: [
+        {
+          id: "diff-report-generated",
+          status: "fail",
+          evidence: { outputPath },
+          note: "No differential report was generated because the scanner command was not runnable.",
+        },
+      ],
+    },
     ...extras,
   });
   process.stdout.write(`[lurkr-diff] wrote report: ${outputPath}\n`);
+}
+
+function buildEvidenceChecklist(context) {
+  const {
+    outputPath,
+    command,
+    refs,
+    scans,
+    drift,
+    status,
+    reason,
+  } = context;
+  const baseSucceeded = scans.base.exitCode === 0 && scans.base.spawnError === null;
+  const headSucceeded = scans.head.exitCode === 0 && scans.head.spawnError === null;
+
+  return {
+    policy: "evidence-only",
+    items: [
+      {
+        id: "diff-report-generated",
+        status: status === "ok" ? "pass" : "fail",
+        evidence: {
+          outputPath,
+          baseResolved: refs.baseResolved,
+          headResolved: refs.headResolved,
+        },
+        note:
+          status === "ok"
+            ? "Before/after report exists and can be attached to review artifacts."
+            : `Report generation failed: ${reason ?? "unknown"}`,
+      },
+      {
+        id: "scanner-command-recorded",
+        status: command ? "pass" : "fail",
+        evidence: { command },
+        note: "Record the exact scanner command used for repeatability.",
+      },
+      {
+        id: "base-and-head-scans-recorded",
+        status: baseSucceeded && headSucceeded ? "pass" : "warn",
+        evidence: {
+          baseExitCode: scans.base.exitCode,
+          headExitCode: scans.head.exitCode,
+          baseSpawnError: scans.base.spawnError,
+          headSpawnError: scans.head.spawnError,
+        },
+        note:
+          baseSucceeded && headSucceeded
+            ? "Both snapshot scans completed cleanly."
+            : "One or both snapshot scans were non-zero or errored; inspect report before adjudicating drift.",
+      },
+      {
+        id: "drift-summary-captured",
+        status: "pass",
+        evidence: {
+          addedCount: drift.addedCount,
+          removedCount: drift.removedCount,
+        },
+        note: "Added/removed finding counts captured for differential security review.",
+      },
+    ],
+  };
 }
 
 function runDiffScans(repoRoot, flags, parsed) {
@@ -144,7 +217,7 @@ function buildDiffReport(context) {
   const headLines = normalizeLines(headOutput);
   const drift = diffLines(baseLines, headLines);
 
-  return {
+  const report = {
     generatedAt: new Date().toISOString(),
     command: shellCommand,
     refs: {
@@ -177,6 +250,17 @@ function buildDiffReport(context) {
       "Use this report as an evidence artifact for pre/post security drift in review stages.",
     ],
   };
+
+  report.checklist = buildEvidenceChecklist({
+    outputPath: resolve(repoRoot, flags.output),
+    command: shellCommand,
+    refs: report.refs,
+    scans: report.scans,
+    drift: report.drift,
+    status: "ok",
+  });
+
+  return report;
 }
 
 function resolveScanner(flags, outputPath) {

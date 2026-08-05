@@ -175,7 +175,7 @@ function buildStageCompleteCard(opts) {
  * Otherwise, shows CLI commands (fallback).
  */
 function buildApprovalNeededCard(opts) {
-  const { loop, stage, runId, note, requestedAt } = opts;
+  const { loop, stage, runId, note, requestedAt, maintenanceManifest, preStateRef, postStateRef } = opts;
   const hasAgent = Boolean(process.env.HARNESS_TEAMS_AGENT_URL);
   const agentUrl = (process.env.HARNESS_TEAMS_AGENT_URL || '').replace(/\/$/, '');
 
@@ -194,6 +194,9 @@ function buildApprovalNeededCard(opts) {
       ['Run ID', runId || '—'],
       ['Requested', fmtTime(requestedAt)],
       ...(note ? [['Note', note]] : []),
+      ...(maintenanceManifest?.path ? [['Manifest', maintenanceManifest.path]] : []),
+      ...(preStateRef ? [['Pre-state', preStateRef]] : []),
+      ...(postStateRef ? [['Post-state', postStateRef]] : []),
     ]),
   ];
 

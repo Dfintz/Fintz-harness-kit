@@ -278,6 +278,10 @@ node scripts/harness/lurkr-diff.mjs --required --base HEAD~1
 
 The differential workflow checks out the base ref into a temporary git worktree, runs the same scanner command on both snapshots, and writes a deterministic line-based drift report that can be attached to review artifacts.
 
+Security evidence checklist note:
+- The differential report includes a `checklist` block with machine-readable items (`diff-report-generated`, `scanner-command-recorded`, `base-and-head-scans-recorded`, `drift-summary-captured`).
+- Include these checklist rows in review evidence so scanner behavior stays optional while evidence quality remains auditable.
+
 Interpretation note:
 - A report can still show non-zero scanner exit codes for both base and head in some environments.
 - If the run no longer emits DEP0190 warnings, the shell-deprecation hardening path is still considered effective even when scanner findings or runtime checks fail.

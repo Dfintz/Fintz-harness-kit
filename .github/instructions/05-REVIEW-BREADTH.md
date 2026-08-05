@@ -111,6 +111,8 @@ Run all lanes that apply to the change. Report failures only.
       `HARNESS_LURKR_COMMAND`).
       - Differential drift path: `npm run harness:security:lurkr:diff -- --base <ref> --output <report-path>`
         to produce before/after findings evidence for review artifacts.
+      - Security evidence checklist path: inspect `<report-path>.checklist` and include checklist item
+        statuses/evidence in the review artifact so drift evidence is auditable without changing scanner policy.
     - Wrapper implementation path: `scripts/harness/lurkr-check.mjs`.
   - For capability-surface documentation drift checks, use `npm run harness:docs:check:changed-surfaces`
     (implemented in `scripts/harness/validate-doc-contracts.mjs`).

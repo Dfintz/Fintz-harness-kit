@@ -281,6 +281,15 @@ ${isOperator ? `<div class="card" id="approvalCard" style="display:none">
     try { return new Date(iso).toLocaleString(); } catch { return iso; }
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
   function renderState(state) {
     const panel = document.getElementById('statePanel');
     const approvalCard = document.getElementById('approvalCard');
@@ -296,6 +305,12 @@ ${isOperator ? `<div class="card" id="approvalCard" style="display:none">
     currentRunId = state.runId || null;
     const approval = state.approval || {};
     const needsApproval = approval.required && approval.status === 'pending';
+    const maintenanceContext = approval.kind === 'destructive-memory-maintenance' ? \`
+      \${approval.operation ? \`<div class="fact-label">Operation</div><div class="fact-value">\${escapeHtml(approval.operation)}</div>\` : ''}
+      \${approval.maintenanceManifest?.path ? \`<div class="fact-label">Manifest</div><div class="fact-value">\${escapeHtml(approval.maintenanceManifest.path)}</div>\` : ''}
+      \${approval.preStateRef ? \`<div class="fact-label">Pre-state</div><div class="fact-value">\${escapeHtml(approval.preStateRef)}</div>\` : ''}
+      \${approval.postStateRef ? \`<div class="fact-label">Post-state</div><div class="fact-value">\${escapeHtml(approval.postStateRef)}</div>\` : ''}
+    \` : '';
 
     const operatorExtra = role === 'operator' ? \`
       <div class="fact-label">Run ID</div><div class="fact-value">\${state.runId || '—'}</div>
@@ -317,7 +332,7 @@ ${isOperator ? `<div class="card" id="approvalCard" style="display:none">
     </div>\`;
 
     if (needsApproval) {
-      approvalInfo.innerHTML = \`<p>Loop <strong>\${state.loop}</strong> at stage <strong>\${state.stage}</strong> is waiting for approval.</p>\`;
+      approvalInfo.innerHTML = \`<p>Loop <strong>\${escapeHtml(state.loop || '—')}</strong> at stage <strong>\${escapeHtml(state.stage || '—')}</strong> is waiting for approval.</p>\n${approval.kind === 'destructive-memory-maintenance' ? '<p>Destructive memory maintenance requires a replayable manifest and explicit pre/post state references.</p>' : ''}\`;
       approvalCard.style.display = '';
       document.getElementById('btnApprove').disabled = false;
       document.getElementById('btnReject').disabled = false;

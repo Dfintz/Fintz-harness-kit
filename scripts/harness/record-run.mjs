@@ -63,6 +63,12 @@ function printHelp() {
       "  --final-revision <rev>     git final revision (or NO_VCS)",
       "  --approval-status <status>  pending | approved | rejected | not-required",
       "  --approval-required         mark this run as requiring approval",
+      "  --approval-kind <kind>      approval category (for example destructive-memory-maintenance)",
+      "  --approval-operation <name> approval operation name",
+      "  --approval-manifest-path <path>  maintenance manifest path",
+      "  --approval-manifest-summary <text> maintenance manifest summary",
+      "  --approval-pre-state <ref>  pre-state reference",
+      "  --approval-post-state <ref>  post-state reference",
       '  --approval-note "<text>"    approval context note',
       '  --pass "<item>"   a rubric criterion that passed (repeatable)',
       '  --fail "<item>"   a rubric criterion that failed (repeatable)',
@@ -87,6 +93,12 @@ function parseArgs(argv) {
     approvalStatus: undefined,
     approvalRequired: false,
     approvalNote: undefined,
+    approvalKind: undefined,
+    approvalOperation: undefined,
+    approvalManifestPath: undefined,
+    approvalManifestSummary: undefined,
+    approvalPreState: undefined,
+    approvalPostState: undefined,
     pass: [],
     fail: [],
     help: false,
@@ -101,6 +113,12 @@ function parseArgs(argv) {
     else if (a === "--final-revision") args.finalRevision = argv[++i];
     else if (a === "--approval-status") args.approvalStatus = argv[++i];
     else if (a === "--approval-required") args.approvalRequired = true;
+    else if (a === "--approval-kind") args.approvalKind = argv[++i];
+    else if (a === "--approval-operation") args.approvalOperation = argv[++i];
+    else if (a === "--approval-manifest-path") args.approvalManifestPath = argv[++i];
+    else if (a === "--approval-manifest-summary") args.approvalManifestSummary = argv[++i];
+    else if (a === "--approval-pre-state") args.approvalPreState = argv[++i];
+    else if (a === "--approval-post-state") args.approvalPostState = argv[++i];
     else if (a === "--approval-note") args.approvalNote = argv[++i];
     else if (a === "--pass") args.pass.push(argv[++i]);
     else if (a === "--fail") args.fail.push(argv[++i]);
@@ -149,6 +167,43 @@ function normalizeApproval(rawApproval, args, nowIso) {
   const status = resolveApprovalStatus(raw, args);
   const required = resolveApprovalRequired(raw, args, status);
   const noteCandidate = resolveApprovalNote(raw, args);
+  const kindCandidate =
+    typeof args.approvalKind === "string" && args.approvalKind.trim()
+      ? args.approvalKind.trim()
+      : typeof raw.kind === "string"
+        ? raw.kind.trim()
+        : undefined;
+  const operationCandidate =
+    typeof args.approvalOperation === "string" && args.approvalOperation.trim()
+      ? args.approvalOperation.trim()
+      : typeof raw.operation === "string"
+        ? raw.operation.trim()
+        : undefined;
+  const manifestCandidate =
+    typeof args.approvalManifestPath === "string" || typeof args.approvalManifestSummary === "string"
+      ? {
+          ...(typeof args.approvalManifestPath === "string" && args.approvalManifestPath.trim()
+            ? { path: args.approvalManifestPath.trim() }
+            : {}),
+          ...(typeof args.approvalManifestSummary === "string" && args.approvalManifestSummary.trim()
+            ? { summary: args.approvalManifestSummary.trim() }
+            : {}),
+        }
+      : raw.maintenanceManifest && typeof raw.maintenanceManifest === "object"
+        ? raw.maintenanceManifest
+        : undefined;
+  const preStateCandidate =
+    typeof args.approvalPreState === "string" && args.approvalPreState.trim()
+      ? args.approvalPreState.trim()
+      : typeof raw.preStateRef === "string"
+        ? raw.preStateRef.trim()
+        : undefined;
+  const postStateCandidate =
+    typeof args.approvalPostState === "string" && args.approvalPostState.trim()
+      ? args.approvalPostState.trim()
+      : typeof raw.postStateRef === "string"
+        ? raw.postStateRef.trim()
+        : undefined;
 
   if (!required && status !== "not-required") {
     fail(
@@ -171,6 +226,11 @@ function normalizeApproval(rawApproval, args, nowIso) {
     ...(noteCandidate ? { note: noteCandidate } : {}),
     ...(requestedAt ? { requestedAt } : {}),
     ...(decidedAt ? { decidedAt } : {}),
+    ...(kindCandidate ? { kind: kindCandidate } : {}),
+    ...(operationCandidate ? { operation: operationCandidate } : {}),
+    ...(manifestCandidate ? { maintenanceManifest: manifestCandidate } : {}),
+    ...(preStateCandidate ? { preStateRef: preStateCandidate } : {}),
+    ...(postStateCandidate ? { postStateRef: postStateCandidate } : {}),
   };
 }
 
