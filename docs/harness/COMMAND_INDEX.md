@@ -31,6 +31,8 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 
 - `npm run harness:docs:check`
 - `npm run test:harness:doc:quality`
+- `npm run harness:t7:roi`
+- `npm run test:harness:t7:roi`
 - `npm run harness:acceptance -- <subcommand>`
 - `npm run harness:report`
 - `npm run harness:grade`
