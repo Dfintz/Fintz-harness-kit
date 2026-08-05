@@ -1,8 +1,10 @@
-<!-- harness-kit template: breadth review should stay universal. Repository standards provide the stack-specific checklist; this stage defines how to find and report concrete issues without drifting into deep architecture adjudication. -->
-
 ---
 applyTo: '**'
+artifact_family: review
+immutability: mutable
 ---
+
+<!-- harness-kit template: breadth review should stay universal. Repository standards provide the stack-specific checklist; this stage defines how to find and report concrete issues without drifting into deep architecture adjudication. -->
 
 # Review Breadth Stage
 
@@ -107,6 +109,8 @@ Run all lanes that apply to the change. Report failures only.
     unverified MCP endpoints.
     - Repo invocation path: `npm run harness:security:lurkr` (optional; configure scanner command via
       `HARNESS_LURKR_COMMAND`).
+      - Differential drift path: `npm run harness:security:lurkr:diff -- --base <ref> --output <report-path>`
+        to produce before/after findings evidence for review artifacts.
     - Wrapper implementation path: `scripts/harness/lurkr-check.mjs`.
   - For capability-surface documentation drift checks, use `npm run harness:docs:check:changed-surfaces`
     (implemented in `scripts/harness/validate-doc-contracts.mjs`).

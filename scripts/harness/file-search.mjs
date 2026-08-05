@@ -17,12 +17,18 @@
  *   --model   nomic-embed-text
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createManifestAllowlist } from './manifest-allowlist.mjs';
+
 const harnessDir = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(harnessDir, '..', '..');
 const vectorSearchPath = resolve(harnessDir, 'vector-search.mjs');
+const repoManifestAllowlist = createManifestAllowlist({
+  rootDir: repoRoot,
+  fail: message => { throw new Error(message); },
+});
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -222,11 +228,15 @@ function buildSearchArgs({ flags, root, top, query, contextual }) {
 }
 
 function loadEvalSet(flags) {
-  const evalSetPath = flags['eval-set'] ? resolve(String(flags['eval-set'])) : null;
-  if (!evalSetPath) {
+  const evalSetInput = flags['eval-set'] ? String(flags['eval-set']).trim() : '';
+  if (!evalSetInput) {
     throw new Error('eval-pilot requires --eval-set <path>');
   }
-  const rawEvalSet = JSON.parse(readFileSync(evalSetPath, 'utf8'));
+  if (!evalSetInput.endsWith('.json')) {
+    throw new Error('eval-pilot requires a .json eval set');
+  }
+  const evalSetPath = repoManifestAllowlist.selectPath(evalSetInput, 'eval set');
+  const rawEvalSet = JSON.parse(repoManifestAllowlist.readUtf8Path(evalSetInput, 'eval set'));
   const cases = Array.isArray(rawEvalSet.cases) ? rawEvalSet.cases : [];
   if (cases.length === 0) {
     throw new Error('Eval set must include a non-empty `cases` array.');

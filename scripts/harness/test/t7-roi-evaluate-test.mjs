@@ -34,6 +34,10 @@ function writeJson(path, value) {
 function basePacket() {
   return {
     ticket: 'T7',
+    observations: {
+      recoveryLatencyDeltaPct: 0,
+      complexityScore: 3,
+    },
     metrics: [
       { id: 'history-growth-control', target: '>= 30%' },
       { id: 'recovery-latency-delta', target: '<= +5%' },
@@ -86,6 +90,14 @@ function runEvaluator(packetPath, runsDir, extraArgs = []) {
   };
 }
 
+function runDefaultEvaluator() {
+  return spawnSync(
+    process.execPath,
+    ['scripts/harness/t7-roi-evaluate.mjs'],
+    { cwd: repoRoot, encoding: 'utf8' },
+  );
+}
+
 function makeRun(loop, iterationCount, terminalState = 'converged') {
   return {
     loop,
@@ -134,10 +146,17 @@ function testParkPath() {
   rmSync(root, { recursive: true, force: true });
 }
 
+function testDefaultPacketPath() {
+  console.log('\n=== Default packet path ===');
+  const run = runDefaultEvaluator();
+  assert(run.status === 0, 'default evaluator resolves its committed packet');
+}
+
 function run() {
   console.log('Deterministic T7 ROI evaluator checks\n');
   testGoPath();
   testParkPath();
+  testDefaultPacketPath();
 
   console.log('\nSummary');
   console.log(`  Passed: ${results.passed}`);

@@ -169,11 +169,11 @@ SUMMARY
 
 **NPM Scripts**:
 ```bash
-npm run harness:phase5:postdeploy:cascade-health    # Run validation
-npm run harness:phase5:postdeploy:monitor           # Display dashboard
-npm run harness:phase5:postdeploy:monitor:json      # Export metrics
-npm run harness:phase5:postdeploy:monitor:skill -- --skill=X   # Skill details
-npm run harness:phase5:postdeploy:monitor:alerts    # Alert mode
+npm run harness:model-routing:deployment:cascade-health    # Run validation
+npm run harness:model-routing:deployment:monitor           # Display dashboard
+npm run harness:model-routing:deployment:monitor:json      # Export metrics
+npm run harness:model-routing:deployment:monitor:skill -- --skill=X   # Skill details
+npm run harness:model-routing:deployment:monitor:alerts    # Alert mode
 ```
 
 ---
@@ -411,19 +411,19 @@ feat: Phase 5 Multi-Model Optimizer — 11 skill upgrades, +3.5% avg quality, Ph
 
 ```bash
 # View live monitoring dashboard
-npm run harness:phase5:postdeploy:monitor
+npm run harness:model-routing:deployment:monitor
 
 # Run cascade health check
-npm run harness:phase5:postdeploy:cascade-health
+npm run harness:model-routing:deployment:cascade-health
 
 # Export metrics for dashboards
-npm run harness:phase5:postdeploy:monitor:json
+npm run harness:model-routing:deployment:monitor:json
 
 # Check specific skill
-npm run harness:phase5:postdeploy:monitor:skill -- --skill=architect
+npm run harness:model-routing:deployment:monitor:skill -- --skill=architect
 
 # Enable alerts mode (exit 1 if regressions)
-npm run harness:phase5:postdeploy:monitor:alerts
+npm run harness:model-routing:deployment:monitor:alerts
 ```
 
 ### Key Directories

@@ -79,12 +79,27 @@ function testUnsupportedInputFormat() {
   assert(run.status === 2, 'unsupported input format exits 2');
 }
 
+function testMixedSourceGap() {
+  console.log('\n=== Mixed source gap ===');
+  const run = runEvaluator('t8-fixture-mixed');
+  assert(run.status === 0, 'mixed valid input set is evaluated');
+  assert(run.payload?.evaluation?.decision === 'GO_RESEARCH', 'weaker source gap cannot be masked by a stronger source');
+}
+
+function testPartialInvalidInputSet() {
+  console.log('\n=== Partial invalid input set ===');
+  const run = runEvaluator('t8-fixture-partial-invalid');
+  assert(run.status === 2, 'partial invalid input set is rejected');
+}
+
 function run() {
   console.log('Deterministic T8 benchmark-gap evaluator checks\n');
   testGapDetected();
   testParkPath();
   testAbsolutePathGuard();
   testUnsupportedInputFormat();
+  testMixedSourceGap();
+  testPartialInvalidInputSet();
 
   console.log('\nSummary');
   console.log(`  Passed: ${results.passed}`);

@@ -8,7 +8,7 @@
  *
  * Usage:
  *   node scripts/harness/phase5c-cascade-health-check.mjs [--baseline FILE] [--output FILE]
- *   npm run harness:phase5:postdeploy:cascade-health
+ *   npm run harness:model-routing:deployment:cascade-health
  *
  * Environment:
  *   PHASE5B_BASELINE — path to Phase 5b results (default: .github/harness/phase5/validation-results/phase5b-validation-2026-07-25.json)

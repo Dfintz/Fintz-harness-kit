@@ -31,10 +31,15 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 
 - `npm run harness:docs:check`
 - `npm run test:harness:doc:quality`
-- `npm run harness:t7:roi`
-- `npm run test:harness:t7:roi`
-- `npm run harness:t8:benchmark-gap`
-- `npm run test:harness:t8:benchmark-gap`
+- `npm run harness:continue-as-new:roi`
+- `npm run test:harness:continue-as-new:roi`
+- `npm run harness:hybrid-fusion:benchmark-gap`
+- `npm run test:harness:hybrid-fusion:benchmark-gap`
+- `npm run harness:contextual-embeddings:eval-pilot -- --eval-set <repo-relative-json> --root .`
+- `npm run harness:lease-heartbeat:loop -- <loop-name>`
+- `npm run harness:security-differential`
+- `npm run harness:graph-resilience -- status`
+- `npm run harness:doc-quality -- <paths>`
 - `npm run harness:acceptance -- <subcommand>`
 - `npm run harness:report`
 - `npm run harness:grade`

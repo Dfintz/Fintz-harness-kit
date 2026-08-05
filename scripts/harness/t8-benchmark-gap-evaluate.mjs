@@ -209,21 +209,33 @@ function evaluate(packet, evalSummaries) {
   const minPersistentMissCount = toNumber(thresholds.minPersistentMissCount, 2);
 
   const sourceCount = evalSummaries.length;
-  const bestHitRateAtK = sourceCount
-    ? Math.max(...evalSummaries.map(item => item.bestHitRateAtK))
+  const worstBestHitRateAtK = sourceCount
+    ? Math.min(...evalSummaries.map(item => item.bestHitRateAtK))
     : 0;
-  const bestPrecisionAtK = sourceCount
-    ? Math.max(...evalSummaries.map(item => item.bestPrecisionAtK))
+  const worstBestPrecisionAtK = sourceCount
+    ? Math.min(...evalSummaries.map(item => item.bestPrecisionAtK))
     : 0;
-  const persistentMissCount = sourceCount
+  const highestPersistentMissCount = sourceCount
     ? Math.max(...evalSummaries.map(item => item.persistentMissCount))
     : 0;
 
-  const lowHitRateGap = bestHitRateAtK < minBestHitRateAtK;
-  const lowPrecisionGap = bestPrecisionAtK < minBestPrecisionAtK;
-  const persistentMissGap = persistentMissCount >= minPersistentMissCount;
+  const sourceEvaluations = evalSummaries.map(item => {
+    const lowHitRateGap = item.bestHitRateAtK < minBestHitRateAtK;
+    const lowPrecisionGap = item.bestPrecisionAtK < minBestPrecisionAtK;
+    const persistentMissGap = item.persistentMissCount >= minPersistentMissCount;
+    return {
+      sourceId: item.sourceId,
+      inputPath: item.inputPath,
+      benchmarkGapDetected: lowHitRateGap || lowPrecisionGap || persistentMissGap,
+      gapChecks: { lowHitRateGap, lowPrecisionGap, persistentMissGap },
+    };
+  });
+  const sourcesWithGaps = sourceEvaluations.filter(item => item.benchmarkGapDetected);
+  const lowHitRateGap = sourcesWithGaps.some(item => item.gapChecks.lowHitRateGap);
+  const lowPrecisionGap = sourcesWithGaps.some(item => item.gapChecks.lowPrecisionGap);
+  const persistentMissGap = sourcesWithGaps.some(item => item.gapChecks.persistentMissGap);
 
-  const benchmarkGapDetected = lowHitRateGap || lowPrecisionGap || persistentMissGap;
+  const benchmarkGapDetected = sourcesWithGaps.length > 0;
   const decision = benchmarkGapDetected ? 'GO_RESEARCH' : 'PARK';
 
   return {
@@ -239,15 +251,16 @@ function evaluate(packet, evalSummaries) {
     },
     measured: {
       sourceCount,
-      bestHitRateAtK,
-      bestPrecisionAtK,
-      persistentMissCount,
+      worstBestHitRateAtK,
+      worstBestPrecisionAtK,
+      highestPersistentMissCount,
     },
     gapChecks: {
       lowHitRateGap,
       lowPrecisionGap,
       persistentMissGap,
     },
+    sourceEvaluations,
   };
 }
 
@@ -365,6 +378,10 @@ function collectEvalSummaries(sourceFiles) {
       continue;
     }
     evalSummaries.push({ sourceId: sourceFile.sourceId, inputPath: sourceFile.relativePath, ...summary });
+  }
+
+  if (invalidInputs.length > 0) {
+    fail(`[t8-benchmark-gap-evaluate] selected input set contains invalid sources: ${invalidInputs.map(item => item.sourceId).join(', ')}`);
   }
 
   if (evalSummaries.length === 0) {

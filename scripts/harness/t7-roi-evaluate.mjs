@@ -118,8 +118,13 @@ function evaluate(packet, runs, rotationWindow) {
     : false;
 
   const recoveryTarget = packet.metrics?.find(metric => metric.id === 'recovery-latency-delta')?.target || '<= +5%';
-  const recoveryLatencyDeltaPct = null;
-  const recoveryMet = false;
+  const recoveryThreshold = parseNumberTarget(recoveryTarget, '<=');
+  const recoveryLatencyDeltaPct = Number.isFinite(packet?.observations?.recoveryLatencyDeltaPct)
+    ? packet.observations.recoveryLatencyDeltaPct
+    : null;
+  const recoveryMet = recoveryLatencyDeltaPct !== null && recoveryThreshold.value !== null
+    ? recoveryLatencyDeltaPct <= recoveryThreshold.value
+    : false;
 
   const terminalTarget = packet.metrics?.find(metric => metric.id === 'terminal-state-integrity')?.target || '0 critical regressions';
   const criticalRegressions = runs.filter(run => !allowedTerminalStates.has(run.terminalState)).length;
@@ -127,8 +132,10 @@ function evaluate(packet, runs, rotationWindow) {
 
   const complexityTarget = packet.metrics?.find(metric => metric.id === 'complexity-overhead')?.target || '<= 3';
   const complexityThreshold = parseNumberTarget(complexityTarget, '<=');
-  const complexityScore = 3;
-  const complexityMet = complexityThreshold.value !== null
+  const complexityScore = Number.isFinite(packet?.observations?.complexityScore)
+    ? packet.observations.complexityScore
+    : null;
+  const complexityMet = complexityScore !== null && complexityThreshold.value !== null
     ? complexityScore <= complexityThreshold.value
     : false;
 
@@ -152,7 +159,9 @@ function evaluate(packet, runs, rotationWindow) {
       met: recoveryMet,
       evidence: {
         analyzedRuns: runs.length,
-        reason: 'Current convergence journals do not persist a deterministic recovery-latency field.',
+        source: recoveryLatencyDeltaPct === null
+          ? 'No explicit recovery-latency observation was provided in the packet.'
+          : 'packet.observations.recoveryLatencyDeltaPct',
       },
     },
     {
@@ -171,7 +180,9 @@ function evaluate(packet, runs, rotationWindow) {
       target: complexityTarget,
       met: complexityMet,
       evidence: {
-        basis: 'Kickoff heuristic for evaluator-only slice (no runtime code path edits).',
+        source: complexityScore === null
+          ? 'No explicit complexity observation was provided in the packet.'
+          : 'packet.observations.complexityScore',
       },
     },
   ];

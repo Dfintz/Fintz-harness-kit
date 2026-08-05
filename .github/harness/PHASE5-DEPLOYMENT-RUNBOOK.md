@@ -155,7 +155,7 @@
 
 3. **Monitoring dashboards (real-time):**
    ```bash
-   npm run harness:phase5:monitor
+   npm run harness:model-routing:monitor
    ```
    - Success rate by skill
    - Model usage breakdown by tier
@@ -215,7 +215,7 @@
 
 **Dashboard command:**
 ```bash
-npm run harness:phase5:monitor --interval 30s
+npm run harness:model-routing:monitor --interval 30s
 ```
 
 **Key metrics to track:**
@@ -233,22 +233,22 @@ npm run harness:phase5:monitor --interval 30s
 **Daily (Days 0-5):**
 ```bash
 # Full validation suite
-npm run harness:phase5:validate-all
+npm run harness:model-routing:validate
 
 # Tier shift quality check
-npm run harness:phase5:check-tier-shifts
+npm run harness:model-routing:tier-shifts
 
 # Fallback chain health
-npm run harness:phase5:cascade-health
+npm run harness:model-routing:cascade-health
 ```
 
 **Weekly (Week 1+):**
 ```bash
 # Compare Phase 5 vs Phase 4 outcomes on same tasks
-npm run harness:phase5:compare-baseline
+npm run harness:model-routing:baseline
 
 # Check for model drift or behavioral changes
-npm run harness:phase5:model-consistency
+npm run harness:model-routing:consistency
 ```
 
 ---
@@ -477,7 +477,7 @@ END (GA Status)
 
 **If issues arise during rollout:**
 
-1. **Monitoring Alert** → Check harness:phase5:monitor dashboard
+1. **Monitoring Alert** → Check `harness:model-routing:monitor` dashboard
 2. **Single Skill Failure** → Use Scenario 1 rollback procedures
 3. **Widespread Failures** → Use Scenario 3 full rollback
 4. **Need Help** → Reference this runbook's troubleshooting sections

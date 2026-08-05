@@ -121,50 +121,23 @@ Baseline date: 2026-08-05
 | T4 | Security Workflow Owner | Review Breadth Reviewer | Complete |
 | T5 | Memory and Graph Owner | Architecture Reviewer | Complete |
 | T6 | Documentation Quality Owner | Teach-Agent Reviewer | In Progress (kickoff active) |
-| T7 | Architecture Council Owner | Runtime Feasibility Reviewer | Parked-until-capacity |
-| T8 | Retrieval Quality Owner | Benchmark Reviewer | Parked-until-benchmark-gap |
+| T7 | Architecture Council Owner | Runtime Feasibility Reviewer | In Progress (research kickoff active; runtime implementation gated) |
+| T8 | Retrieval Quality Owner | Benchmark Reviewer | In Progress (benchmark-gap kickoff active; runtime implementation gated; current disposition PARK) |
 
-## Hermes-agent cherry-pick assessment (pre-finalization)
+## Hermes-agent final radar decision and roadmap
 
 Source reviewed: https://github.com/NousResearch/hermes-agent
 
-### Adopt now (high fit, low risk)
+Final disposition: adopt three repository-native governance patterns as separately routed roadmap tasks; park auto-memory and wiki curation; reject runtime/platform integration. The source-specific records are in `.github/harness/memory/radar/hermes-*.md`.
 
-1. Revision-gate loop cap and stall detection
-  - Source: `optional-skills/software-development/subagent-driven-development/references/gates-taxonomy.md`
-  - Why fit: aligns with harness bounded-loop and deterministic validation guardrails.
-  - Target ticket: T3 (lease/heartbeat reliability envelope).
-  - Proposed acceptance add-on: require explicit stall escalation after max 3 review/fix cycles.
-
-2. Security checklist pattern for operational hardening
-  - Source: `website/docs/user-guide/security.md` (gateway deployment checklist)
-  - Why fit: reusable checklist shape for before/after security posture verification.
-  - Target ticket: T4 (differential security scan workflow).
-  - Proposed acceptance add-on: add explicit checklist artifact in review breadth evidence.
-
-3. Memory write-gate pattern for batch operations
-  - Source: `tools/memory_tool.py` (`_apply_batch_write_gate`)
-  - Why fit: mirrors existing explicit-approval philosophy for high-impact writes.
-  - Target ticket: T5 (memory graph persistence hardening).
-  - Proposed acceptance add-on: introduce approval gate for destructive memory-graph maintenance operations.
-
-### Adopt later (needs scoped experiment)
-
-1. Auto-recall/auto-capture memory provider tuning knobs
-  - Source: `plugins/memory/supermemory/README.md`, `plugins/memory/supermemory/__init__.py`
-  - Why later: useful, but can increase context noise without calibrated policies.
-  - Candidate tickets: T5 and T8.
-
-2. Three-layer wiki structure and retrieval curation discipline
-  - Source: `website/docs/user-guide/skills/bundled/research/research-llm-wiki.md`
-  - Why later: strong knowledge hygiene model, but requires process changes beyond current milestone scope.
-  - Candidate tickets: T5.
-
-### Do not cherry-pick now
-
-1. Runtime/platform-specific gateway integration surfaces
-  - Reason: cross-platform runtime abstractions in Hermes are not a direct drop-in for this harness repository.
-  - Risk: architecture drift and unnecessary complexity.
+| Priority | Pattern | Final disposition | Roadmap gate |
+| --- | --- | --- | --- |
+| P0 | Revision-gate stall escalation | Adopt | Route a dedicated task to normalize three-attempt revision caps, stalled-finding detection, and human escalation across `run-loop` and `plan-review`. |
+| P1 | Security evidence checklist | Adopt | Add checklist evidence to differential-security review workflow without changing scanner enforcement. |
+| P1 | Memory maintenance approval | Adopt | Architect fail-closed approval and replay semantics for destructive memory-graph maintenance only. |
+| P2 | Auto-recall and auto-capture provider | Park | Reopen only with explicit consent, retention, isolation, and retrieval-quality evaluation requirements. |
+| P2 | Three-layer wiki curation | Park | Reopen only with a named knowledge-base operator workflow and source-immutability owner. |
+| Never | Gateway and agent-runtime integration | Reject | No platform embedding or upstream runtime cherry-pick; evaluate isolated techniques through radar only. |
 
 ## Inline skeptical pass (architect challenge omitted by route)
 

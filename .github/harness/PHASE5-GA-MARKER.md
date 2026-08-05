@@ -316,7 +316,7 @@ Your harness will automatically use Phase 5 model assignments when:
 ### Monitoring
 
 ```bash
-npm run harness:phase5:monitor
+npm run harness:model-routing:monitor
 ```
 
 Shows real-time success rates, model usage, fallback activation, latency.
