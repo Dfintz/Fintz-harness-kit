@@ -46,8 +46,19 @@ const loopsDir = join(repoRoot, ".github", "harness", "loops");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
 const HEAD_CHARS = 2000;
 const TAIL_CHARS = 6000;
+const HUMAN_ESCALATION_TERMINALS = new Set(["stuck", "exhausted"]);
 let leaseConfig = null;
 let leaseOwner = null;
+
+function shouldEscalateToHuman(terminalState) {
+  return HUMAN_ESCALATION_TERMINALS.has(terminalState);
+}
+
+function escalationGuidance(loopName) {
+  return (
+    `Escalate to a human operator for loop "${loopName}" with the run journal evidence before further automated retries.`
+  );
+}
 
 function fail(message) {
   console.error(`[run-loop] ${message}`);
@@ -303,12 +314,34 @@ function composeFixPrompt(loop, failures, iteration, journal, priorReflexion) {
     .join("\n");
 }
 
+function tokenizeCommand(command, label) {
+  const text = String(command ?? '').trim();
+  if (!text) fail(`${label} is empty`);
+
+  const tokenPattern = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)/g;
+  const tokens = [];
+  let cursor = 0;
+  for (const match of text.matchAll(tokenPattern)) {
+    if (typeof match.index !== 'number') continue;
+    if (text.slice(cursor, match.index).trim()) {
+      fail(`${label} has unmatched escaping or quotes`);
+    }
+    cursor = match.index + match[0].length;
+    tokens.push((match[1] ?? match[2] ?? match[3] ?? '').replace(/\\(["'\\])/g, '$1'));
+  }
+  if (text.slice(cursor).trim() || tokens.length === 0) {
+    fail(`${label} has unmatched escaping or quotes`);
+  }
+  return tokens;
+}
+
 function invokeAgent(agentCmd, prompt) {
   assertSafeCliCommand(agentCmd, { label: "run-loop agent command" });
   console.log(`[run-loop]   invoking agent: ${agentCmd}`);
-  const result = spawnSync(agentCmd, {
+  const [executable, ...args] = tokenizeCommand(agentCmd, 'run-loop agent command');
+  const result = spawnSync(executable, args, {
     cwd: repoRoot,
-    shell: true,
+    shell: false,
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
   });
@@ -652,6 +685,21 @@ function finish(terminalState, exitCode, message, reason = null) {
       terminalState: resolvedState,
       reason: resolvedReason,
     });
+  }
+  if (shouldEscalateToHuman(resolvedState)) {
+    const note = escalationGuidance(loop.name);
+    record.escalation = {
+      required: true,
+      reason: resolvedState,
+      note,
+    };
+    message = `${message} ${note}`;
+  } else {
+    record.escalation = {
+      required: false,
+      reason: null,
+      note: null,
+    };
   }
   writeJournal(journalFile, record);
   const log = exitCode === 0 ? console.log : console.error;

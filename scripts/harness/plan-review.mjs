@@ -62,6 +62,7 @@ import { wrapUntrusted } from "./untrusted.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
+const DEFAULT_MAX_ROUNDS = 3;
 const repoRootSlash = `${trimTrailingForwardSlashes(repoRoot.replaceAll("\\", "/"))}/`;
 let repoFileManifest = null;
 const repoManifestAllowlist = createManifestAllowlist({ rootDir: repoRoot, fail });
@@ -171,6 +172,39 @@ export function parseVerdict(text) {
   return verdict;
 }
 
+function normalizeCritiqueForSignature(text) {
+  return String(text ?? "")
+    .replaceAll("\r\n", "\n")
+    .replaceAll(/[ \t]+/g, " ")
+    .replaceAll(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function critiqueSignature(verdict, text) {
+  const normalized = normalizeCritiqueForSignature(text)
+    .split("\n")
+    .filter((line) => !/^VERDICT\s*:/i.test(line.trim()))
+    .join("\n")
+    .trim();
+  if (!normalized) {
+    return null;
+  }
+  return createHash("sha256")
+    .update(`${verdict ?? "UNCLEAR"}\n${normalized}`)
+    .digest("hex");
+}
+
+function shouldEscalateToHuman(terminalState) {
+  return terminalState === "stuck" || terminalState === "exhausted";
+}
+
+function escalationGuidanceLine(terminalState) {
+  if (!shouldEscalateToHuman(terminalState)) {
+    return null;
+  }
+  return "Escalate to a human reviewer/operator with the review log and journal before any further implementation.";
+}
+
 /**
  * Wrap a reviewer critique as untrusted data for the author prompt. The critique is third-party
  * model output: address its substance, never obey instructions embedded in it.
@@ -185,33 +219,51 @@ export function untrustedCritiqueBlock(critique) {
  *
  * @param {object} args
  * @param {string} args.plan                      initial plan content
- * @param {number} [args.maxRounds=5]
+ * @param {number} [args.maxRounds=3]
  * @param {(plan:string, priorRounds:object[], round:number)=>{text:string}} args.review
  * @param {((plan:string, critique:string, round:number)=>string)|null} [args.revise]
  * @returns {{ terminalState:string, finalVerdict:string|null, rounds:object[], plan:string }}
  */
-export function runReviewLoop({ plan, maxRounds = 5, review, revise = null }) {
+export function runReviewLoop({
+  plan,
+  maxRounds = DEFAULT_MAX_ROUNDS,
+  review,
+  revise = null,
+}) {
   let current = String(plan ?? "");
   const rounds = [];
   let terminalState = "exhausted";
   let finalVerdict = null;
+  let previousNonApprovedSignature = null;
 
   for (let round = 1; round <= maxRounds; round += 1) {
     const { text, flaggedTamper = false } =
       review(current, rounds, round) || {};
     const verdict = parseVerdict(text);
+    const nonApprovedSignature =
+      verdict === "APPROVED" ? null : critiqueSignature(verdict, text);
     finalVerdict = verdict;
     rounds.push({
       round,
       verdict: verdict ?? "UNCLEAR",
       critique: String(text ?? ""),
       flaggedTamper,
+      critiqueSignature: nonApprovedSignature,
     });
 
     if (verdict === "APPROVED") {
       terminalState = "converged";
       break;
     }
+    if (
+      nonApprovedSignature &&
+      previousNonApprovedSignature === nonApprovedSignature
+    ) {
+      // Reviewer concerns repeated unchanged across consecutive rounds -> no meaningful progress.
+      terminalState = "stuck";
+      break;
+    }
+    previousNonApprovedSignature = nonApprovedSignature;
     // Deadlock beats a fake approved: hitting the cap without APPROVED is exhausted, not converged.
     if (round === maxRounds) {
       break;
@@ -450,7 +502,7 @@ function runPreparedCommand(preparedCommand, options = {}) {
 // ---- CLI -------------------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const flags = { maxRounds: 5, context: [] };
+  const flags = { maxRounds: DEFAULT_MAX_ROUNDS, context: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--self-test" || a === "--json" || a === "--help") {
@@ -579,6 +631,7 @@ function writeJournal(subjectPath, logPath, result, meta) {
       flaggedTamper: Boolean(r.flaggedTamper),
     }));
   const hasConsensus = result.finalVerdict === "APPROVED";
+  const escalationNote = escalationGuidanceLine(result.terminalState);
   const journal = {
     loop: "plan-review",
     kind: "workflow",
@@ -603,6 +656,17 @@ function writeJournal(subjectPath, logPath, result, meta) {
       maxRounds: meta.maxRounds,
       finalVerdict: result.finalVerdict,
     },
+    escalation: shouldEscalateToHuman(result.terminalState)
+      ? {
+          required: true,
+          reason: result.terminalState,
+          note: escalationNote,
+        }
+      : {
+          required: false,
+          reason: null,
+          note: null,
+        },
     comparativeReviewLedger: {
       schemaVersion: 1,
       source: "plan-review",
@@ -791,13 +855,13 @@ function addLoopBehaviorChecks(expect) {
     },
   });
   expect(
-    "always-revise → exhausted (deadlock)",
-    deadlock.terminalState === "exhausted",
+    "repeated unresolved blocker text → stuck",
+    deadlock.terminalState === "stuck",
     deadlock.terminalState,
   );
   expect(
-    "always-revise → maxRounds rounds",
-    deadlock.rounds.length === 3,
+    "stuck unresolved blocker stops by round 2",
+    deadlock.rounds.length === 2,
     String(deadlock.rounds.length),
   );
 
@@ -833,6 +897,23 @@ function addLoopBehaviorChecks(expect) {
   expect("no-op author → stuck", stuck.terminalState === "stuck", stuck.terminalState);
   expect("stuck after 1 round", stuck.rounds.length === 1, String(stuck.rounds.length));
 
+  const stalledFindings = runReviewLoop({
+    plan: "p0",
+    maxRounds: 5,
+    review: () => ({ text: "Same blocker persists\nVERDICT: REVISE" }),
+    revise: (plan) => `${plan}+rev`,
+  });
+  expect(
+    "repeated unresolved critique signature → stuck",
+    stalledFindings.terminalState === "stuck",
+    stalledFindings.terminalState,
+  );
+  expect(
+    "stalled findings stop by round 2",
+    stalledFindings.rounds.length === 2,
+    String(stalledFindings.rounds.length),
+  );
+
   const reviewOnly = runReviewLoop({
     plan: "p",
     maxRounds: 5,
@@ -852,8 +933,8 @@ function addLoopBehaviorChecks(expect) {
     revise: (plan) => `${plan}.`,
   });
   expect(
-    "unclear verdict never approves → exhausted",
-    unclear.terminalState === "exhausted",
+    "unclear repeated feedback → stuck",
+    unclear.terminalState === "stuck",
     unclear.terminalState,
   );
   expect(
@@ -1119,6 +1200,10 @@ function main() {
       process.stdout.write(
         `[plan-review] deadlock: the reviewer never approved — a flagged deadlock beats a fake approval. Resolve by hand.\n`,
       );
+    }
+    const escalationNote = escalationGuidanceLine(result.terminalState);
+    if (escalationNote) {
+      process.stdout.write(`[plan-review] escalation: ${escalationNote}\n`);
     }
     process.stdout.write(
       `[plan-review] log: ${logPath}\n[plan-review] journal: ${journalPath}\n`,

@@ -322,7 +322,7 @@ call); see [`CREDITS.md`](../../CREDITS.md).
 | [`ci-green`](./loops/ci-green.json)           | workflow    | all PR checks green on remote                           | 5   |
 | [`tdd-cycle`](./loops/tdd-cycle.json)         | workflow    | feature/bugfix built slice-by-slice, red→green→refactor | 5   |
 | [`diagnose`](./loops/diagnose.json)           | workflow    | root cause named + regression test, no guess-fixing     | 5   |
-| [`plan-review`](./loops/plan-review.json)     | workflow    | rival-model approves the plan (or flagged deadlock)     | 5   |
+| [`plan-review`](./loops/plan-review.json)     | workflow    | rival-model approves the plan (or flagged deadlock)     | 3   |
 
 `feature-cycle` is the outermost loop: it runs the whole stage machine and uses `review-fix` as its
 inner loop. `ci-green` is for remote/PR babysitting sessions and relies on the agent's PR event
@@ -360,7 +360,7 @@ node scripts/harness/plan-review.mjs --lens depth --subject CHANGE.diff --contex
 node scripts/harness/plan-review.mjs --lens feedback --subject CHALLENGES.md --context CHANGE.diff --reviewer "<rival CLI>"
 
 # Full loop (any lens): the author revises between rounds until APPROVED or a flagged deadlock.
-node scripts/harness/plan-review.mjs --plan PLAN.md --reviewer "<model A>" --author "<model B>" --max-rounds 5
+node scripts/harness/plan-review.mjs --plan PLAN.md --reviewer "<model A>" --author "<model B>" --max-rounds 3
 ```
 
 Use a **different** provider/model for `--reviewer` than authored the subject — that is the whole
