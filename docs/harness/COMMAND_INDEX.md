@@ -33,6 +33,8 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 - `npm run test:harness:doc:quality`
 - `npm run harness:t7:roi`
 - `npm run test:harness:t7:roi`
+- `npm run harness:t8:benchmark-gap`
+- `npm run test:harness:t8:benchmark-gap`
 - `npm run harness:acceptance -- <subcommand>`
 - `npm run harness:report`
 - `npm run harness:grade`
