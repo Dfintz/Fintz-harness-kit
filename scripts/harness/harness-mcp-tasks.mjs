@@ -222,11 +222,30 @@ function cmdImpact(flags) {
   };
 }
 
+function cmdSymbol(flags) {
+  const query = requireString(flags, 'query', 'symbol requires --query');
+  const preset = typeof flags.preset === 'string' ? flags.preset : 'repair-localization';
+  const depth = toPositiveInt(flags.depth, undefined);
+  const top = toPositiveInt(flags.top, undefined);
+
+  const graph = executeMcpTool('graph-symbol', { query, preset, depth, top });
+  const contextPack = executeMcpTool('graph-context-pack', { symbol: query, preset });
+
+  return {
+    ok: graph.ok && contextPack.ok,
+    query,
+    preset,
+    graph,
+    contextPack,
+  };
+}
+
 function usage() {
   return {
     usage: [
       'node scripts/harness/harness-mcp-tasks.mjs status',
       'node scripts/harness/harness-mcp-tasks.mjs find --query "tenant isolation" [--scope all] [--top 8] [--limit 8]',
+      'node scripts/harness/harness-mcp-tasks.mjs symbol --query planTask [--preset repair-localization] [--depth 1] [--top 8]',
       'node scripts/harness/harness-mcp-tasks.mjs impact --file backend/src/app.ts [--file backend/src/other.ts] [--depth 2]',
     ],
   };
@@ -247,6 +266,8 @@ function main() {
     payload = cmdFind(flags);
   } else if (command === 'impact') {
     payload = cmdImpact(flags);
+  } else if (command === 'symbol') {
+    payload = cmdSymbol(flags);
   } else {
     throw new Error(`Unknown command: ${command}`);
   }

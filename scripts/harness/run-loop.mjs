@@ -44,6 +44,7 @@ import { wrapUntrusted } from "./untrusted.mjs";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const loopsDir = join(repoRoot, ".github", "harness", "loops");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
+const graphCliPath = join(repoRoot, "scripts", "harness", "graph.mjs");
 const HEAD_CHARS = 2000;
 const TAIL_CHARS = 6000;
 const HUMAN_ESCALATION_TERMINALS = new Set(["stuck", "exhausted"]);
@@ -73,6 +74,8 @@ function parseArgs(argv) {
     agent: undefined,
     list: false,
     resume: undefined,
+    symbol: undefined,
+    preset: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -81,6 +84,8 @@ function parseArgs(argv) {
     else if (a === "--max-iterations") args.maxIterations = Number(argv[++i]);
     else if (a === "--agent") args.agent = argv[++i];
     else if (a === "--resume") args.resume = argv[++i];
+    else if (a === "--symbol") args.symbol = argv[++i];
+    else if (a === "--preset") args.preset = argv[++i];
     else if (a.startsWith("--")) fail(`Unknown option: ${a}`);
     else if (!args.name) args.name = a;
     else fail(`Unexpected argument: ${a}`);
@@ -223,7 +228,7 @@ function failureSignature(failures) {
     .join("\u0000");
 }
 
-function composeFixPrompt(loop, failures, iteration, journal, priorReflexion) {
+function composeFixPrompt(loop, failures, iteration, journal, priorReflexion, contextPack) {
   // Check outputs are external tool output (lint/build/test) and may contain file excerpts
   // with injection phrases. Wrap each as untrusted before embedding in the agent prompt.
   // The code fence is placed inside the untrusted block so the output remains legible to the
@@ -265,6 +270,7 @@ function composeFixPrompt(loop, failures, iteration, journal, priorReflexion) {
     loop.instructions?.length
       ? `Read these instructions first: ${loop.instructions.join(", ")}.`
       : "",
+    contextPack ? ["", "## Graph-grounded repair context (deterministic)", contextPack] : "",
     "",
     loop.fixPrompt,
     "",
@@ -514,6 +520,23 @@ const ownerStartedAt = new Date().toISOString();
 leaseOwner = buildLeaseOwner(ownerStartedAt);
 
 const loop = loadLoop(args.name);
+let contextPack = null;
+if (args.symbol) {
+  const contextResult = spawnSync(process.execPath, [graphCliPath, "context-pack", args.symbol, "--json", ...(args.preset ? ["--preset", args.preset] : [])], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (contextResult.status === 0) {
+    try {
+      contextPack = JSON.parse(contextResult.stdout).content;
+    } catch {
+      console.warn("[run-loop] graph context-pack returned invalid JSON; continuing without it");
+    }
+  } else {
+    console.warn(`[run-loop] graph context-pack unavailable; continuing without it: ${(contextResult.stderr || "").trim()}`);
+  }
+}
 let maxIterations = loop.maxIterations;
 if (args.maxIterations !== undefined) {
   if (!Number.isInteger(args.maxIterations) || args.maxIterations < 1)
@@ -561,6 +584,14 @@ if (!record.recovery || typeof record.recovery !== "object") {
     checkpoints: true,
     resumeSupported: true,
     resumedFrom: null,
+  };
+}
+if (contextPack && args.symbol) {
+  record.retrievalContext = {
+    source: "graph-context-pack",
+    symbol: String(args.symbol),
+    preset: args.preset ?? "repair-localization",
+    includedInPrompt: true,
   };
 }
 ensureLeaseHistory(record);
@@ -781,7 +812,7 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   const reflexionPath = loop.reflexionEnabled
     ? reflexionScratchpadPath(journalFile, iteration)
     : null;
-  const prompt = composeFixPrompt(loop, lastFailures, iteration, record.iterations, priorReflexion)
+  const prompt = composeFixPrompt(loop, lastFailures, iteration, record.iterations, priorReflexion, contextPack)
     .replace('__REFLEXION_PATH__', reflexionPath ?? '');
   invokeAgent(agentCmd, prompt);
 }

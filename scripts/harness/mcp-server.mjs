@@ -33,7 +33,7 @@ import { CONFIG_PATH, harnessRuntimeRoot, repoRoot, loadConfig } from "./config.
 import { ErrorCode, createErrorResponse } from "./mcp-contracts.mjs";
 import { ResourceCache } from "./mcp-cache.mjs";
 import { logCommandDispatchAudit, buildCommandDispatchRecord } from "./mcp-audit.mjs";
-import { exportGraphLayers, exportGraphNodes, isGraphReady } from "./graph-resources.mjs";
+import { exportGraphLayers, exportGraphNodes, getGraphNodeBoundary, isGraphReady } from "./graph-resources.mjs";
 import { readGraphEvents } from "./graph-provider.mjs";
 import { createRateLimiter } from "./mcp-rate-limiter.mjs";
 import { extractCallerIdentity, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
@@ -193,6 +193,8 @@ const toolSpecs = [
           description: "Traversal depth (default 1)",
         },
         type: { type: "string", description: "Optional edge type filter" },
+        traversal: { type: "string", enum: ["bfs", "dfs"], description: "Traversal strategy (default bfs)" },
+        preset: { type: "string", enum: ["repair-localization", "review-risk", "architect-blast-radius"], description: "Deterministic traversal preset" },
       },
       ["nodeId"],
     ),
@@ -204,6 +206,44 @@ const toolSpecs = [
       const cliArgs = ["--node-id", nodeId];
       if (depth !== undefined) cliArgs.push("--depth", String(depth));
       if (edgeType) cliArgs.push("--type", edgeType);
+      if (args.traversal !== undefined) cliArgs.push("--traversal", readOptionalString(args, "traversal"));
+      if (args.preset !== undefined) cliArgs.push("--preset", readOptionalString(args, "preset"));
+      return cliArgs;
+    },
+  },
+  {
+    name: "graph-symbol",
+    description: "Finds canonical symbol nodes and returns their bounded def/ref neighborhood.",
+    inputSchema: objectSchema(
+      {
+        query: { type: "string", description: "Symbol name or canonical node id" },
+        preset: { type: "string", enum: ["repair-localization", "review-risk", "architect-blast-radius"] },
+        depth: { type: "integer", minimum: 1 },
+        top: { type: "integer", minimum: 1 },
+      },
+      ["query"],
+    ),
+    toCliArgs: (args) => {
+      const cliArgs = ["--query", readRequiredString(args, "query")];
+      if (args.preset !== undefined) cliArgs.push("--preset", readOptionalString(args, "preset"));
+      if (args.depth !== undefined) cliArgs.push("--depth", String(readOptionalPositiveInt(args, "depth")));
+      if (args.top !== undefined) cliArgs.push("--top", String(readOptionalPositiveInt(args, "top")));
+      return cliArgs;
+    },
+  },
+  {
+    name: "graph-context-pack",
+    description: "Builds deterministic Dependencies for <symbol> context for repair and review loops.",
+    inputSchema: objectSchema(
+      {
+        symbol: { type: "string", description: "Symbol name or canonical node id" },
+        preset: { type: "string", enum: ["repair-localization", "review-risk", "architect-blast-radius"] },
+      },
+      ["symbol"],
+    ),
+    toCliArgs: (args) => {
+      const cliArgs = ["--symbol", readRequiredString(args, "symbol")];
+      if (args.preset !== undefined) cliArgs.push("--preset", readOptionalString(args, "preset"));
       return cliArgs;
     },
   },
@@ -441,6 +481,7 @@ const toolSpecs = [
     inputSchema: objectSchema(
       {
         query: { type: "string", description: "Search query text" },
+        preset: { type: "string", enum: ["repair-localization", "review-risk", "architect-blast-radius"] },
         scope: {
           type: "string",
           description:
@@ -495,6 +536,7 @@ const toolSpecs = [
     toCliArgs: (args) => {
       const query = readRequiredString(args, "query");
       const cliArgs = ["--query", query];
+      if (args.preset !== undefined) cliArgs.push("--preset", readOptionalString(args, "preset"));
       pushOptionalCliArg(cliArgs, "scope", readOptionalString(args, "scope"));
       pushOptionalCliArg(
         cliArgs,
@@ -1362,8 +1404,14 @@ async function readGraphResource(uri) {
     // Parse graph node URI (future extension)
     const nodeMatch = uri.match(/^io\.modelcontextprotocol\/harness\/graph\/nodes\/(.+)$/);
     if (nodeMatch) {
-      // Future: Implement per-node detail retrieval
-      return null;
+      const nodeId = decodeURIComponent(nodeMatch[1]);
+      const boundary = await getGraphNodeBoundary(nodeId);
+      if (!boundary) return null;
+      return {
+        uri,
+        mimeType: "application/json",
+        text: JSON.stringify({ nodeId, boundary }, null, 2),
+      };
     }
 
     return null;

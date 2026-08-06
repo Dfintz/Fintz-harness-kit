@@ -19,7 +19,8 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { embedOne, normalizeHost as resolveProviderHost, resolveProvider } from './llm-provider.mjs';
-import { resolveGraphProviderState } from './graph-provider.mjs';
+import { loadGraphForQuery, resolveGraphProviderState } from './graph-provider.mjs';
+import { collectNeighborhood, recoverNodeBoundary } from './graph.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const lessonsDir = join(repoRoot, '.github', 'harness', 'memory', 'lessons');
@@ -54,6 +55,21 @@ const FS_SKIP_DIRS = new Set(['.git', 'node_modules', '.understand-anything', '.
 
 const ALLOWED_SCOPE_TOKENS = new Set(['all', 'memory', 'lessons', 'briefs', 'graph', 'fs', 'ontology']);
 const DOC_SCOPE_ORDER = ['lessons', 'briefs', 'graph', 'fs', 'ontology'];
+const RETRIEVAL_PRESETS = {
+  'repair-localization': { scope: 'graph', top: 8, traversal: 'bfs', depth: 1 },
+  'review-risk': { scope: 'graph', top: 12, traversal: 'bfs', depth: 1 },
+  'architect-blast-radius': { scope: 'graph', top: 16, traversal: 'dfs', depth: 2 },
+};
+
+function resolveRetrievalPreset(value) {
+  if (value === undefined || value === null || value === true) return null;
+  const name = String(value);
+  const preset = RETRIEVAL_PRESETS[name];
+  if (!preset) {
+    throw new Error(`Unknown retrieval preset "${name}". Expected: ${Object.keys(RETRIEVAL_PRESETS).join(', ')}.`);
+  }
+  return { name, ...preset };
+}
 
 function resolveGraphPathFromProvider() {
   const state = resolveGraphProviderState({ repoRoot, configPath });
@@ -425,6 +441,7 @@ function readGraphDocuments(graphLimit) {
       title: node.name || node.id,
       summary,
       path: filePath,
+      boundary: recoverNodeBoundary(node),
       sourceMtimeMs: graphMtimeMs,
       text,
     });
@@ -654,6 +671,7 @@ async function buildOrUpdateIndex(options) {
         title: doc.title,
         summary: doc.summary,
         path: doc.path,
+        boundary: doc.boundary ?? null,
         sourceMtimeMs: doc.sourceMtimeMs,
         contextualized: Boolean(contextualizedFsText || doc.contextualized),
       });
@@ -676,6 +694,7 @@ async function buildOrUpdateIndex(options) {
       title: item.doc.title,
       summary: item.doc.summary,
       path: item.doc.path,
+      boundary: item.doc.boundary ?? null,
       sourceMtimeMs: item.doc.sourceMtimeMs,
       contextualized: Boolean(
         contextualFsEnabled && item.doc.scope === 'fs' ? true : item.doc.contextualized
@@ -817,9 +836,10 @@ async function runSemanticSearch(options) {
     throw new Error('search requires --query');
   }
 
-  const scopes = parseScopeSelection(options.scope, 'all');
+  const preset = resolveRetrievalPreset(options.preset);
+  const scopes = parseScopeSelection(options.scope || preset?.scope, 'all');
   const scopeSet = new Set(scopes);
-  const top = toPositiveInt(options.top, DEFAULT_TOP, 'top');
+  const top = toPositiveInt(options.top, preset?.top ?? DEFAULT_TOP, 'top');
   const minScore = toNumber(options.minScore, -1, 'minScore');
   const timeoutMs = toPositiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS, 'timeoutMs');
   const provider = resolveProvider(options.provider);
@@ -853,7 +873,7 @@ async function runSemanticSearch(options) {
     }
 
     await buildOrUpdateIndex({
-      scope: options.scope || 'all',
+      scope: options.scope || preset?.scope || 'all',
       provider,
       host,
       model: targetModel,
@@ -913,6 +933,15 @@ async function runSemanticSearch(options) {
 
   scored.sort((left, right) => right.score - left.score);
 
+  let graphForPreset = null;
+  if (preset && scopeSet.has('graph')) {
+    try {
+      graphForPreset = loadGraphForQuery({ repoRoot, configPath }).graph;
+    } catch {
+      graphForPreset = null;
+    }
+  }
+
   const results = scored.slice(0, top).map((candidate, indexValue) => ({
     rank: indexValue + 1,
     score: Number(candidate.score.toFixed(6)),
@@ -924,6 +953,17 @@ async function runSemanticSearch(options) {
     summary: candidate.summary,
     path: candidate.path,
     preview: candidate.preview,
+    boundary: candidate.boundary ?? null,
+    graphNeighborhood:
+      graphForPreset && candidate.id.startsWith('graph:')
+        ? collectNeighborhood(
+            graphForPreset,
+            candidate.id.slice('graph:'.length),
+            preset.depth,
+            preset.top,
+            preset.traversal,
+          )
+        : [],
     model: candidate.model,
   }));
 
@@ -931,6 +971,9 @@ async function runSemanticSearch(options) {
     ok: true,
     action: 'search',
     query,
+    preset: preset?.name ?? null,
+    traversal: preset?.traversal ?? null,
+    depth: preset?.depth ?? null,
     scopes,
     top,
     minScore,
@@ -964,6 +1007,7 @@ function showHelp() {
     },
     commonFlags: {
       '--scope': 'all|memory|lessons|briefs|graph|fs|ontology (comma-separated accepted). Use fs to index arbitrary filesystem paths. Use ontology to search concept definitions.',
+      '--preset': 'repair-localization|review-risk|architect-blast-radius; applies deterministic graph retrieval defaults.',
       '--root': `Root directory to walk when scope includes fs (default: repo root). Env: HARNESS_FS_ROOT.`,
       '--chunk-size': `Characters per filesystem chunk (default ${DEFAULT_CHUNK_SIZE}). Env: HARNESS_FS_CHUNK_SIZE.`,
       '--chunk-overlap': `Overlap between consecutive chunks (default ${DEFAULT_CHUNK_OVERLAP}). Env: HARNESS_FS_CHUNK_OVERLAP.`,
@@ -1042,6 +1086,7 @@ async function main() {
     else if (flags['contextual-fs']) contextualFs = true;
     const payload = await runSemanticSearch({
       query: flags.query,
+      preset: flags.preset,
       scope: flags.scope,
       provider: flags.provider,
       host: flags.host,

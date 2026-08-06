@@ -11,31 +11,29 @@ APPROVED
 
 ## Evidence
 
-Reviewed brief: .github/harness/memory/briefs/t4-transition-readiness-architecture-2026-08-05.md.
+Reviewed brief: .github/harness/memory/briefs/warning-reduction-followup-2026-08-06.md.
 
-Decision boundary is correct and now decision-safe: HOLD until T3 is stage-complete is consistent with the harness stage machine and mandatory outputs documented in .github/harness/HARNESS.md.
+Reviewed implementation boundaries:
+- scripts/harness/doc-verifier.mjs
+- scripts/harness/policy-detector-registry.mjs
+- scripts/harness/test/adoption-slices-test.mjs
+- .github/harness/memory/briefs/policy-detector-registry-closure-review-2026-08-06.md
 
-Requested deltas are now present:
+Blocker findings only:
 
-1. Closure criteria completeness fixed
-- The completion model explicitly requires Architect Challenge, Implementation, Review Breadth, Review Depth, and Feedback.
-- T3 is correctly marked incomplete with Architect Challenge, Review Depth, and Feedback missing.
+None.
 
-2. Evidence sufficiency fixed
-- Deterministic closure checklist table now lists T1, T2, and T3 against all five required stage artifacts.
-- T1 and T2 are evidenced as complete; T3 is evidenced as incomplete.
+Behavior-preservation safeguards are now sufficient for implementation:
+- External API behavior lock is explicit (runPolicyDetectors, listPolicyRules, verifyDocument invocation behavior unchanged).
+- Deterministic finding order and severity/advisory semantics are explicitly preserved.
+- Pre-change baseline snapshot plus required post-change parity comparison is explicitly required.
 
-3. Minimum unblock path correctness fixed
-- Unblock path is now T3-first and lists required missing artifacts before re-running transition readiness.
+Test-boundary constraints are now sufficient for implementation:
+- The brief explicitly constrains adoption test edits to additive coverage only and forbids relaxing existing assertions.
+- Validation requires unchanged pass/fail outcome for existing targeted adoption tests and parity vectors.
 
-No capability expansion, ownership breach, or unsafe boundary crossing was found in the updated brief.
+## Required Revision or Unblock Step
 
-## Guardrails (approved path)
-
-1. Keep GO denied until all three missing T3 closure artifacts exist and are non-blocking.
-2. Preserve ticket outcome immutability, including T2 pilot NO-GO adoption status.
-3. Re-run the same deterministic closure checklist after T3 artifacts are added; do not substitute intent statements for artifact evidence.
-
-## Required revision or unblock step
-
-Proceed with the brief as written; no further architecture revisions are required before implementation of the transition-readiness assessment artifacts.
+Proceed to implementation under the brief's existing validation plan and constraints. Require evidence artifacts for:
+- Pre/post detector parity vector JSON equality.
+- Unchanged targeted adoption test pass/fail status.

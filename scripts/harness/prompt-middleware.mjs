@@ -24,13 +24,15 @@
  *   npm run harness:prompt:route -- --task "implement OAuth"
  */
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadConfig, planTask } from './prompt-router.mjs';
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(harnessDir, '..', '..');
+const graphCliPath = join(repoRoot, 'scripts', 'harness', 'graph.mjs');
 
 function parseArgs(argv) {
   const flags = { _: [] };
@@ -145,8 +147,22 @@ async function main() {
     intent: flags.intent || null,
   });
 
+  let contextPack = null;
+  if (flags.symbol) {
+    const result = spawnSync(process.execPath, [
+      graphCliPath,
+      'context-pack',
+      String(flags.symbol),
+      '--json',
+      ...(flags.preset ? ['--preset', String(flags.preset)] : []),
+    ], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    if (result.status === 0) {
+      try { contextPack = JSON.parse(result.stdout).content ?? null; } catch { contextPack = null; }
+    }
+  }
+
   const handoff = buildHandoffTable(plan);
-  const output = { ...plan, handoff };
+  const output = { ...plan, handoff, contextPack };
 
   if (flags.pretty) {
     process.stdout.write(handoff + '\n');

@@ -43,6 +43,7 @@ Use the local Understand graph as a first-class input to coding decisions so age
 2. Ensure the active graph snapshot exists.
 3. Check freshness against `git rev-parse HEAD`.
 4. Refresh with `/understand` (or `/understand --full` for larger shifts) when stale.
+5. Repeated graph loads may use the validated JSON artifact under `.github/harness/runs/graph-cache/`; inspect `graph status --json` for `graphCache.hit` and its descriptor.
 
 ### Phase 2: Task Discovery — Graph-First Dependency Understanding
 
@@ -53,6 +54,32 @@ Use the local Understand graph as a first-class input to coding decisions so age
    - Relevant architecture layers
    - Dependency chains that may amplify changes
 3. For key modules, run `/understand-explain <file-or-symbol>` to understand ownership and constraints.
+
+### Symbol-Neighborhood Retrieval
+
+When a task names a function, class, or method, retrieve its canonical graph neighborhood before
+reading broad files:
+
+```bash
+node scripts/harness/graph.mjs symbol <symbol> --preset repair-localization --json
+node scripts/harness/graph.mjs context-pack <symbol> --preset repair-localization --json
+node scripts/harness/graph.mjs neighbors <node-id> --preset architect-blast-radius --json
+```
+
+Use `review-risk` for review work and `architect-blast-radius` for architecture or cross-module
+changes. Treat `INFERRED` edges as leads requiring source confirmation; treat `EXTRACTED` edges as
+structural evidence. The context pack is deterministic, read-only, and includes bounded source
+slices when graph nodes provide a safe `filePath` and `lineRange`. Neighbor queries support explicit
+`bfs` and `dfs` traversal through `--traversal`; presets define traversal, depth, and result bounds.
+Graph MCP resources and vector-search results expose the recovered boundary (`filePath`, `lineRange`,
+and bounded source content) when the provider supplies valid metadata.
+When metadata is incomplete, the graph resolver uses Babel AST recovery for JavaScript/TypeScript
+files where supported, then falls back to bounded indentation or brace-balanced scanning and marks
+the result with `fallback: true` and its `boundarySource` strategy. Python AST recovery is available
+when the operator sets `HARNESS_PYTHON_COMMAND` to a trusted Python executable; it is opt-in on
+Windows because the platform Python Store alias is not a reliable non-interactive runtime.
+Neighborhood edges expose `relationKind` as `definition`, `reference`, or `related`. Context packs
+enforce a 24,000-character aggregate cap.
 
 ### Phase 3: Change Execution
 

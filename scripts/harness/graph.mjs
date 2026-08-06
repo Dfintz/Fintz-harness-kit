@@ -26,8 +26,9 @@
  *
  * Exit codes: 0 ok / fresh, 1 stale (status) or not-found, 2 usage/config error.
  */
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parse as parseJavaScript } from "@babel/parser";
 import {
   existsSync,
   readFileSync,
@@ -35,7 +36,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { CONFIG_PATH, repoRoot } from "./config.mjs";
 import {
   buildGraphGenUiPayload,
@@ -66,6 +67,14 @@ const BRANCH_TYPE_PREFIXES = new Set([
 const EXTRACTED_EDGE_TYPES = new Set(["imports", "contains", "exports"]);
 // File extensions the graph analyses — used to count source churn for staleness.
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs|graphql|sql)$/;
+const RETRIEVAL_PRESETS = {
+  "repair-localization": { hops: 1, top: 8, traversal: "bfs" },
+  "review-risk": { hops: 1, top: 12, traversal: "bfs" },
+  "architect-blast-radius": { hops: 2, top: 16, traversal: "dfs" },
+};
+const MAX_CONTEXT_SLICE_LINES = 80;
+const MAX_CONTEXT_SLICE_CHARS = 6000;
+const MAX_CONTEXT_PACK_CHARS = 24000;
 
 function die(message, code = 2) {
   console.error(`[graph] ${message}`);
@@ -79,7 +88,9 @@ function parseFlags(argv) {
     if (a === "--json") flags.json = true;
     else if (a === "--compact") flags.compact = true;
     else if (a === "--provider") flags.provider = argv[++i];
+    else if (a === "--preset") flags.preset = argv[++i];
     else if (a === "--depth") flags.depth = Number(argv[++i]);
+    else if (a === "--traversal") flags.traversal = argv[++i];
     else if (a === "--type") flags.type = argv[++i];
     else if (a === "--top") flags.top = Number(argv[++i]);
     else if (a === "--limit") flags.limit = Number(argv[++i]);
@@ -331,7 +342,7 @@ function short(sha) {
 }
 
 function cmdStatus(graphContext, flags) {
-  const { graph, providerId, graphPath } = graphContext;
+  const { graph, providerId, graphPath, graphCache } = graphContext;
   const s = computeStatus(graph);
   const workspaceGraphPath = graphPath.replaceAll("\\", "/");
   const core = buildGraphStatusCore({
@@ -348,6 +359,7 @@ function cmdStatus(graphContext, flags) {
           ...core,
           ...s,
           graphPath: workspaceGraphPath,
+          graphCache,
         },
         null,
         2,
@@ -367,6 +379,9 @@ function cmdStatus(graphContext, flags) {
     console.log(
       `  graph commit: ${short(s.graphCommit)}   HEAD: ${short(s.head)}`,
     );
+    if (graphCache) {
+      console.log(`  graph cache: ${graphCache.hit ? "hit" : "write"} (${graphCache.path})`);
+    }
     if (!s.fresh && s.commitsBehind) {
       console.log(
         "  → refresh with /understand or run `npm run harness:graph:refresh:once`, then commit the updated graph.",
@@ -486,42 +501,64 @@ function cmdNeighbors(graph, flags) {
   const { byId, out, inc } = indexGraph(graph);
   const id = resolveNode(graph, byId, flags._[0]);
   if (!id) die(`Node not found: ${flags._[0]}`, 1);
-  const depth = flags.depth ?? 1;
-  const seen = new Set([id]);
-  let frontier = [id];
-  const collected = [];
-  for (let d = 0; d < depth; d++) {
-    const next = [];
-    for (const node of frontier) {
-      for (const e of [...(out.get(node) ?? []), ...(inc.get(node) ?? [])]) {
-        if (flags.type && e.type !== flags.type) continue;
-        const dir = e.source === node ? "out" : "in";
-        const other = dir === "out" ? e.target : e.source;
-        collected.push({
-          depth: d + 1,
-          direction: dir,
-          type: e.type,
-          confidence: edgeConfidence(e),
-          node: other,
-        });
-        if (!seen.has(other)) {
-          seen.add(other);
-          next.push(other);
-        }
-      }
-    }
-    frontier = next;
-  }
+  const preset = flags.preset ? resolveRetrievalPreset(flags.preset) : null;
+  const depth = flags.depth ?? preset?.hops ?? 1;
+  const top = flags.top ?? preset?.top ?? Number.MAX_SAFE_INTEGER;
+  const traversal = flags.traversal ?? preset?.traversal ?? "bfs";
+  const collected = collectNeighborhood(graph, id, depth, top, traversal, flags.type);
   if (flags.json) {
-    console.log(JSON.stringify({ id, neighbors: collected }, null, 2));
+    console.log(JSON.stringify({ id, depth, top, traversal, preset: preset?.name ?? null, neighbors: collected }, null, 2));
     return;
   }
-  console.log(`Neighbors of ${id} (depth ${depth}):`);
+  console.log(`Neighbors of ${id} (depth ${depth}, traversal ${traversal}${preset ? `, preset ${preset.name}` : ""}):`);
   if (collected.length === 0) console.log("  (none)");
   for (const c of collected) {
     const arrow = c.direction === "out" ? "→" : "←";
     console.log(`  ${arrow} [${c.type}/${c.confidence}] ${c.node}`);
   }
+}
+
+export function collectNeighborhood(graph, nodeId, depth, top, traversal = "bfs", edgeType) {
+  if (traversal !== "bfs" && traversal !== "dfs") {
+    die(`Unknown traversal "${traversal}". Expected bfs or dfs.`, 2);
+  }
+  const { out, inc } = indexGraph(graph);
+  const seen = new Set([nodeId]);
+  const pending = [{ node: nodeId, depth: 0 }];
+  const collected = [];
+  while (pending.length > 0 && collected.length < top) {
+    const current = traversal === "bfs" ? pending.shift() : pending.pop();
+    if (current.depth >= depth) continue;
+    const edges = [...(out.get(current.node) ?? []), ...(inc.get(current.node) ?? [])];
+    if (traversal === "dfs") edges.reverse();
+    for (const edge of edges) {
+      if (edgeType && edge.type !== edgeType) continue;
+      const direction = edge.source === current.node ? "out" : "in";
+      const node = direction === "out" ? edge.target : edge.source;
+      collected.push({
+        depth: current.depth + 1,
+        direction,
+        type: edge.type,
+        relationKind: relationKindForEdge(edge.type),
+        confidence: edgeConfidence(edge),
+        node,
+      });
+      if (collected.length >= top) break;
+      if (!seen.has(node)) {
+        seen.add(node);
+        pending.push({ node, depth: current.depth + 1 });
+      }
+    }
+  }
+  return collected;
+}
+
+function relationKindForEdge(type) {
+  if (type === "contains" || type === "exports" || type === "extends" || type === "implements") {
+    return "definition";
+  }
+  if (type === "calls" || type === "imports" || type === "uses") return "reference";
+  return "related";
 }
 
 function cmdDependents(graph, flags) {
@@ -641,6 +678,265 @@ function cmdHubs(graph, flags) {
     console.log(`  ${String(r.degree).padStart(4)}  [${r.type}] ${r.id}`);
 }
 
+function resolveRetrievalPreset(value) {
+  const name = String(value ?? "repair-localization");
+  const preset = RETRIEVAL_PRESETS[name];
+  if (!preset) {
+    die(`Unknown retrieval preset "${name}". Expected: ${Object.keys(RETRIEVAL_PRESETS).join(", ")}.`, 2);
+  }
+  return { name, ...preset };
+}
+
+function symbolMatches(graph, query) {
+  const normalized = String(query ?? "").trim().toLowerCase();
+  if (!normalized) die("symbol requires a query", 2);
+  return graph.nodes.filter((node) => {
+    const id = String(node.id ?? "").toLowerCase();
+    const name = String(node.name ?? "").toLowerCase();
+    const type = String(node.type ?? "").toLowerCase();
+    return (type !== "file" && (name === normalized || id.endsWith(`:${normalized}`))) || id === normalized;
+  });
+}
+
+function collectSymbolNeighborhood(graph, nodeId, depth, top, traversal = "bfs") {
+  return collectNeighborhood(graph, nodeId, depth, top, traversal).map((edge) => ({
+    ...edge,
+    relation: edge.type ?? "related",
+  }));
+}
+
+function countBraces(line) {
+  let sanitized = String(line ?? "");
+  sanitized = sanitized.replace(/(['"])(?:\\.|(?!\1).)*\1/g, "");
+  sanitized = sanitized.replace(/\/\/.*$/g, "");
+  return (sanitized.match(/{/g) ?? []).length - (sanitized.match(/}/g) ?? []).length;
+}
+
+function recoverAstBoundary(source, filePath, symbol) {
+  const extension = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
+  if (![".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"].includes(extension)) return null;
+  try {
+    const ast = parseJavaScript(source, {
+      sourceType: "unambiguous",
+      errorRecovery: true,
+      plugins: ["typescript", "jsx", "classProperties", "decorators-legacy", "topLevelAwait"],
+    });
+    let best = null;
+    function visit(node) {
+      if (!node || typeof node !== "object") return;
+      const candidateName =
+        node.id?.name ??
+        (node.key?.type === "Identifier" ? node.key.name : node.key?.value);
+      const isBoundary = /Function|Method|Class|Declare/.test(String(node.type));
+      if (isBoundary && candidateName === symbol && node.loc?.start && node.loc?.end) {
+        const candidate = {
+          start: node.loc.start.line,
+          end: node.loc.end.line,
+        };
+        if (!best || candidate.end - candidate.start < best.end - best.start) best = candidate;
+      }
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "loc" || key === "tokens" || key === "comments") continue;
+        if (Array.isArray(value)) value.forEach(visit);
+        else if (value && typeof value === "object") visit(value);
+      }
+    }
+    visit(ast);
+    return best;
+  } catch {
+    return null;
+  }
+}
+
+function recoverPythonBoundary(source, filePath, symbol) {
+  if (!filePath.toLowerCase().endsWith(".py")) return null;
+  const pythonCommand = process.env.HARNESS_PYTHON_COMMAND || (process.platform === "win32" ? null : "python3");
+  if (!pythonCommand) return null;
+  const script = [
+    "import ast, json, sys",
+    "source = sys.stdin.read()",
+    "target = sys.argv[1]",
+    "try:",
+    "    tree = ast.parse(source)",
+    "except SyntaxError:",
+    "    print('null')",
+    "    raise SystemExit(0)",
+    "matches = []",
+    "for node in ast.walk(tree):",
+    "    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == target:",
+    "        matches.append({'start': node.lineno, 'end': node.end_lineno})",
+    "print(json.dumps(min(matches, key=lambda item: item['end'] - item['start']) if matches else None))",
+  ].join("\n");
+  const result = spawnSync(pythonCommand, ["-c", script, symbol], {
+    input: source,
+    encoding: "utf8",
+    shell: false,
+    stdio: ["pipe", "pipe", "ignore"],
+    timeout: 2000,
+  });
+  if (result.status !== 0) return null;
+  try {
+    const parsed = JSON.parse(result.stdout.trim());
+    return parsed && Number.isInteger(parsed.start) && Number.isInteger(parsed.end) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function recoverNodeBoundary(node) {
+  const filePath = node?.filePath;
+  const lineRange = node?.lineRange;
+  if (typeof filePath !== "string") {
+    return null;
+  }
+  const absolutePath = resolve(repoRoot, filePath);
+  const relativePath = relative(repoRoot, absolutePath);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath) || !existsSync(absolutePath)) {
+    return null;
+  }
+  const lines = readFileSync(absolutePath, "utf8").split(/\r?\n/);
+  let start = Array.isArray(lineRange) && lineRange.length >= 2 ? Number(lineRange[0]) : null;
+  let end = Array.isArray(lineRange) && lineRange.length >= 2 ? Number(lineRange[1]) : null;
+  let fallback = false;
+  let fallbackStrategy = null;
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+    const symbol = String(node.name ?? node.id ?? "").split(":").pop();
+    const source = lines.join("\n");
+    const jsBoundary = recoverAstBoundary(source, filePath, symbol);
+    const pythonBoundary = jsBoundary ? null : recoverPythonBoundary(source, filePath, symbol);
+    const astBoundary = jsBoundary ?? pythonBoundary;
+    if (astBoundary) {
+      start = astBoundary.start;
+      end = astBoundary.end;
+      fallback = true;
+      fallbackStrategy = pythonBoundary
+        ? "python-ast"
+        : "ast";
+    }
+    if (fallbackStrategy === "ast") {
+      // AST recovery is authoritative for this fallback path; skip textual heuristics.
+    } else {
+    const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const declaration = new RegExp(`\\b${escaped}\\b`);
+    const found = lines.findIndex((line) => declaration.test(line));
+    if (found < 0) return null;
+    start = found + 1;
+    end = Math.min(lines.length, start + MAX_CONTEXT_SLICE_LINES - 1);
+    const declarationText = lines[found];
+    if (declarationText.includes("{")) {
+      fallbackStrategy = "brace";
+      let balance = countBraces(declarationText);
+      for (let index = start; index < end && balance > 0; index += 1) {
+        balance += countBraces(lines[index]);
+        if (balance <= 0) end = index + 1;
+      }
+    } else {
+      fallbackStrategy = "indentation";
+      const baseIndent = (declarationText.match(/^\s*/) ?? [""])[0].length;
+      for (let index = start; index < end; index += 1) {
+        const line = lines[index];
+        if (line.trim() && (line.match(/^\s*/) ?? [""])[0].length <= baseIndent) {
+          end = index;
+          break;
+        }
+      }
+    }
+    fallback = true;
+    }
+  }
+  const boundedEnd = Math.min(end, start + MAX_CONTEXT_SLICE_LINES - 1, lines.length);
+  const content = lines
+    .slice(start - 1, boundedEnd)
+    .map((line, index) => `${start + index}: ${line}`)
+    .join("\n")
+    .slice(0, MAX_CONTEXT_SLICE_CHARS);
+  return {
+    symbol: node.name ?? node.id ?? null,
+    nodeType: node.type ?? null,
+    filePath: relativePath.replaceAll("\\", "/"),
+    lineRange: [start, boundedEnd],
+    fallback,
+    boundarySource: fallback ? fallbackStrategy : "provider",
+    truncated: boundedEnd < end || content.length >= MAX_CONTEXT_SLICE_CHARS,
+    content,
+  };
+}
+
+const readNodeSource = recoverNodeBoundary;
+
+function cmdSymbol(graph, flags) {
+  const query = flags._[0];
+  const preset = resolveRetrievalPreset(flags.preset);
+  const depth = flags.depth ? Number(flags.depth) : preset.hops;
+  const top = flags.top ? Number(flags.top) : preset.top;
+  if (!Number.isInteger(depth) || depth < 1) die("depth must be a positive integer", 2);
+  if (!Number.isInteger(top) || top < 1) die("top must be a positive integer", 2);
+  const matches = symbolMatches(graph, query);
+  const results = matches.slice(0, top).map((node) => ({
+    id: node.id,
+    type: node.type ?? null,
+    name: node.name ?? node.id.split(":").pop(),
+    path: node.path ?? node.filePath ?? node.file ?? null,
+    neighborhood: collectSymbolNeighborhood(graph, node.id, depth, top, preset.traversal),
+  }));
+  const payload = { ok: true, query, preset: preset.name, depth, top, count: results.length, results };
+  if (flags.json) {
+    console.log(JSON.stringify(payload, null, 2));
+    return;
+  }
+  console.log(`Symbol lookup: ${query} (${results.length} hit(s), preset=${preset.name})`);
+  for (const result of results) {
+    console.log(`  ${result.id}`);
+    for (const item of result.neighborhood) console.log(`    -[${item.relation}/${item.confidence} ${item.direction}]-> ${item.node}`);
+  }
+}
+
+function cmdContextPack(graph, flags) {
+  const query = flags._[0];
+  const preset = resolveRetrievalPreset(flags.preset);
+  const matches = symbolMatches(graph, query);
+  const nodesById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const contextHeader = `## Dependencies for ${query}`;
+  const sectionBudget = MAX_CONTEXT_PACK_CHARS - contextHeader.length - 2;
+  const sections = [];
+  for (const node of matches.slice(0, preset.top)) {
+    const neighborhood = collectSymbolNeighborhood(graph, node.id, preset.hops, preset.top, preset.traversal);
+    const source = readNodeSource(node);
+    const lines = [`### ${node.id}`, `location: ${node.path ?? node.filePath ?? node.file ?? "unknown"}`];
+    if (source) {
+      lines.push(`source lines: ${source.lineRange[0]}-${source.lineRange[1]}`);
+      lines.push("source:", "```text", source.content, "```");
+    }
+    if (neighborhood.length) {
+      lines.push("dependencies:");
+      for (const item of neighborhood) {
+        const related = nodesById.get(item.node);
+        const relatedSource = readNodeSource(related);
+        lines.push(`- ${item.direction} ${item.relationKind} ${item.relation} ${item.confidence}: ${related?.id ?? item.node}`);
+        if (relatedSource) {
+          lines.push(`  location: ${relatedSource.filePath}:${relatedSource.lineRange[0]}-${relatedSource.lineRange[1]}`);
+          lines.push("  source:", "  ```text", relatedSource.content.split("\n").map((line) => `  ${line}`).join("\n"), "  ```");
+        }
+      }
+    }
+    const section = lines.join("\n");
+    const current = sections.join("\n\n");
+    if ((current + (current ? "\n\n" : "") + section).length > sectionBudget) break;
+    sections.push(section);
+  }
+  const payload = {
+    ok: true,
+    profile: "repair-context-pack",
+    preset: preset.name,
+    symbol: query,
+    content: [contextHeader, ...sections].join("\n\n"),
+    hitCount: sections.length,
+    truncated: matches.length > sections.length,
+  };
+  if (flags.json) console.log(JSON.stringify(payload, null, 2));
+  else console.log(payload.content);
+}
+
 function cmdAnnotate(graphContext) {
   const { graph, graphPath, providerId } = graphContext;
   if (providerId !== "understand-anything") {
@@ -758,7 +1054,7 @@ function main() {
   const flags = parseFlags(rest);
   if (!cmd || cmd === "--help" || cmd === "-h") {
     die(
-      "Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|dependents|path|layers|layer|hubs|annotate|brief-check> [--provider <understand-anything|graphify|both>]",
+      "Usage: graph.mjs <status|provider-status|genui-status|events|banner|neighbors|symbol|context-pack|dependents|path|layers|layer|hubs|annotate|brief-check>",
     );
   }
   if (cmd === "brief-check") {
@@ -881,6 +1177,10 @@ function main() {
       return cmdBanner(graphContext);
     case "neighbors":
       return cmdNeighbors(graphContext.graph, flags);
+    case "symbol":
+      return cmdSymbol(graphContext.graph, flags);
+    case "context-pack":
+      return cmdContextPack(graphContext.graph, flags);
     case "dependents":
       return cmdDependents(graphContext.graph, flags);
     case "path":

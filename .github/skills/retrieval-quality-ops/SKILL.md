@@ -19,6 +19,22 @@ description: A/B evaluation of retrieval stacks comparing vector-only against co
 - **Variant**: Contextual + BM25 + rerank (alternative approach)
 - **Metrics**: Identical across both → fair comparison (recall@1/3/5, token cost, latency, task success)
 
+### Graph-Hop Variant
+
+Add a second variant when evaluating code-task retrieval:
+
+- **Graph-hop assisted**: vector retrieval seeded or expanded with the canonical symbol
+  neighborhood from `graph symbol` / `graph-context-pack`.
+- **Presets**: `repair-localization`, `review-risk`, and `architect-blast-radius` define bounded
+  graph depth and result counts.
+- **Additional metrics**: first-pass patch acceptance and review-fix loop count.
+- **Evidence**: context-pack source slices and loop-journal retrieval provenance can be inspected by
+  `grade-trace`; provenance is descriptive only and does not alter trajectory scores.
+
+The graph-hop variant must preserve the same task set, token budget accounting, and validation
+criteria as the baseline. It is an evaluation mode, not an automatic replacement for vector-only
+retrieval.
+
 **Scope:** Evaluation design and measurement only (no production implementation yet).
 
 ---
@@ -139,6 +155,8 @@ decision_threshold:
   - [ ] token_cost_delta = (variant.cost - baseline.cost) / baseline.cost
   - [ ] latency_p50_delta = variant.latency_p50 - baseline.latency_p50
   - [ ] task_success_delta = variant.success - baseline.success (expect ~0)
+  - [ ] first_pass_patch_acceptance_delta
+  - [ ] review_fix_loop_count_delta
 
 - [ ] **Decision gate**
   - [ ] If recall@5_delta >= +15% AND token_cost_delta <= +10% → **GO**

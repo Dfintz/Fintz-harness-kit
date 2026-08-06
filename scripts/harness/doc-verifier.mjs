@@ -17,9 +17,11 @@
  *   node scripts/harness/doc-verifier.mjs --file doc.md --min-score 50 --min-words 200
  *   npm run harness:doc:verify -- --file README.md
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { dirname, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { runPolicyDetectors } from './policy-detector-registry.mjs';
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(harnessDir, '..', '..');
@@ -44,9 +46,109 @@ function loadDocWorkflowConfig() {
 // Score ≥ 60 = standard prose readable by the general public.
 // ---------------------------------------------------------------------------
 
-const STRIP_MD = /[#*_`~>\[\]!|\\]|(?:\[.*?\]\(.*?\))|(?:```[\s\S]*?```)|(?:`[^`]+`)/g;
 const STRIP_PUNCTUATION = /[^a-z0-9'\s-]/gi;
-const SENTENCE_END = /[.!?]+\s/g;
+const REGEX_ESCAPE_PATTERN = /[.*+?^${}()|[\]\\]/g;
+
+function normalizeLineEndings(text) {
+  return String(text ?? '').replace(/\r\n?/g, '\n');
+}
+
+function stripFencedCodeBlocks(text) {
+  const source = normalizeLineEndings(text);
+  const lines = source.split('\n');
+  const out = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('```')) {
+      inFence = !inFence;
+      out.push(' ');
+      continue;
+    }
+    if (!inFence) out.push(line);
+  }
+
+  return out.join('\n');
+}
+
+function stripInlineCodeSegments(text) {
+  let out = '';
+  let inCode = false;
+  for (const ch of String(text ?? '')) {
+    if (ch === '`') {
+      inCode = !inCode;
+      out += ' ';
+      continue;
+    }
+    out += inCode ? ' ' : ch;
+  }
+  return out;
+}
+
+function stripMarkdownLinks(text) {
+  const source = String(text ?? '');
+  let out = '';
+  let i = 0;
+  while (i < source.length) {
+    if (source[i] !== '[') {
+      out += source[i];
+      i += 1;
+      continue;
+    }
+
+    const closeBracket = source.indexOf(']', i + 1);
+    if (closeBracket === -1 || source[closeBracket + 1] !== '(') {
+      out += source[i];
+      continue;
+    }
+
+    const closeParen = source.indexOf(')', closeBracket + 2);
+    const openNewline = source.indexOf('\n', i + 1);
+    if (closeParen === -1 || (openNewline !== -1 && openNewline < closeParen)) {
+      out += source[i];
+      i += 1;
+      continue;
+    }
+
+    out += ' ';
+    i = closeParen + 1;
+  }
+
+  return out;
+}
+
+function stripMarkdownMarkup(text) {
+  let out = String(text ?? '');
+  const marks = ['#', '*', '_', '~', '>', '[', ']', '!', '|', '\\'];
+  for (const mark of marks) {
+    out = out.split(mark).join(' ');
+  }
+  return out;
+}
+
+function stripMarkdownForCounting(text) {
+  const noFences = stripFencedCodeBlocks(text);
+  const noLinks = stripMarkdownLinks(noFences);
+  const noInlineCode = stripInlineCodeSegments(noLinks);
+  return stripMarkdownMarkup(noInlineCode);
+}
+
+function countPunctuationSentences(text) {
+  const source = String(text ?? '');
+  let count = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch !== '.' && ch !== '!' && ch !== '?') continue;
+    const next = source[i + 1];
+    if (next === undefined || /\s/.test(next)) count += 1;
+  }
+  return Math.max(1, count);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(REGEX_ESCAPE_PATTERN, String.raw`\$&`);
+}
 
 function countSyllables(word) {
   const w = word.toLowerCase().replace(/[^a-z]/g, '');
@@ -60,16 +162,14 @@ function countSyllables(word) {
 }
 
 function fleschKincaidReadingEase(text) {
-  const stripped = text
-    .replace(/```[\s\S]*?```/g, ' ')   // remove fenced code blocks first
-    .replace(STRIP_MD, ' ')
+  const stripped = stripMarkdownForCounting(text)
     .replace(STRIP_PUNCTUATION, ' ');
 
   const words = stripped.split(/\s+/).filter(w => w.length > 0);
   if (words.length === 0) return { score: 100, words: 0, sentences: 0, syllables: 0 };
 
   // Count sentences: terminal punctuation OR each non-empty line (whichever is more)
-  const punctuationSentences = Math.max(1, ((stripped + ' ').match(SENTENCE_END) || []).length);
+  const punctuationSentences = countPunctuationSentences(stripped);
   const lineSentences = Math.max(1, text.split('\n').filter(l => l.trim().length > 0).length);
   const sentences = Math.max(punctuationSentences, Math.floor(lineSentences / 3));
 
@@ -124,27 +224,55 @@ function extractSections(text) {
 }
 
 function wordCount(text) {
-  const stripped = text.replace(STRIP_MD, ' ');
+  const stripped = stripMarkdownForCounting(text);
   return stripped.split(/\s+/).filter(w => w.length > 0).length;
 }
 
 function countPhraseOccurrences(text, phrase) {
-  if (!phrase || !String(phrase).trim()) return 0;
-  const escaped = String(phrase).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(escaped, 'gi');
-  const matches = text.match(pattern);
-  return matches ? matches.length : 0;
+  const needle = String(phrase ?? '').trim().toLowerCase();
+  if (!needle) return 0;
+
+  const source = String(text ?? '').toLowerCase();
+  let count = 0;
+  let index = source.indexOf(needle);
+  while (index !== -1) {
+    count += 1;
+    index = source.indexOf(needle, index + needle.length);
+  }
+  return count;
 }
 
-// ---------------------------------------------------------------------------
-// Verifier
-// ---------------------------------------------------------------------------
+function wordCountDetail(totalWords, minWords, maxWords) {
+  const minPart = minWords !== null ? `, min ${minWords}` : '';
+  const maxPart = maxWords !== null ? `, max ${maxWords}` : '';
+  return `${totalWords} words${minPart}${maxPart}.`;
+}
 
-function verifyDocument(text, options) {
-  const findings = [];
+function phraseMatchDetail(matches) {
+  if (matches.length === 0) return 'No banned low-signal phrases detected.';
+  const summary = matches.map((entry) => `"${entry.phrase}" x${entry.count}`).join(', ');
+  return `Detected ${matches.length} banned phrase pattern(s): ${summary}.`;
+}
 
-  // 1. Flesch-Kincaid
-  const minScore = Number(options.minScore ?? 60);
+function runPolicyFindings(text) {
+  return runPolicyDetectors(text, 'document').map((detector) => ({
+    rule: `policy-detector:${detector.id}`,
+    severity: detector.severity,
+    pass: false,
+    detail: detector.message,
+    advisory: detector.advisory,
+    scope: detector.scope,
+  }));
+}
+
+function normalizeMinMax(options) {
+  return {
+    minWords: options.minWords !== undefined ? Number(options.minWords) : null,
+    maxWords: options.maxWords !== undefined ? Number(options.maxWords) : null,
+  };
+}
+
+function addReadabilityFinding(findings, text, minScore) {
   const fk = fleschKincaidReadingEase(text);
   findings.push({
     rule: 'readability',
@@ -154,33 +282,28 @@ function verifyDocument(text, options) {
     score: fk.score,
     minScore,
   });
+  return fk;
+}
 
-  // 2. Total word count
-  const totalWords = wordCount(text);
-  const minWords = options.minWords !== undefined ? Number(options.minWords) : null;
-  const maxWords = options.maxWords !== undefined ? Number(options.maxWords) : null;
+function addTotalWordCountFinding(findings, totalWords, minWords, maxWords) {
+  if (minWords === null && maxWords === null) return;
 
-  if (minWords !== null || maxWords !== null) {
-    const tooShort = minWords !== null && totalWords < minWords;
-    const tooLong = maxWords !== null && totalWords > maxWords;
-    findings.push({
-      rule: 'word-count-total',
-      pass: !tooShort && !tooLong,
-      detail: `${totalWords} words${minWords !== null ? `, min ${minWords}` : ''}${maxWords !== null ? `, max ${maxWords}` : ''}.`,
-      totalWords,
-      minWords,
-      maxWords,
-    });
-  }
+  const tooShort = minWords !== null && totalWords < minWords;
+  const tooLong = maxWords !== null && totalWords > maxWords;
+  findings.push({
+    rule: 'word-count-total',
+    pass: !tooShort && !tooLong,
+    detail: wordCountDetail(totalWords, minWords, maxWords),
+    totalWords,
+    minWords,
+    maxWords,
+  });
+}
 
-  // 3. Required sections
-  const requiredSections = Array.isArray(options.requiredSections) ? options.requiredSections : [];
-  const sections = extractSections(text);
-  const headingTexts = sections.map(s => s.heading);
-
+function addRequiredSectionFindings(findings, requiredSections, headingTexts) {
   for (const required of requiredSections) {
-    const pattern = required instanceof RegExp ? required : new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    const found = headingTexts.some(h => pattern.test(h));
+    const pattern = required instanceof RegExp ? required : new RegExp(escapeRegExp(required), 'i');
+    const found = headingTexts.some((heading) => pattern.test(heading));
     findings.push({
       rule: 'required-section',
       section: required,
@@ -188,14 +311,12 @@ function verifyDocument(text, options) {
       detail: found ? `Section "${required}" found.` : `Section "${required}" is missing.`,
     });
   }
+}
 
-  // 4. Per-section word count thresholds
-  const sectionThresholds = options.sectionWordCounts || {};
+function addSectionWordCountFindings(findings, sections, sectionThresholds) {
   for (const [sectionPattern, thresholds] of Object.entries(sectionThresholds)) {
-    const pattern = new RegExp(sectionPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    const matched = sections.filter(s => pattern.test(s.heading));
-
-    if (matched.length === 0) continue;
+    const pattern = new RegExp(escapeRegExp(sectionPattern), 'i');
+    const matched = sections.filter((section) => pattern.test(section.heading));
     for (const section of matched) {
       const wc = wordCount(section.content);
       const sMin = thresholds.min !== undefined ? Number(thresholds.min) : null;
@@ -206,44 +327,68 @@ function verifyDocument(text, options) {
         rule: 'section-word-count',
         section: section.heading,
         pass: !tooShort && !tooLong,
-        detail: `"${section.heading}": ${wc} words${sMin !== null ? `, min ${sMin}` : ''}${sMax !== null ? `, max ${sMax}` : ''}.`,
+        detail: `"${section.heading}": ${wordCountDetail(wc, sMin, sMax)}`,
         words: wc,
         min: sMin,
         max: sMax,
       });
     }
   }
+}
 
-  // 5. Warning-first no-ai-slop phrase checks
+function normalizeNoAiSlopOptions(noAiSlop) {
+  const mode = String(noAiSlop.mode || 'warn').toLowerCase() === 'error' ? 'error' : 'warn';
+  const bannedPhrases = Array.isArray(noAiSlop.bannedPhrases)
+    ? noAiSlop.bannedPhrases.map((value) => String(value).trim()).filter(Boolean)
+    : [];
+  return { mode, bannedPhrases };
+}
+
+function addNoAiSlopFinding(findings, text, noAiSlop) {
+  if (!noAiSlop.enabled) return;
+
+  const { mode, bannedPhrases } = normalizeNoAiSlopOptions(noAiSlop);
+  if (bannedPhrases.length === 0) return;
+
+  const searchableText = stripMarkdownForCounting(text).toLowerCase();
+  const matches = bannedPhrases
+    .map((phrase) => ({ phrase, count: countPhraseOccurrences(searchableText, phrase.toLowerCase()) }))
+    .filter((entry) => entry.count > 0);
+
+  findings.push({
+    rule: 'no-ai-slop-phrase',
+    severity: mode,
+    pass: matches.length === 0,
+    detail: phraseMatchDetail(matches),
+    mode,
+    matches,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Verifier
+// ---------------------------------------------------------------------------
+
+function verifyDocument(text, options) {
+  const findings = [];
+  const minScore = Number(options.minScore ?? 60);
+  const fk = addReadabilityFinding(findings, text, minScore);
+  const totalWords = wordCount(text);
+  const { minWords, maxWords } = normalizeMinMax(options);
+  addTotalWordCountFinding(findings, totalWords, minWords, maxWords);
+
+  const requiredSections = Array.isArray(options.requiredSections) ? options.requiredSections : [];
+  const sections = extractSections(text);
+  const headingTexts = sections.map((section) => section.heading);
+  addRequiredSectionFindings(findings, requiredSections, headingTexts);
+
+  const sectionThresholds = options.sectionWordCounts || {};
+  addSectionWordCountFindings(findings, sections, sectionThresholds);
+
   const noAiSlop = options.noAiSlop || {};
-  const noAiSlopEnabled = Boolean(noAiSlop.enabled);
-  if (noAiSlopEnabled) {
-    const mode = String(noAiSlop.mode || 'warn').toLowerCase() === 'error' ? 'error' : 'warn';
-    const bannedPhrases = Array.isArray(noAiSlop.bannedPhrases)
-      ? noAiSlop.bannedPhrases.map(value => String(value).trim()).filter(Boolean)
-      : [];
-    const searchableText = text
-      .replace(/```[\s\S]*?```/g, ' ')
-      .replace(STRIP_MD, ' ')
-      .toLowerCase();
+  addNoAiSlopFinding(findings, text, noAiSlop);
 
-    if (bannedPhrases.length > 0) {
-      const matches = bannedPhrases
-        .map(phrase => ({ phrase, count: countPhraseOccurrences(searchableText, phrase.toLowerCase()) }))
-        .filter(entry => entry.count > 0);
-
-      findings.push({
-        rule: 'no-ai-slop-phrase',
-        severity: mode,
-        pass: matches.length === 0,
-        detail: matches.length === 0
-          ? 'No banned low-signal phrases detected.'
-          : `Detected ${matches.length} banned phrase pattern(s): ${matches.map(entry => `"${entry.phrase}" x${entry.count}`).join(', ')}.`,
-        mode,
-        matches,
-      });
-    }
-  }
+  findings.push(...runPolicyFindings(text));
 
   const ok = findings.every(f => (f.severity || 'error') !== 'error' || f.pass);
   return { ok, totalWords, readability: fk, findings };
@@ -287,6 +432,27 @@ function printJson(payload, exitCode) {
   if (exitCode !== undefined) process.exit(exitCode);
 }
 
+function isContainedPath(root, candidate) {
+  const rootPath = realpathSync(root);
+  const candidatePath = realpathSync(candidate);
+  const rootWithSeparator = rootPath.endsWith(sep) ? rootPath : `${rootPath}${sep}`;
+  return candidatePath === rootPath || candidatePath.startsWith(rootWithSeparator);
+}
+
+function isTrustedInputPath(pathToCheck) {
+  const trustedRoots = [repoRoot, process.cwd(), tmpdir()]
+    .filter((root, index, allRoots) => allRoots.indexOf(root) === index)
+    .filter((root) => existsSync(root));
+
+  return trustedRoots.some((root) => {
+    try {
+      return isContainedPath(root, pathToCheck);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function showHelp() {
   printJson({
     usage: 'node scripts/harness/doc-verifier.mjs --file <path> [options]',
@@ -325,6 +491,111 @@ function showHelp() {
   });
 }
 
+function readInputDocument(filePath) {
+  // NOSONAR: filePath is constrained by existsSync + isTrustedInputPath before file read.
+  const resolvedPath = resolve(filePath);
+  if (!existsSync(resolvedPath)) {
+    process.stderr.write(`[doc-verifier] File not found: ${resolvedPath}\n`);
+    process.exit(2);
+  }
+
+  if (!isTrustedInputPath(resolvedPath)) {
+    process.stderr.write(`[doc-verifier] Refusing to read untrusted path: ${resolvedPath}\n`);
+    process.exit(2);
+  }
+
+  try {
+    // NOSONAR: guarded read from trusted roots only (repoRoot/cwd/tmpdir).
+    return { resolvedPath, text: readFileSync(resolvedPath, 'utf8') };
+  } catch (err) {
+    process.stderr.write(`[doc-verifier] Cannot read file: ${err.message}\n`);
+    process.exit(2);
+  }
+}
+
+function handleListSections(flags, text, resolvedPath) {
+  if (!flags['list-sections']) return false;
+
+  const sections = extractSections(text);
+  printJson({
+    file: resolvedPath,
+    sectionCount: sections.length,
+    sections: sections.map((section) => ({
+      heading: section.heading,
+      level: section.level,
+      words: wordCount(section.content),
+    })),
+  });
+  return true;
+}
+
+function resolveMinScore(flags, cfgVerifier) {
+  if (flags['min-score'] !== undefined) return flags['min-score'];
+  if (cfgVerifier.minScore !== undefined) return cfgVerifier.minScore;
+  return 60;
+}
+
+function resolveNoAiSlopMode(flags, cfgNoAiSlop) {
+  if (flags['no-ai-slop-mode'] !== undefined) return flags['no-ai-slop-mode'];
+  if (cfgNoAiSlop.mode !== undefined) return cfgNoAiSlop.mode;
+  return 'warn';
+}
+
+function buildVerifierOptions(flags, cfgVerifier) {
+  const cfgNoAiSlop = cfgVerifier.noAiSlop || {};
+  const wordThresholds = cfgVerifier.wordCountThresholds || {};
+  const cliRequiredSections = toArray(flags['require-section']);
+  const cliBannedPhrases = toArray(flags['ban-phrase']);
+
+  const requiredSections = [
+    ...(Array.isArray(cfgVerifier.requiredSections) ? cfgVerifier.requiredSections : []),
+    ...cliRequiredSections,
+  ];
+
+  const minWords = flags['min-words'] !== undefined ? flags['min-words'] : wordThresholds.min;
+  const maxWords = flags['max-words'] !== undefined ? flags['max-words'] : wordThresholds.max;
+
+  const noAiSlopEnabled = flags['no-ai-slop'] === true ? true : Boolean(cfgNoAiSlop.enabled);
+  const noAiSlopMode = resolveNoAiSlopMode(flags, cfgNoAiSlop);
+  const noAiSlopPhrases = [
+    ...(Array.isArray(cfgNoAiSlop.bannedPhrases) ? cfgNoAiSlop.bannedPhrases : []),
+    ...cliBannedPhrases,
+  ];
+
+  return {
+    minScore: resolveMinScore(flags, cfgVerifier),
+    minWords,
+    maxWords,
+    requiredSections,
+    sectionWordCounts: wordThresholds.sections || {},
+    noAiSlop: {
+      enabled: noAiSlopEnabled,
+      mode: noAiSlopMode,
+      bannedPhrases: noAiSlopPhrases,
+    },
+  };
+}
+
+function countFailuresBySeverity(findings) {
+  const errorFailures = findings.filter((finding) => !finding.pass && (finding.severity || 'error') === 'error').length;
+  const warningFindings = findings.filter((finding) => !finding.pass && (finding.severity || 'error') === 'warn').length;
+  return { errorFailures, warningFindings };
+}
+
+function buildSummaryMessage(result, errorFailures, warningFindings) {
+  if (result.ok) {
+    if (warningFindings > 0) {
+      return `All error-level checks passed with ${warningFindings} warning finding(s).`;
+    }
+    return `All ${result.findings.length} check(s) passed.`;
+  }
+
+  const warningSuffix = warningFindings > 0
+    ? `; ${warningFindings} warning finding(s) also reported`
+    : '';
+  return `${errorFailures} error-level check(s) failed${warningSuffix}.`;
+}
+
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
 
@@ -336,87 +607,16 @@ async function main() {
     process.exit(2);
   }
 
-  const resolvedPath = resolve(filePath);
-  // Prevent traversal: path must resolve to a real file
-  if (!existsSync(resolvedPath)) {
-    process.stderr.write(`[doc-verifier] File not found: ${resolvedPath}\n`);
-    process.exit(2);
-  }
-
-  let text;
-  try {
-    text = readFileSync(resolvedPath, 'utf8');
-  } catch (err) {
-    process.stderr.write(`[doc-verifier] Cannot read file: ${err.message}\n`);
-    process.exit(2);
-  }
-
-  // --list-sections mode
-  if (flags['list-sections']) {
-    const sections = extractSections(text);
-    printJson({
-      file: resolvedPath,
-      sectionCount: sections.length,
-      sections: sections.map(s => ({
-        heading: s.heading,
-        level: s.level,
-        words: wordCount(s.content),
-      })),
-    });
-    return;
-  }
+  const { resolvedPath, text } = readInputDocument(filePath);
+  if (handleListSections(flags, text, resolvedPath)) return;
 
   // Load thresholds: config file first, then CLI flags override
   const cfgVerifier = loadDocWorkflowConfig();
-  const cfgNoAiSlop = cfgVerifier.noAiSlop || {};
+  const verifierOptions = buildVerifierOptions(flags, cfgVerifier);
+  const result = verifyDocument(text, verifierOptions);
 
-  const cliRequiredSections = toArray(flags['require-section']);
-  const cliBannedPhrases = toArray(flags['ban-phrase']);
-
-  const requiredSections = [
-    ...(Array.isArray(cfgVerifier.requiredSections) ? cfgVerifier.requiredSections : []),
-    ...cliRequiredSections,
-  ];
-
-  const wordThresholds = cfgVerifier.wordCountThresholds || {};
-  const minWords = flags['min-words'] !== undefined ? flags['min-words']
-    : wordThresholds.min !== undefined ? wordThresholds.min
-    : undefined;
-  const maxWords = flags['max-words'] !== undefined ? flags['max-words']
-    : wordThresholds.max !== undefined ? wordThresholds.max
-    : undefined;
-  const minScore = flags['min-score'] !== undefined ? flags['min-score']
-    : cfgVerifier.minScore !== undefined ? cfgVerifier.minScore
-    : 60;
-
-  const noAiSlopEnabled = flags['no-ai-slop'] === true
-    ? true
-    : Boolean(cfgNoAiSlop.enabled);
-  const noAiSlopMode = flags['no-ai-slop-mode'] !== undefined
-    ? flags['no-ai-slop-mode']
-    : cfgNoAiSlop.mode !== undefined
-      ? cfgNoAiSlop.mode
-      : 'warn';
-  const noAiSlopPhrases = [
-    ...(Array.isArray(cfgNoAiSlop.bannedPhrases) ? cfgNoAiSlop.bannedPhrases : []),
-    ...cliBannedPhrases,
-  ];
-
-  const result = verifyDocument(text, {
-    minScore,
-    minWords,
-    maxWords,
-    requiredSections,
-    sectionWordCounts: wordThresholds.sections || {},
-    noAiSlop: {
-      enabled: noAiSlopEnabled,
-      mode: noAiSlopMode,
-      bannedPhrases: noAiSlopPhrases,
-    },
-  });
-
-  const errorFailures = result.findings.filter(f => !f.pass && (f.severity || 'error') === 'error').length;
-  const warningFindings = result.findings.filter(f => !f.pass && (f.severity || 'error') === 'warn').length;
+  const { errorFailures, warningFindings } = countFailuresBySeverity(result.findings);
+  const summary = buildSummaryMessage(result, errorFailures, warningFindings);
 
   printJson({
     ok: result.ok,
@@ -427,15 +627,13 @@ async function main() {
     totalWords: result.totalWords,
     warningCount: warningFindings,
     findings: result.findings,
-    summary: result.ok
-      ? (warningFindings > 0
-        ? `All error-level checks passed with ${warningFindings} warning finding(s).`
-        : `All ${result.findings.length} check(s) passed.`)
-      : `${errorFailures} error-level check(s) failed${warningFindings > 0 ? `; ${warningFindings} warning finding(s) also reported` : ''}.`,
+    summary,
   }, result.ok ? 0 : 1);
 }
 
-main().catch(err => {
+try {
+  await main();
+} catch (err) {
   process.stderr.write(`[doc-verifier] ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(2);
-});
+}

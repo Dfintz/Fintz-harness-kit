@@ -262,6 +262,15 @@ export function gradeTrajectory(journal, opts = {}) {
       recommendedNoImprovementStop,
       stoppedEfficiently: wastedIterations === 0,
     },
+    retrievalContext:
+      journal?.retrievalContext && typeof journal.retrievalContext === "object"
+        ? {
+            source: safe(journal.retrievalContext.source ?? "unknown"),
+            symbol: safe(journal.retrievalContext.symbol ?? ""),
+            preset: safe(journal.retrievalContext.preset ?? ""),
+            includedInPrompt: journal.retrievalContext.includedInPrompt === true,
+          }
+        : null,
     reasons,
   };
 }

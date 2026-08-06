@@ -290,6 +290,8 @@ function showHelp() {
       "node scripts/harness/mcp-tools.mjs graph-genui-status",
       "node scripts/harness/mcp-tools.mjs graph-events",
       'node scripts/harness/mcp-tools.mjs graph-neighbors --node-id "file:backend/src/app.ts" --depth 2',
+      'node scripts/harness/mcp-tools.mjs graph-symbol --query "planTask" --preset repair-localization',
+      'node scripts/harness/mcp-tools.mjs graph-context-pack --symbol "planTask" --preset repair-localization',
       'node scripts/harness/mcp-tools.mjs memory-search --query "tenant" --scope all --limit 5',
       'node scripts/harness/mcp-tools.mjs vector-search --query "tenant isolation" --scope all --top 8',
       'node scripts/harness/mcp-tools.mjs harness-pick-profile --task "design multi-agent handoff"',
@@ -473,6 +475,22 @@ function executeGraphTool(toolName, flags) {
       if (flags.depth)
         args.push("--depth", String(toPositiveInt(flags.depth, 1)));
       if (typeof flags.type === "string") args.push("--type", flags.type);
+      if (typeof flags.traversal === "string") args.push("--traversal", flags.traversal);
+      if (typeof flags.preset === "string") args.push("--preset", flags.preset);
+      return args;
+    },
+    "graph-symbol": () => {
+      const query = requireValue(flags, "query", "graph-symbol requires --query");
+      const args = ["symbol", query, "--json"];
+      if (typeof flags.preset === "string") args.push("--preset", flags.preset);
+      if (flags.depth) args.push("--depth", String(toPositiveInt(flags.depth, 1)));
+      if (flags.top) args.push("--top", String(toPositiveInt(flags.top, 8)));
+      return args;
+    },
+    "graph-context-pack": () => {
+      const symbol = requireValue(flags, "symbol", "graph-context-pack requires --symbol");
+      const args = ["context-pack", symbol, "--json"];
+      if (typeof flags.preset === "string") args.push("--preset", flags.preset);
       return args;
     },
     "graph-dependents": () => {
@@ -533,6 +551,7 @@ function buildVectorIndexArgs(flags) {
 function buildVectorSearchArgs(flags) {
   const query = requireValue(flags, "query", "vector-search requires --query");
   const args = ["search", "--query", query];
+  pushRequiredValueArg(args, flags, "preset", "--preset requires a value");
   pushRequiredValueArg(args, flags, "scope", "--scope requires a value");
   pushRequiredValueArg(args, flags, "provider", "--provider requires a value");
   pushOptionalPositiveIntArg(args, flags, "top");

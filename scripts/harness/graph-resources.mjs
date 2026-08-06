@@ -27,6 +27,7 @@ const __dirname = dirname(__filename);
  * This is imported directly at module load time (no subprocess)
  */
 let graphModule = null;
+let graphNodeIndexPromise = null;
 
 async function loadGraphModule() {
   if (!graphModule) {
@@ -91,6 +92,7 @@ export async function exportGraphNodes(layerName) {
       uri: `io.modelcontextprotocol/harness/graph/nodes/${node.id}`,
       name: node.id,
       description: `Graph node: ${node.id} in layer ${layerName}`,
+      boundary: graph.recoverNodeBoundary?.(node) ?? null,
       mimeType: 'application/json',
     }));
   } catch (err) {
@@ -98,6 +100,27 @@ export async function exportGraphNodes(layerName) {
     if (err.message.includes('GRAPH_OFFLINE')) throw err;
     throw new Error(`GRAPH_MALFORMED: Failed to export nodes: ${err.message}`);
   }
+}
+
+/**
+ * Resolve one graph node to its containing source boundary and bounded source slice.
+ * @param {string} nodeId
+ * @returns {Promise<object|null>}
+ */
+export async function getGraphNodeBoundary(nodeId) {
+  const graph = await loadGraphModule();
+  if (!graphNodeIndexPromise) {
+    graphNodeIndexPromise = Promise.resolve(
+      new Map(
+        (graph.listLayers?.() ?? [])
+          .flatMap((layer) => graph.listLayerNodes?.(layer.id) ?? [])
+          .map((node) => [node.id, node]),
+      ),
+    );
+  }
+  const node = (await graphNodeIndexPromise).get(nodeId);
+  if (!node) return null;
+  return graph.recoverNodeBoundary?.(node) ?? null;
 }
 
 /**

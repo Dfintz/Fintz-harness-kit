@@ -67,6 +67,11 @@ Expected failure codes asserted by this test:
 - `invalid-model-invoked-allowlist` - sidecar declared `model-invoked-eligible` for a skill not listed in `harness.config.json` `sidecarPolicy.modelInvokedEligibleSkills`.
 - `invalid-pilot-sidecar-policy` - strict pilot mode (`--strict-pilot-policy`) detected a pilot skill that is not `user-invoked-only`.
 
+## Trace Contract Coverage
+
+- `trace-contract-route-test.mjs` checks non-trivial route stage order and rationale shape.
+- `trace-contract-prompt-pack-test.mjs` checks the generated registry prompt-pack manifest, exact stage order, artifact handoffs, and stable Understand/context markers. It uses a unique temporary slug and restores feature-run state.
+
 Strict command:
 
 - `npm run harness:docs:check:strict-pilot`

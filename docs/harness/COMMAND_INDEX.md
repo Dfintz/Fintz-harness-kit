@@ -9,6 +9,10 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 - `npm run harness:handoff:feature -- --task "<task>"`
 - `npm run harness:handoff:review -- --task "<task>"`
 
+Route JSON from `harness:route -- --json` includes additive `rationale.conditionsMatched`,
+`rationale.exclusions`, and `rationale.stateFactors` arrays. These explain the selected route and
+do not alter routing.
+
 ## Stage Execution and Review
 
 - `npm run harness:review -- --subject <path> --reviewer "<cmd>"`
@@ -48,7 +52,15 @@ Quick reference for command surfaces that collaborate across routing, stages, lo
 ## Harness Test Aggregates
 
 - `npm run test:harness:core`
+- `npm run test:harness:adoption`
 - `npm run test:mcp:dispatch`
+
+## Adoption and Maintenance Reports
+
+- `npm run harness:adoption:drift -- --canonical-root <path> --installed-root <path> [--json]` (report-only; generic file shape/hash drift, not semantic sidecar policy validation; defaults to `.github/skills` vs `.claude/skills`, explicit installed roots replace that default)
+- `npm run harness:adoption:retention -- --dir <path> --max-count <n> [--max-age-days <n>]` (plan-only)
+- `npm run harness:adoption:shortcuts -- --shell powershell|posix [--out <path>]` (stdout unless output is explicit)
+- `npm run harness:adoption:hook-guard -- --platform posix|cmd|powershell --arg <token> [--arg <token> ...]` (renders a safely-quoted command string)
 
 ## Graph Freshness and Fallback Surfaces
 

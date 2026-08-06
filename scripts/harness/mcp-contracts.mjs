@@ -112,6 +112,16 @@ export const mcpToolSpecs = [
           description:
             'Optional edge type filter. Valid values: imports, exports, calls, extends, implements, uses, contains',
         },
+        traversal: {
+          type: 'string',
+          enum: ['bfs', 'dfs'],
+          description: 'Traversal strategy (default bfs); retrieval presets select this automatically.',
+        },
+        preset: {
+          type: 'string',
+          enum: ['repair-localization', 'review-risk', 'architect-blast-radius'],
+          description: 'Deterministic depth/traversal/result preset.',
+        },
       },
       ['nodeId']
     ),
@@ -123,6 +133,54 @@ export const mcpToolSpecs = [
       const cliArgs = ['--node-id', nodeId];
       if (depth !== undefined) cliArgs.push('--depth', String(depth));
       if (edgeType) cliArgs.push('--type', edgeType);
+      const traversal = readOptionalString(args, 'traversal');
+      if (traversal) cliArgs.push('--traversal', traversal);
+      const preset = readOptionalString(args, 'preset');
+      if (preset) cliArgs.push('--preset', preset);
+      return cliArgs;
+    },
+  },
+  {
+    name: 'graph-symbol',
+    description: 'Finds canonical symbol nodes and returns their bounded def/ref neighborhood.',
+    inputSchema: objectSchema(
+      {
+        query: { type: 'string', description: 'Symbol name or canonical node id' },
+        preset: {
+          type: 'string',
+          enum: ['repair-localization', 'review-risk', 'architect-blast-radius'],
+          description: 'Retrieval depth and result preset',
+        },
+        depth: { type: 'integer', minimum: 1, description: 'Override traversal depth' },
+        top: { type: 'integer', minimum: 1, description: 'Maximum hits/neighbors' },
+      },
+      ['query']
+    ),
+    toCliArgs: args => {
+      const cliArgs = ['--query', readRequiredString(args, 'query')];
+      pushOptionalCliArg(cliArgs, 'preset', readOptionalString(args, 'preset'));
+      pushOptionalCliArg(cliArgs, 'depth', readOptionalPositiveInt(args, 'depth'));
+      pushOptionalCliArg(cliArgs, 'top', readOptionalPositiveInt(args, 'top'));
+      return cliArgs;
+    },
+  },
+  {
+    name: 'graph-context-pack',
+    description: 'Builds deterministic Dependencies for <symbol> context for repair and review loops.',
+    inputSchema: objectSchema(
+      {
+        symbol: { type: 'string', description: 'Symbol name or canonical node id' },
+        preset: {
+          type: 'string',
+          enum: ['repair-localization', 'review-risk', 'architect-blast-radius'],
+          description: 'Retrieval depth and result preset',
+        },
+      },
+      ['symbol']
+    ),
+    toCliArgs: args => {
+      const cliArgs = ['--symbol', readRequiredString(args, 'symbol')];
+      pushOptionalCliArg(cliArgs, 'preset', readOptionalString(args, 'preset'));
       return cliArgs;
     },
   },
@@ -395,6 +453,11 @@ export const mcpToolSpecs = [
     inputSchema: objectSchema(
       {
         query: { type: 'string', description: 'Search query text' },
+        preset: {
+          type: 'string',
+          enum: ['repair-localization', 'review-risk', 'architect-blast-radius'],
+          description: 'Deterministic retrieval defaults; explicit scope/top override the preset.',
+        },
         scope: {
           type: 'string',
           description:
@@ -451,6 +514,7 @@ export const mcpToolSpecs = [
     toCliArgs: args => {
       const query = readRequiredString(args, 'query');
       const cliArgs = ['--query', query];
+      pushOptionalCliArg(cliArgs, 'preset', readOptionalString(args, 'preset'));
       pushOptionalCliArg(cliArgs, 'scope', readOptionalString(args, 'scope'));
       pushOptionalCliArg(cliArgs, 'provider', readOptionalString(args, 'provider'));
       pushOptionalCliArg(cliArgs, 'top', readOptionalPositiveInt(args, 'top'));

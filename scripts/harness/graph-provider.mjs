@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { assertSafeCliCommand } from './command-validation.mjs';
 
@@ -10,6 +11,9 @@ export const DEFAULT_UA_GRAPH_PATH = '.understand-anything/knowledge-graph.json'
 export const DEFAULT_GRAPHIFY_GRAPH_PATH = '.graphify/knowledge-graph.json';
 export const DEFAULT_GRAPHIFY_HTML_PATH = '.graphify/graph.html';
 export const DEFAULT_GRAPH_EVENTS_PATH = '.github/harness/runs/graph-events.jsonl';
+export const DEFAULT_GRAPH_CACHE_DIR = '.github/harness/runs/graph-cache';
+const GRAPH_CACHE_VERSION = 1;
+const GRAPH_CACHE_MAX_ENTRIES = 20;
 
 function toWorkspacePath(repoRoot, absolutePath) {
   return relative(repoRoot, absolutePath).replaceAll('\\', '/');
@@ -45,6 +49,101 @@ function parseJsonLines(rawText) {
       }
     })
     .filter(Boolean);
+}
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function currentGitCommit(repoRoot) {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function graphCacheDescriptor({ repoRoot, configPath, providerId, graphPath, graphRaw }) {
+  let configRaw = '';
+  try {
+    configRaw = readFileSync(configPath, 'utf8');
+  } catch {
+    configRaw = '';
+  }
+  let sourceStat = null;
+  try {
+    const stats = statSync(graphPath);
+    sourceStat = { size: stats.size, mtimeMs: stats.mtimeMs };
+  } catch {
+    sourceStat = null;
+  }
+  const descriptor = {
+    version: GRAPH_CACHE_VERSION,
+    provider: providerId,
+    commit: currentGitCommit(repoRoot),
+    configHash: sha256(configRaw),
+    graphHash: sha256(graphRaw),
+    sourceStat,
+  };
+  return {
+    descriptor,
+    key: sha256(JSON.stringify(descriptor)),
+    path: join(repoRoot, DEFAULT_GRAPH_CACHE_DIR, `${sha256(JSON.stringify(descriptor))}.json`),
+  };
+}
+
+function validGraph(graph) {
+  return Boolean(
+    graph && typeof graph === 'object' && Array.isArray(graph.nodes) && Array.isArray(graph.edges),
+  );
+}
+
+function readGraphCache(cachePath, descriptor) {
+  if (!existsSync(cachePath)) return null;
+  try {
+    const artifact = JSON.parse(readFileSync(cachePath, 'utf8'));
+    if (
+      artifact?.version !== GRAPH_CACHE_VERSION ||
+      artifact?.key !== sha256(JSON.stringify(descriptor)) ||
+      !validGraph(artifact.graph)
+    ) {
+      return null;
+    }
+    return artifact.graph;
+  } catch {
+    return null;
+  }
+}
+
+function writeGraphCache(cachePath, descriptor, graph) {
+  try {
+    mkdirSync(dirname(cachePath), { recursive: true });
+    writeFileSync(
+      cachePath,
+      JSON.stringify({
+        version: GRAPH_CACHE_VERSION,
+        key: sha256(JSON.stringify(descriptor)),
+        createdAt: new Date().toISOString(),
+        descriptor,
+        graph,
+      }),
+    );
+    const cacheDir = dirname(cachePath);
+    const entries = readdirSync(cacheDir)
+      .filter((entry) => entry.endsWith('.json'))
+      .map((entry) => {
+        const path = join(cacheDir, entry);
+        return { path, mtimeMs: statSync(path).mtimeMs };
+      })
+      .sort((left, right) => right.mtimeMs - left.mtimeMs);
+    for (const entry of entries.slice(GRAPH_CACHE_MAX_ENTRIES)) {
+      try { unlinkSync(entry.path); } catch { /* best-effort retention */ }
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function stringOrUndefined(value) {
@@ -481,7 +580,16 @@ export function loadGraphForQuery({ repoRoot, configPath, overrideProvider } = {
   if (!existsSync(target.graphPath)) {
     throw new Error(`Graph file not found at ${target.graphPath}.`);
   }
-  const graph = JSON.parse(readFileSync(target.graphPath, 'utf8'));
+  const graphRaw = readFileSync(target.graphPath, 'utf8');
+  const cache = graphCacheDescriptor({
+    repoRoot,
+    configPath,
+    providerId: target.providerId,
+    graphPath: target.graphPath,
+    graphRaw,
+  });
+  const cachedGraph = readGraphCache(cache.path, cache.descriptor);
+  const graph = cachedGraph ?? JSON.parse(graphRaw);
   if (!graph || typeof graph !== 'object') {
     throw new Error(`Graph file is not a JSON object: ${target.graphPath}`);
   }
@@ -490,11 +598,19 @@ export function loadGraphForQuery({ repoRoot, configPath, overrideProvider } = {
       `Graph file at ${target.graphPath} is missing nodes/edges arrays required by harness graph queries.`
     );
   }
+  const cacheHit = cachedGraph !== null;
+  if (!cacheHit) writeGraphCache(cache.path, cache.descriptor, graph);
   return {
     providerState: state,
     providerId: target.providerId,
     graphPath: target.graphPath,
     graph,
+    graphCache: {
+      hit: cacheHit,
+      path: toWorkspacePath(repoRoot, cache.path),
+      key: cache.key,
+      descriptor: cache.descriptor,
+    },
   };
 }
 

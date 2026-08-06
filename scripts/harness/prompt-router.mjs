@@ -850,8 +850,157 @@ function resolveTaskText(flags) {
   return "";
 }
 
+function resolveTrivialEligibility(profile, trivialHit, nonTrivialHit, textLength) {
+  return !profile && Boolean(trivialHit) && !nonTrivialHit && textLength < 180;
+}
+
+function resolveSelectedMode(profile, trivial) {
+  return profile?.mode ?? (trivial ? "trivial" : "non-trivial");
+}
+
+function resolveStages(profile, trivial, routing) {
+  if (profile?.stages) {
+    return profile.stages;
+  }
+  if (trivial) {
+    return [routing.trivialStartsAt ?? "implement"];
+  }
+  return routing.nonTrivialStages ?? [
+    "understand",
+    "architect",
+    "implement",
+    "review-breadth",
+    "review-depth",
+    "feedback",
+  ];
+}
+
+function resolveRoutingWhy({
+  profile,
+  profileExplicit,
+  intentRecommendation,
+  profileName,
+  trivial,
+  trivialHit,
+  nonTrivialHit,
+}) {
+  if (profile) {
+    if (!profileExplicit && intentRecommendation?.intent) {
+      return (
+        profile.description ??
+        `intent-selected handoff: ${intentRecommendation.intent} -> ${profileName}`
+      );
+    }
+    return profile.description ?? `profile-selected handoff: ${profileName}`;
+  }
+  if (trivial) {
+    return `matched trivial keyword: ${trivialHit}`;
+  }
+  if (nonTrivialHit) {
+    return `matched non-trivial keyword: ${nonTrivialHit}`;
+  }
+  return "default harness-first routing for any prompt that is not obviously trivial";
+}
+
+function buildConditionsMatched({
+  profile,
+  profileName,
+  intentRecommendation,
+  trivial,
+  trivialHit,
+  nonTrivialHit,
+}) {
+  return [
+    profile ? `profile:${profileName}` : null,
+    intentRecommendation?.intent ? `intent:${intentRecommendation.intent}` : null,
+    trivialHit && trivial ? `trivial-keyword:${trivialHit}` : null,
+    nonTrivialHit ? `non-trivial-keyword:${nonTrivialHit}` : null,
+    !profile && !trivial && !nonTrivialHit ? "default-harness-first" : null,
+  ].filter(Boolean);
+}
+
+function buildExclusions({ profile, nonTrivialHit, textLength, trivial }) {
+  return [
+    profile ? "keyword-only routing bypassed by explicit or recommended profile" : null,
+    nonTrivialHit ? "trivial route excluded by non-trivial keyword" : null,
+    textLength >= 180 ? "trivial route excluded by task length" : null,
+    !profile && !trivial && !nonTrivialHit ? "no trivial keyword matched" : null,
+  ].filter(Boolean);
+}
+
+function buildStateFactors({
+  textLength,
+  profile,
+  profileName,
+  intentRecommendation,
+  trivialHit,
+  nonTrivialHit,
+  trivialEligible,
+  selectedMode,
+}) {
+  return [
+    `task-length:${textLength}`,
+    profile ? `profile-selected:${profileName}` : "profile-selected:none",
+    intentRecommendation?.intent
+      ? `intent-detected:${intentRecommendation.intent}`
+      : "intent-detected:none",
+    trivialHit ? `trivial-keyword-hit:${trivialHit}` : "trivial-keyword-hit:none",
+    nonTrivialHit
+      ? `non-trivial-keyword-hit:${nonTrivialHit}`
+      : "non-trivial-keyword-hit:none",
+    `trivial-eligible:${String(trivialEligible)}`,
+    `selected-mode:${selectedMode}`,
+  ];
+}
+
+function buildRationalePayload({
+  profile,
+  profileName,
+  intentRecommendation,
+  trivial,
+  trivialHit,
+  nonTrivialHit,
+  textLength,
+  selectedMode,
+  trivialEligible,
+}) {
+  const conditionsMatched = buildConditionsMatched({
+    profile,
+    profileName,
+    intentRecommendation,
+    trivial,
+    trivialHit,
+    nonTrivialHit,
+  });
+  const exclusions = buildExclusions({
+    profile,
+    nonTrivialHit,
+    textLength,
+    trivial,
+  });
+  const stateFactors = buildStateFactors({
+    textLength,
+    profile,
+    profileName,
+    intentRecommendation,
+    trivialHit,
+    nonTrivialHit,
+    trivialEligible,
+    selectedMode,
+  });
+
+  return { conditionsMatched, exclusions, stateFactors };
+}
+
+function buildStageModels(stages, modelRouting) {
+  return Object.fromEntries(
+    stages.map((stage) => [stage, modelRouting[stage] ?? modelRouting.implement]),
+  );
+}
+
 export function planTask(taskText, config, options = {}) {
   const text = normalizeText(taskText);
+  const textLength = text.length;
   const routing = config.routing ?? {};
   const trivialKeywords = routing.trivialKeywords ?? [];
   const nonTrivialKeywords = routing.nonTrivialKeywords ?? [];
@@ -870,63 +1019,52 @@ export function planTask(taskText, config, options = {}) {
     text.includes(keyword),
   );
 
-  const trivial =
-    !profile && Boolean(trivialHit) && !nonTrivialHit && text.length < 180;
-  const stages =
-    profile?.stages ??
-    (trivial
-      ? [routing.trivialStartsAt ?? "implement"]
-      : (routing.nonTrivialStages ?? [
-          "understand",
-          "architect",
-          "implement",
-          "review-breadth",
-          "review-depth",
-          "feedback",
-        ]));
+  const trivial = resolveTrivialEligibility(
+    profile,
+    trivialHit,
+    nonTrivialHit,
+    textLength,
+  );
+  const stages = resolveStages(profile, trivial, routing);
+  const selectedMode = resolveSelectedMode(profile, trivial);
 
   const modelRouting = buildModelRouting(config);
 
-  let why;
-  if (profile) {
-    if (!profileExplicit && intentRecommendation?.intent) {
-      why =
-        profile.description ??
-        `intent-selected handoff: ${intentRecommendation.intent} -> ${profileName}`;
-    } else {
-      why = profile.description ?? `profile-selected handoff: ${profileName}`;
-    }
-  } else if (trivial) {
-    why = `matched trivial keyword: ${trivialHit}`;
-  } else if (nonTrivialHit) {
-    why = `matched non-trivial keyword: ${nonTrivialHit}`;
-  } else {
-    why =
-      "default harness-first routing for any prompt that is not obviously trivial";
-  }
+  const why = resolveRoutingWhy({
+    profile,
+    profileExplicit,
+    intentRecommendation,
+    profileName,
+    trivial,
+    trivialHit,
+    nonTrivialHit,
+  });
+  const rationale = buildRationalePayload({
+    profile,
+    profileName,
+    intentRecommendation,
+    trivial,
+    trivialHit,
+    nonTrivialHit,
+    textLength,
+    selectedMode,
+    trivialEligible: trivial,
+  });
+  const stageModels = buildStageModels(stages, modelRouting);
 
   return {
     task: String(taskText ?? "").trim(),
     profile: profileName,
     intent: intentRecommendation?.intent ?? null,
     intentSource: intentRecommendation?.source ?? null,
-    mode: profile?.mode ?? (trivial ? "trivial" : "non-trivial"),
+    mode: selectedMode,
     why,
+    rationale,
     stages,
-    models: Object.fromEntries(
-      stages.map((stage) => [
-        stage,
-        modelRouting[stage] ?? modelRouting.implement,
-      ]),
-    ),
+    models: stageModels,
     crossModelReview: summarizeCrossModelReview(
       stages,
-      Object.fromEntries(
-        stages.map((stage) => [
-          stage,
-          modelRouting[stage] ?? modelRouting.implement,
-        ]),
-      ),
+      stageModels,
     ),
   };
 }
@@ -1206,9 +1344,13 @@ function renderPromptPackSummary(pack) {
 }
 
 export function renderCompactRoute(route) {
+  const stateFactors = Array.isArray(route.rationale?.stateFactors)
+    ? route.rationale.stateFactors.join(" | ")
+    : "none";
   return (
     `[prompt-router] ${route.mode.toUpperCase()} — ${route.why}\n` +
     `[prompt-router] run-id: ${route.runId ?? "none"}\n` +
+    `[prompt-router] state factors: ${stateFactors}\n` +
     `[prompt-router] stages: ${route.stages.join(" -> ")}\n` +
     `[prompt-router] models: ${Object.entries(route.models)
       .map(([stage, model]) => `${stage}=${model}`)
@@ -1219,11 +1361,15 @@ export function renderCompactRoute(route) {
 
 export function renderHandoffPlan(route) {
   const profileSuffix = route.profile ? ` (${route.profile})` : "";
+  const stateFactors = Array.isArray(route.rationale?.stateFactors)
+    ? route.rationale.stateFactors.join(" | ")
+    : "none";
   const lines = [
     `[prompt-router] operator handoff plan${profileSuffix}`,
     `[prompt-router] run-id: ${route.runId ?? "none"}`,
     `[prompt-router] task: ${route.task || "<stdin>"}`,
     `[prompt-router] rationale: ${route.why}`,
+    `[prompt-router] state factors: ${stateFactors}`,
   ];
 
   route.stages.forEach((stage, index) => {
