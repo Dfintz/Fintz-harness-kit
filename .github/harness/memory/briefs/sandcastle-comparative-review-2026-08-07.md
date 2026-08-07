@@ -57,10 +57,10 @@ Proceeding is safe because this run records an integration assessment and follow
 ### Artifacts to create
 
 - `.github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07.md` - this Architecture Brief and candidate ranking.
-- `implementation-notes-sandcastle-comparative-review-2026-08-07.md` - no-code implementation evidence for this comparative run.
+- `.github/harness/memory/reviews/implementation-notes-sandcastle-comparative-review-2026-08-07.md` - no-code implementation evidence for this comparative run.
 - `.github/harness/memory/briefs/sandcastle-comparative-review-breadth-2026-08-07.md` - breadth review findings for the assessment.
 - `.github/harness/memory/briefs/sandcastle-comparative-review-depth-2026-08-07.md` - depth gate ledger for the assessment.
-- `feedback-verdict-sandcastle-comparative-review-2026-08-07.md` - terminal feedback verdict and settled recommendations.
+- `.github/harness/memory/reviews/feedback-verdict-sandcastle-comparative-review-2026-08-07.md` - terminal feedback verdict and settled recommendations.
 
 ### Artifacts to modify
 

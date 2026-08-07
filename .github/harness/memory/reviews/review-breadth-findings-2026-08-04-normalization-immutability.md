@@ -4,7 +4,7 @@ immutability: mutable
 ---
 
 # Review Breadth Findings
-resource: .github/harness/NORMALIZATION-PROFILE-MATRIX.md,.github/harness/IMMUTABILITY-MARKERS-POLICY.md,scripts/harness/validate-doc-contracts.mjs,scripts/harness/new-brief.mjs,.github/agents/architect-challenge.agent.md,architect-challenge-verdict.md,.github/harness/WORKFLOW.md
+resource: .github/harness/NORMALIZATION-PROFILE-MATRIX.md,.github/harness/IMMUTABILITY-MARKERS-POLICY.md,scripts/harness/validate-doc-contracts.mjs,scripts/harness/new-brief.mjs,.github/agents/architect-challenge.agent.md,.github/harness/memory/reviews/architect-challenge-verdict.md,.github/harness/WORKFLOW.md
 
 **Date:** 2026-08-04
 **Scope:** workflow + docs + docs-contract validator

@@ -26,7 +26,7 @@ Return a concise verdict with reasoning:
 
 ## Required output
 
-- `architect-challenge-verdict.md` with:
+- `.github/harness/memory/reviews/architect-challenge-verdict.md` with:
   - verdict (one of APPROVED, REVISE, BLOCKED)
   - evidence (reasoning for the verdict)
   - required revision or unblock step (smallest next action)

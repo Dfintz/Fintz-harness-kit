@@ -6,6 +6,8 @@ source: human
 created: 2026-08-03
 updated: 2026-08-03
 tags: [review, depth, findings, phase1]
+artifact_family: review
+immutability: mutable
 ---
 # Stage 6: Review Depth Findings — Phase 1 Resources API Implementation
 
@@ -281,7 +283,7 @@ tags: [review, depth, findings, phase1]
 **Status:** Ready for **Stage 7: Feedback**
 
 **Handoff Artifacts:**
-- ✅ review-depth-findings.md (this file)
+- ✅ .github/harness/memory/reviews/review-depth-findings.md (this file)
 - ✅ Architecture Brief (mcp-2026-07-28-alignment-brief.md)
 - ✅ Implementation artifacts:
   - mcp-server.mjs (Resources API handlers)

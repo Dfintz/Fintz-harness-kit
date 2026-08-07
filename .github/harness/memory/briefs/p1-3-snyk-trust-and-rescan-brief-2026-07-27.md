@@ -33,7 +33,7 @@ resource: .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-feedba
 - .github/harness/memory/briefs/p1-3-snyk-trust-and-rescan-feedback-2026-07-27.md - final verdict record.
 
 ### Artifacts to modify
-- architect-challenge-verdict.md - architect challenge verdict for this brief.
+- .github/harness/memory/reviews/architect-challenge-verdict.md - architect challenge verdict for this brief.
 
 ### Key decisions
 - Decision: target Snyk Code scan at `scripts/harness/prompt-router.mjs` using absolute path.

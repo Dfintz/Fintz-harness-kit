@@ -3,6 +3,8 @@ verdict: REVISE
 reviewer: architect-challenge-agent
 date: 2026-07-27
 brief: phase2-architecture-brief.md
+artifact_family: challenge
+immutability: mutable
 ---
 
 # Architect Challenge Verdict: Phase 2 Streaming + Graph Resources

@@ -7,7 +7,7 @@ immutability: mutable
 
 ## Inputs
 - architecture brief: .github/harness/memory/briefs/warning-reduction-followup-2026-08-06.md
-- breadth findings: review-breadth-findings.md
+- breadth findings: .github/harness/memory/reviews/review-breadth-findings.md
 - implementation proof: test and contract command outputs from this run
 
 ## Gate ledger

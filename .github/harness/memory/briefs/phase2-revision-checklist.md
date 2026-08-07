@@ -7,7 +7,7 @@ phase: Phase 2 (Post-Challenge)
 
 # Phase 2 Architecture Brief: Challenge Revision Checklist
 
-**Source:** architect-challenge-verdict-phase2.md (Challenge Stage 3)  
+**Source:** .github/harness/memory/reviews/architect-challenge-verdict-phase2.md (Challenge Stage 3)
 **Status:** ✅ ALL REVISIONS COMPLETE  
 **Brief Version:** 2.1 (Revised Post-Challenge)
 

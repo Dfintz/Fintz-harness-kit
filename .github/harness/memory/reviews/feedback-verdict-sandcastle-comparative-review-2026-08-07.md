@@ -8,7 +8,7 @@ immutability: mutable
 ---
 # Feedback Verdict Record - Sandcastle comparative review
 
-resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07.md, .github/harness/memory/briefs/sandcastle-comparative-review-breadth-2026-08-07.md, .github/harness/memory/briefs/sandcastle-comparative-review-depth-2026-08-07.md, implementation-notes-sandcastle-comparative-review-2026-08-07.md
+resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07.md, .github/harness/memory/briefs/sandcastle-comparative-review-breadth-2026-08-07.md, .github/harness/memory/briefs/sandcastle-comparative-review-depth-2026-08-07.md, .github/harness/memory/reviews/implementation-notes-sandcastle-comparative-review-2026-08-07.md
 
 ## Point-by-point verdicts
 

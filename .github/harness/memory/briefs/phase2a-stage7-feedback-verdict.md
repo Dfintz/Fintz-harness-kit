@@ -6,14 +6,16 @@ source: human
 created: 2026-08-03
 updated: 2026-08-03
 tags: [phase2a, stage7, feedback, verdict]
+artifact_family: review
+immutability: mutable
 ---
 # Phase 2a Stage 7: Feedback & Final Approval
 
 **Stage:** 7 (Feedback & Final Approval)  
 **Session:** Phase 2a Implementation Review (Stages 5-7)  
 **Review Inputs:**
-- review-breadth-findings.md (0 blockers, 0 majors, 3 minors)
-- review-depth-findings.md (0 blockers, 0 majors, 0 minors)
+- .github/harness/memory/reviews/review-breadth-findings.md (0 blockers, 0 majors, 3 minors)
+- .github/harness/memory/reviews/review-depth-findings.md (0 blockers, 0 majors, 0 minors)
 - phase2-architecture-brief.md (v2.1, APPROVED)
 
 ---

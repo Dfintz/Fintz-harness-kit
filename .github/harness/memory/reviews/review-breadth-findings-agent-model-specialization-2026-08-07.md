@@ -19,7 +19,7 @@ Reviewed artifacts:
 - `llms.txt`
 - `.github/harness/catalog/harness-profile.json`
 - `.github/harness/memory/briefs/agent-model-specialization-2026-08-07.md`
-- `architect-challenge-verdict-agent-model-specialization-2026-08-07.md`
+- `.github/harness/memory/reviews/architect-challenge-verdict-agent-model-specialization-2026-08-07.md`
 
 Validation evidence:
 

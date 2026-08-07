@@ -18,7 +18,7 @@ The canonical contract lives in [`05-REVIEW-BREADTH.md`](../../../.github/instru
 
 ## Required output
 
-- `review-breadth-findings.md`
+- `.github/harness/memory/reviews/review-breadth-findings.md`
 - artifact kind: **breadth-findings-ledger**
 
 ## Procedure

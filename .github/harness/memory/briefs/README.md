@@ -1,6 +1,6 @@
 # Architecture Briefs
 
-**See Also:** [GOVERNANCE-ARCHITECTURE.md](../GOVERNANCE-ARCHITECTURE.md) — Governance framework lifecycle, brief taxonomy, ownership model, and discovery paths for governance artifacts.
+**See Also:** [GOVERNANCE-ARCHITECTURE.md](../../GOVERNANCE-ARCHITECTURE.md) — Governance framework lifecycle, brief taxonomy, ownership model, and discovery paths for governance artifacts.
 
 ---
 

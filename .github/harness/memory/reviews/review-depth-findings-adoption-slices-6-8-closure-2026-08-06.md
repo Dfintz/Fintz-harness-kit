@@ -7,9 +7,9 @@ immutability: mutable
 
 ## Inputs
 - brief: .github/harness/memory/briefs/adoption-slices-6-8-closure-2026-08-06.md
-- challenge verdict: architect-challenge-verdict-adoption-slices-6-8-closure-2026-08-06.md
-- implementation notes: implementation-notes-adoption-slices-6-8-closure-2026-08-06.md
-- breadth findings: review-breadth-findings-adoption-slices-6-8-closure-2026-08-06.md
+- challenge verdict: .github/harness/memory/reviews/architect-challenge-verdict-adoption-slices-6-8-closure-2026-08-06.md
+- implementation notes: .github/harness/memory/reviews/implementation-notes-adoption-slices-6-8-closure-2026-08-06.md
+- breadth findings: .github/harness/memory/reviews/review-breadth-findings-adoption-slices-6-8-closure-2026-08-06.md
 
 ## Gate verdicts
 - Gate 1: PASS

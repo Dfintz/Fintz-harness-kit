@@ -12,7 +12,7 @@ immutability: mutable
 
 # Review Breadth Findings - Sandcastle review output slice
 
-resource: .github/harness/memory/briefs/sandcastle-review-output-slice-2026-08-07.md, scripts/harness/review-output.mjs, scripts/harness/test/review-output-test.mjs, package.json, implementation-notes-sandcastle-review-output-slice-2026-08-07.md
+resource: .github/harness/memory/briefs/sandcastle-review-output-slice-2026-08-07.md, scripts/harness/review-output.mjs, scripts/harness/test/review-output-test.mjs, package.json, .github/harness/memory/reviews/implementation-notes-sandcastle-review-output-slice-2026-08-07.md
 
 ## Findings
 

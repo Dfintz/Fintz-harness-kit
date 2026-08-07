@@ -4,7 +4,7 @@ status: implemented
 ---
 
 # Architect Challenge Verdict - T2 Contextual Embeddings Pilot
-resource: .github/harness/memory/briefs/t2-contextual-embeddings-pilot-2026-08-05.md, architect-challenge-verdict.md
+resource: .github/harness/memory/briefs/t2-contextual-embeddings-pilot-2026-08-05.md, .github/harness/memory/reviews/architect-challenge-verdict.md
 
 ## Verdict
 - APPROVED

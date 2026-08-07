@@ -12,7 +12,7 @@ immutability: mutable
 
 # Review Breadth Findings - Sandcastle comparative review
 
-resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07.md, implementation-notes-sandcastle-comparative-review-2026-08-07.md, scripts/harness/prompt-router.mjs, scripts/harness/council-review.mjs, .github/harness/loops/review-fix.json, external sandcastle commit e99f832f26dc9d245c019a9ddd19fa5dee792427
+resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07.md, .github/harness/memory/reviews/implementation-notes-sandcastle-comparative-review-2026-08-07.md, scripts/harness/prompt-router.mjs, scripts/harness/council-review.mjs, .github/harness/loops/review-fix.json, external sandcastle commit e99f832f26dc9d245c019a9ddd19fa5dee792427
 
 ## Findings
 

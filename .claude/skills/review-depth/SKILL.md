@@ -14,11 +14,11 @@ The canonical contract lives in [`06-REVIEW-DEPTH.md`](../../../.github/instruct
 - changed artifacts
 - `architecture-brief.md`
 - `implementation-notes.md`
-- `review-breadth-findings.md`
+- `.github/harness/memory/reviews/review-breadth-findings.md`
 
 ## Required output
 
-- `review-depth-findings.md`
+- `.github/harness/memory/reviews/review-depth-findings.md`
 - artifact kind: **depth-gate-ledger**
 
 ## Procedure

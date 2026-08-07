@@ -6,13 +6,15 @@ source: human
 created: 2026-08-03
 updated: 2026-08-03
 tags: [phase2a, review, depth, findings]
+artifact_family: review
+immutability: mutable
 ---
 # Phase 2a Review Depth: Findings Ledger
 
 **Stage:** 6 (Review Depth)  
 **Scope:** Phase 2a Implementation (Streaming + Graph + Caching)  
 **Input:** 
-- review-breadth-findings.md (0 blockers, 0 majors, 3 minors)
+- .github/harness/memory/reviews/review-breadth-findings.md (0 blockers, 0 majors, 3 minors)
 - phase2-architecture-brief.md (v2.1, APPROVED)
 - Implementation artifacts (mcp-cache.mjs, graph-resources.mjs, mcp-server.mjs)
 

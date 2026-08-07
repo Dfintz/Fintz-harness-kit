@@ -224,7 +224,7 @@ Conducted a full harness feature handoff (7-stage workflow) to re-evaluate docum
 ## See Also
 
 - [v2.5.0 Feedback Verdict](feedback-verdict-2026-07-28-docs-setup-release-v2-5-0.md)
-- [Open Findings Remediation](open-findings-remediation-2026-07-28.md)
+- [Open Findings Remediation](../briefs/open-findings-remediation-2026-07-28.md)
 - [Credential Deferral Lesson](../lessons/credential-deferral-and-environment-constraints.lesson.md)
 - [Auto-Heal Readiness Lesson](../lessons/auto-heal-readiness-workflows.lesson.md)
 - [Release Closure Checklist Lesson](../lessons/release-cycle-closure-checklist.lesson.md)

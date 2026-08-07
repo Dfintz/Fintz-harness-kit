@@ -1,3 +1,8 @@
+---
+artifact_family: challenge
+immutability: mutable
+---
+
 # Architect Challenge Verdict
 
 Verdict: APPROVED

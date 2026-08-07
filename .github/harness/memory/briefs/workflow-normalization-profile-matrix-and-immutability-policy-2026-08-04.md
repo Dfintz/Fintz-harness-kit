@@ -1,5 +1,5 @@
 # Brief: workflow-normalization-profile-matrix-and-immutability-policy-2026-08-04 - active
-resource: harness.config.json,.github/harness/HARNESS.md,.github/harness/WORKFLOW.md,scripts/harness/validate-doc-contracts.mjs,scripts/harness/new-brief.mjs,.github/agents/architect-challenge.agent.md,architect-challenge-verdict.md
+resource: harness.config.json,.github/harness/HARNESS.md,.github/harness/WORKFLOW.md,scripts/harness/validate-doc-contracts.mjs,scripts/harness/new-brief.mjs,.github/agents/architect-challenge.agent.md,.github/harness/memory/reviews/architect-challenge-verdict.md
 
 **Date:** 2026-08-04
 **Task:** Produce a strict normalization profile matrix mapping task category -> mandatory route + mandatory verdict schema, and add a small enforceable policy patch for immutable/frozen markers across architect/review/challenge artifact families.
@@ -27,7 +27,7 @@ resource: harness.config.json,.github/harness/HARNESS.md,.github/harness/WORKFLO
 - `scripts/harness/validate-doc-contracts.mjs`
 - `scripts/harness/new-brief.mjs`
 - `.github/agents/architect-challenge.agent.md`
-- `architect-challenge-verdict.md`
+- `.github/harness/memory/reviews/architect-challenge-verdict.md`
 - `.github/harness/WORKFLOW.md`
 
 ## Files To Create

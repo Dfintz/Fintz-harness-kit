@@ -12,7 +12,7 @@ immutability: mutable
 
 # Review Breadth Findings - Sandcastle structured output slice
 
-resource: .github/harness/memory/briefs/sandcastle-structured-output-slice-2026-08-07.md, scripts/harness/structured-output.mjs, scripts/harness/test/structured-output-test.mjs, package.json, implementation-notes-sandcastle-structured-output-slice-2026-08-07.md
+resource: .github/harness/memory/briefs/sandcastle-structured-output-slice-2026-08-07.md, scripts/harness/structured-output.mjs, scripts/harness/test/structured-output-test.mjs, package.json, .github/harness/memory/reviews/implementation-notes-sandcastle-structured-output-slice-2026-08-07.md
 
 ## Findings
 

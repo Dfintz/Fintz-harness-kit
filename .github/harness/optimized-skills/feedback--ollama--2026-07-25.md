@@ -13,13 +13,13 @@ The canonical contract lives in [`07-FEEDBACK.md`](../../../.github/instructions
 
 - changed artifacts
 - `architecture-brief.md`
-- `review-breadth-findings.md`
-- `review-depth-findings.md`
+- `.github/harness/memory/reviews/review-breadth-findings.md`
+- `.github/harness/memory/reviews/review-depth-findings.md`
 - the challenged decisions or feedback points
 
 ## Required output
 
-- `feedback-verdict.md`
+- `.github/harness/memory/reviews/feedback-verdict.md`
 - artifact kind: **feedback-verdict-record**
 
 ## Procedure

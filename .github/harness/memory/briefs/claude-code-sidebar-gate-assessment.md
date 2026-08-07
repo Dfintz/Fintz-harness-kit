@@ -11,7 +11,7 @@ tags: [claude, code, sidebar, gate]
 
 ## Gate Definition
 
-From [mcp-2026-07-28-alignment-brief.md](../../.github/harness/memory/briefs/mcp-2026-07-28-alignment-brief.md):
+From [mcp-2026-07-28-alignment-brief.md](mcp-2026-07-28-alignment-brief.md):
 > **Gate 5: Claude Code Sidebar Integration** (BLOCKING)
 > - Resources API must be discoverable/callable from Claude Code sidebar
 > - ROI impact: HIGH if supported, MEDIUM if unsupported

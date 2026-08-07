@@ -205,7 +205,7 @@ Layer 4: Tooling/Automation (harness-catalog.mjs, memory-curate.mjs, vector-sear
 ```markdown
 # Governance Briefs Directory
 
-**Note:** This directory guide is part of a larger governance architecture. See [GOVERNANCE-ARCHITECTURE.md](../GOVERNANCE-ARCHITECTURE.md) for the complete framework.
+**Note:** This directory guide is part of a larger governance architecture. See [GOVERNANCE-ARCHITECTURE.md](../../GOVERNANCE-ARCHITECTURE.md) for the complete framework.
 ```
 
 **Impact:** Improves navigation between governance docs  

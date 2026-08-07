@@ -4,6 +4,8 @@ date: 2026-07-27
 verdict: REVISE
 confidence: 65% (solid foundation; specific gaps block APPROVED)
 session: architect-challenge rechallenge post-revision
+artifact_family: challenge
+immutability: mutable
 ---
 
 # Architect Challenge: RE-CHALLENGE VERDICT

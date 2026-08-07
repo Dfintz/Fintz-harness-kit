@@ -92,7 +92,7 @@ const DEFAULT_STAGE_PROMPT_METADATA = {
   },
   "architect-challenge": {
     title: "Architect Challenge",
-    outputFile: "architect-challenge-verdict.md",
+    outputFile: ".github/harness/memory/reviews/architect-challenge-verdict.md",
     deliverable:
       "Independent verdict on the Architecture Brief with required revisions or unblock steps.",
     instructions: [
@@ -116,7 +116,7 @@ const DEFAULT_STAGE_PROMPT_METADATA = {
   },
   "review-breadth": {
     title: "Review Breadth",
-    outputFile: "review-breadth-findings.md",
+    outputFile: ".github/harness/memory/reviews/review-breadth-findings.md",
     deliverable:
       "Severity-tagged findings covering correctness, regressions, tests, and standards.",
     instructions: [
@@ -127,18 +127,18 @@ const DEFAULT_STAGE_PROMPT_METADATA = {
   },
   "review-depth": {
     title: "Review Depth",
-    outputFile: "review-depth-findings.md",
+    outputFile: ".github/harness/memory/reviews/review-depth-findings.md",
     deliverable:
       "Gate verdicts and structural findings checked against the Architecture Brief.",
     instructions: [
-      "Read architecture-brief.md and review-breadth-findings.md.",
+      "Read architecture-brief.md and .github/harness/memory/reviews/review-breadth-findings.md.",
       "Re-run the architectural gates against the implemented diff.",
       "Trace ownership, boundaries, and systemic risks.",
     ],
   },
   feedback: {
     title: "Feedback",
-    outputFile: "feedback-verdict.md",
+    outputFile: ".github/harness/memory/reviews/feedback-verdict.md",
     deliverable:
       "Verdict table, decision updates, and refreshed next-steps summary.",
     instructions: [

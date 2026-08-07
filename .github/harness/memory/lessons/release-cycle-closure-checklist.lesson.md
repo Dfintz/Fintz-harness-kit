@@ -162,7 +162,7 @@ Use this template to capture evidence for each release phase:
 
 ## Real Example: v2.5.0 Release (2026-07-28)
 
-See [Feedback Verdict Record - Docs/Setup Usability + v2.5.0 Release](../../reviews/feedback-verdict-2026-07-28-docs-setup-release-v2-5-0.md) for the complete closure evidence from v2.5.0.
+See [Feedback Verdict Record - Docs/Setup Usability + v2.5.0 Release](../reviews/feedback-verdict-2026-07-28-docs-setup-release-v2-5-0.md) for the complete closure evidence from v2.5.0.
 
 **Summary**:
 - ✅ Docs/Setup improvements completed
@@ -200,4 +200,4 @@ See [Feedback Verdict Record - Docs/Setup Usability + v2.5.0 Release](../../revi
 
 - [Credential Deferral and Environment Constraints](#)
 - [Auto-Heal Readiness Workflows](#)
-- [v2.5.0 Feedback Verdict](../../reviews/feedback-verdict-2026-07-28-docs-setup-release-v2-5-0.md)
+- [v2.5.0 Feedback Verdict](../reviews/feedback-verdict-2026-07-28-docs-setup-release-v2-5-0.md)

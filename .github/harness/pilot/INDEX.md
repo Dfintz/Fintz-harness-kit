@@ -162,7 +162,7 @@ TOTAL EFFORT:
 [ ] Check: avgImprovement ≥ 2%?
 [ ] If YES → ✓ APPROVED, proceed to rollout
 [ ] If NO → ⚠ ITERATE or ❌ PIVOT
-[ ] Document decision in feedback-verdict.md
+[ ] Document decision in .github/harness/memory/reviews/feedback-verdict.md
 ```
 
 ---

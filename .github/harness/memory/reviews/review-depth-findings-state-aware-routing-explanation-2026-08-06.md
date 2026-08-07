@@ -7,9 +7,9 @@ immutability: mutable
 
 ## Inputs
 - architecture brief: .github/harness/memory/briefs/state-aware-routing-explanation-2026-08-06.md
-- architect challenge verdict: architect-challenge-verdict-state-aware-routing-explanation-2026-08-06.md
-- breadth findings: review-breadth-findings-state-aware-routing-explanation-2026-08-06.md
-- implementation notes: implementation-notes-state-aware-routing-explanation-2026-08-06.md
+- architect challenge verdict: .github/harness/memory/reviews/architect-challenge-verdict-state-aware-routing-explanation-2026-08-06.md
+- breadth findings: .github/harness/memory/reviews/review-breadth-findings-state-aware-routing-explanation-2026-08-06.md
+- implementation notes: .github/harness/memory/reviews/implementation-notes-state-aware-routing-explanation-2026-08-06.md
 
 ## Gate ledger
 - Gate 1 (Domain alignment): PASS

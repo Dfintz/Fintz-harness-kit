@@ -28,10 +28,10 @@ resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07
 
 - `scripts/harness/structured-output.mjs` - dependency-light extraction and validation helper inspired by Sandcastle's structured output concept.
 - `scripts/harness/test/structured-output-test.mjs` - deterministic test coverage for missing tags, last-match-wins, fenced JSON unwrap, invalid JSON, schema failure, string mode, and success.
-- `implementation-notes-sandcastle-structured-output-slice-2026-08-07.md` - implementation evidence and self-review record.
+- `.github/harness/memory/reviews/implementation-notes-sandcastle-structured-output-slice-2026-08-07.md` - implementation evidence and self-review record.
 - `.github/harness/memory/briefs/sandcastle-structured-output-slice-review-breadth-2026-08-07.md` - breadth review ledger.
 - `.github/harness/memory/briefs/sandcastle-structured-output-slice-review-depth-2026-08-07.md` - depth gate ledger.
-- `feedback-verdict-sandcastle-structured-output-slice-2026-08-07.md` - terminal verdict record.
+- `.github/harness/memory/reviews/feedback-verdict-sandcastle-structured-output-slice-2026-08-07.md` - terminal verdict record.
 
 ### Artifacts to modify
 

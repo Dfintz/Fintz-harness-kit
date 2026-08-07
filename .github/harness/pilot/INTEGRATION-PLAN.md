@@ -226,7 +226,7 @@ PRE-ROLLOUT CHECKLIST:
 [ ] Synthetic test generation validated on 3 pilot skills
 [ ] Contrastive filtering logic verified (rejection rate 15-25%)
 [ ] Rollout report written + reviewed
-[ ] Decision documented in feedback-verdict.md
+[ ] Decision documented in .github/harness/memory/reviews/feedback-verdict.md
 
 INTEGRATION CHECKLIST:
 ─────────────────────
@@ -253,7 +253,7 @@ EXECUTION CHECKLIST:
 
 POST-ROLLOUT CHECKLIST:
 ───────────────────────
-[ ] Results published in feedback-verdict.md + next-steps
+[ ] Results published in .github/harness/memory/reviews/feedback-verdict.md + next-steps
 [ ] Learnings documented in harness memory
 [ ] Pilot infrastructure archived (reusable for Tier 2)
 [ ] Metrics dashboard updated (if applicable)

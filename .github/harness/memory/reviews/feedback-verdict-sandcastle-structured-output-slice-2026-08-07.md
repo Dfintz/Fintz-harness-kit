@@ -8,7 +8,7 @@ immutability: mutable
 ---
 # Feedback Verdict Record - Sandcastle structured output slice
 
-resource: .github/harness/memory/briefs/sandcastle-structured-output-slice-2026-08-07.md, implementation-notes-sandcastle-structured-output-slice-2026-08-07.md, .github/harness/memory/briefs/sandcastle-structured-output-slice-review-breadth-2026-08-07.md, .github/harness/memory/briefs/sandcastle-structured-output-slice-review-depth-2026-08-07.md
+resource: .github/harness/memory/briefs/sandcastle-structured-output-slice-2026-08-07.md, .github/harness/memory/reviews/implementation-notes-sandcastle-structured-output-slice-2026-08-07.md, .github/harness/memory/briefs/sandcastle-structured-output-slice-review-breadth-2026-08-07.md, .github/harness/memory/briefs/sandcastle-structured-output-slice-review-depth-2026-08-07.md
 
 ## Point-by-point verdicts
 

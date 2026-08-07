@@ -8,9 +8,9 @@ immutability: mutable
 ## Inputs
 
 - .github/harness/memory/briefs/anything-else-left-closure-2026-08-06.md
-- architect-challenge-verdict-anything-else-left-closure-2026-08-06.md
-- implementation-notes-anything-else-left-closure-2026-08-06.md
-- review-breadth-findings-anything-else-left-closure-2026-08-06.md
+- .github/harness/memory/reviews/architect-challenge-verdict-anything-else-left-closure-2026-08-06.md
+- .github/harness/memory/reviews/implementation-notes-anything-else-left-closure-2026-08-06.md
+- .github/harness/memory/reviews/review-breadth-findings-anything-else-left-closure-2026-08-06.md
 
 ## Gate verdicts
 

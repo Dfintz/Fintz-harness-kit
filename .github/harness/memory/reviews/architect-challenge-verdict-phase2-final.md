@@ -3,6 +3,8 @@ status: FINAL-VERDICT
 date: 2026-07-27
 challenge-round: 3
 architect-agent: GitHub-Copilot
+artifact_family: challenge
+immutability: mutable
 ---
 
 # Architect Challenge: Phase 2 Architecture Brief — FINAL VERDICT

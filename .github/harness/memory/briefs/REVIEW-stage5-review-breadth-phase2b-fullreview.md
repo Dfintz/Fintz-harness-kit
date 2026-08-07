@@ -91,8 +91,8 @@ immutable_since: 2026-08-04
 **Recommendation:** Add "See Also" section to briefs/README.md:
 ```markdown
 ## See Also
-- [GOVERNANCE-ARCHITECTURE.md](.../GOVERNANCE-ARCHITECTURE.md) — Full governance brief lifecycle
-- [HARNESS.md](.../HARNESS.md) — Main harness operating contract
+- [GOVERNANCE-ARCHITECTURE.md](../../GOVERNANCE-ARCHITECTURE.md) — Full governance brief lifecycle
+- [HARNESS.md](../../HARNESS.md) — Main harness operating contract
 ```
 
 **Effort to Fix:** 2 minutes (add cross-reference links)  

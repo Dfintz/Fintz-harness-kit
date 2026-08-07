@@ -8,7 +8,7 @@ updated: 2026-08-03
 tags: [prompt, router]
 ---
 # P1-2 Prompt-Router Path Hardening Implementation - 2026-07-27
-resource: .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-brief-2026-07-27.md, scripts/harness/prompt-router.mjs, architect-challenge-verdict.md
+resource: .github/harness/memory/briefs/p1-2-prompt-router-path-hardening-brief-2026-07-27.md, scripts/harness/prompt-router.mjs, .github/harness/memory/reviews/architect-challenge-verdict.md
 
 ## Implementation Summary
 

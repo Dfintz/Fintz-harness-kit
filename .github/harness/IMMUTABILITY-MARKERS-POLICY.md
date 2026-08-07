@@ -1,6 +1,6 @@
 # Immutability Markers Policy
 
-resource: scripts/harness/validate-doc-contracts.mjs,architect-challenge-verdict.md,.github/agents/architect-challenge.agent.md,scripts/harness/new-brief.mjs
+resource: scripts/harness/validate-doc-contracts.mjs,.github/harness/memory/reviews/architect-challenge-verdict.md,.github/agents/architect-challenge.agent.md,scripts/harness/new-brief.mjs
 
 This policy standardizes immutable/frozen marker usage for architect, review, and challenge
 artifact families.

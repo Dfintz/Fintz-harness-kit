@@ -28,10 +28,10 @@ resource: .github/harness/memory/briefs/sandcastle-comparative-review-2026-08-07
 
 - `scripts/harness/review-output.mjs` - local validators and filters for review summaries, inline comments, thread replies, and unified diff lines.
 - `scripts/harness/test/review-output-test.mjs` - deterministic tests for parsing, filtering, lineRange fallback, invalid shape rejection, and thread ID rejection.
-- `implementation-notes-sandcastle-review-output-slice-2026-08-07.md` - implementation evidence and self-review record.
+- `.github/harness/memory/reviews/implementation-notes-sandcastle-review-output-slice-2026-08-07.md` - implementation evidence and self-review record.
 - `.github/harness/memory/briefs/sandcastle-review-output-slice-review-breadth-2026-08-07.md` - breadth review ledger.
 - `.github/harness/memory/briefs/sandcastle-review-output-slice-review-depth-2026-08-07.md` - depth gate ledger.
-- `feedback-verdict-sandcastle-review-output-slice-2026-08-07.md` - terminal verdict record.
+- `.github/harness/memory/reviews/feedback-verdict-sandcastle-review-output-slice-2026-08-07.md` - terminal verdict record.
 
 ### Artifacts to modify
 

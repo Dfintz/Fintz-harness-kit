@@ -8,7 +8,7 @@ immutability: mutable
 ## Scope reviewed
 - scripts/harness/prompt-router.mjs
 - scripts/harness/test/trace-contract-route-test.mjs
-- implementation-notes-state-aware-routing-followup-closure-2026-08-06.md
+- .github/harness/memory/reviews/implementation-notes-state-aware-routing-followup-closure-2026-08-06.md
 
 ## Findings
 ### Blocker

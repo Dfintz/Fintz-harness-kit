@@ -45,9 +45,9 @@ Governance precedence:
 | Schema | Required artifacts |
 | --- | --- |
 | `ASSISTANT-VERDICT-v1` | One-shot answer with explicit completion status |
-| `CODER-VERDICT-v1` | `architect-challenge-verdict.md`, breadth findings block |
-| `REVIEW-VERDICT-v1` | `review-breadth-findings.md`, `review-depth-findings.md`, `feedback-verdict.md` |
-| `FEATURE-VERDICT-v1` | `architecture-brief.md`, `architect-challenge-verdict.md`, `implementation-notes.md`, `review-breadth-findings.md`, `review-depth-findings.md`, `feedback-verdict.md` |
+| `CODER-VERDICT-v1` | `.github/harness/memory/reviews/architect-challenge-verdict.md`, breadth findings block |
+| `REVIEW-VERDICT-v1` | `.github/harness/memory/reviews/review-breadth-findings.md`, `.github/harness/memory/reviews/review-depth-findings.md`, `.github/harness/memory/reviews/feedback-verdict.md` |
+| `FEATURE-VERDICT-v1` | `architecture-brief.md`, `.github/harness/memory/reviews/architect-challenge-verdict.md`, `implementation-notes.md`, `.github/harness/memory/reviews/review-breadth-findings.md`, `.github/harness/memory/reviews/review-depth-findings.md`, `.github/harness/memory/reviews/feedback-verdict.md` |
 | `WAYFINDER-VERDICT-v1` | Planning brief + ticket map + explicit unblock conditions |
 
 ## Consistency Enforcement

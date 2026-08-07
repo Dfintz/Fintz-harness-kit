@@ -25,7 +25,7 @@ Independently challenge the proposed Architecture Brief and return a clear verdi
 
 ## Output
 
-Write `architect-challenge-verdict.md` with:
+Write `.github/harness/memory/reviews/architect-challenge-verdict.md` with:
 
 - frontmatter markers:
    - `artifact_family: challenge`
