@@ -129,6 +129,125 @@ try {
   const manifestPathB = join(runDirB, "manifest.json");
   assert.ok(existsSync(manifestPathB), "manifest.json should exist for task B run");
 
+  const projectRoot = join(repoRoot, ".github", "harness", "memory", "tmp", `router-project-${uniqueSuffix}`);
+  const projectRunsDir = join(projectRoot, ".github", "harness", "runs");
+  mkdirSync(projectRoot, { recursive: true });
+  writeFileSync(
+    join(projectRoot, "harness.config.json"),
+    readFileSync(join(repoRoot, "harness.config.json"), "utf8"),
+    "utf8",
+  );
+
+  const projectTask = `Project root routing ${uniqueSuffix}`;
+  const projectRoute = parseJsonStdout(
+    run([
+      "route",
+      "--profile",
+      "feature",
+      "--repo-root",
+      projectRoot,
+      "--task",
+      projectTask,
+      "--json",
+      "--allow-degraded-preflight",
+    ]),
+    "project-root route",
+  );
+  assert.equal(projectRoute.profile, "feature", "explicit project route should preserve profile");
+  assert.deepEqual(
+    projectRoute.stages,
+    ["understand", "architect", "architect-challenge", "implement", "review-breadth", "review-depth", "feedback"],
+    "feature route should use the complete stage sequence",
+  );
+  assert.ok(
+    existsSync(join(projectRunsDir, "feature-runs", projectRoute.runId, "route.json")),
+    "project-root route artifact should be written under the target project",
+  );
+
+  const projectHandoff = run([
+    "handoff",
+    "--profile",
+    "feature",
+    "--repo-root",
+    projectRoot,
+    "--task",
+    projectTask,
+    "--allow-degraded-preflight",
+  ]);
+  assert.equal(projectHandoff.status, 0, `project-root handoff should succeed: ${projectHandoff.stderr || projectHandoff.stdout}`);
+  assert.ok(
+    existsSync(join(projectRunsDir, "handoffs.jsonl")),
+    "project-root handoff telemetry should be written under the target project",
+  );
+  assert.ok(
+    existsSync(join(projectRunsDir, "feature-runs", projectRoute.runId, "handoff.txt")),
+    "project-root handoff artifact should be written under the target project",
+  );
+
+  for (const reviewStage of ["review-breadth", "review-depth", "feedback"]) {
+    const projectConfig = JSON.parse(
+      readFileSync(join(projectRoot, "harness.config.json"), "utf8"),
+    );
+    const modelSetName = `collision-${reviewStage}`;
+    projectConfig.routing.stageModelSets[modelSetName] = {
+      implement: "collision-model",
+      [reviewStage]: "collision-model",
+    };
+    projectConfig.routing.requireDistinctReviewerAndImplementer = false;
+    projectConfig.routing.profiles.feature.modelSet = modelSetName;
+    writeFileSync(
+      join(projectRoot, "harness.config.json"),
+      `${JSON.stringify(projectConfig, null, 2)}\n`,
+      "utf8",
+    );
+
+    const collision = run([
+      "route",
+      "--profile",
+      "feature",
+      "--repo-root",
+      projectRoot,
+      "--task",
+      `${projectTask} ${reviewStage}`,
+      "--json",
+      "--allow-degraded-preflight",
+    ]);
+    assert.notEqual(collision.status, 0, `${reviewStage} collision should be rejected even with the legacy opt-out`);
+    assert.match(collision.stderr, new RegExp(reviewStage), `${reviewStage} should be named in the error`);
+  }
+
+  const reviewOnlyConfig = JSON.parse(
+    readFileSync(join(projectRoot, "harness.config.json"), "utf8"),
+  );
+  reviewOnlyConfig.routing.stageModelSets["review-only-collision"] = {
+    implement: "collision-model",
+    "review-breadth": "collision-model",
+  };
+  reviewOnlyConfig.routing.profiles.review.modelSet = "review-only-collision";
+  writeFileSync(
+    join(projectRoot, "harness.config.json"),
+    `${JSON.stringify(reviewOnlyConfig, null, 2)}\n`,
+    "utf8",
+  );
+
+  const reviewOnlyRoute = parseJsonStdout(
+    run([
+      "route",
+      "--profile",
+      "review",
+      "--repo-root",
+      projectRoot,
+      "--task",
+      `${projectTask} review-only`,
+      "--json",
+      "--allow-degraded-preflight",
+    ]),
+    "review-only collision route",
+  );
+  assert.equal(reviewOnlyRoute.profile, "review", "review-only route should ignore inactive implementation collisions");
+
+  rmSync(projectRoot, { recursive: true, force: true });
+
   console.log("PASS prompt-router run bundle test suite");
 } finally {
   if (originalIndexExists) {

@@ -12,20 +12,21 @@ Run the full harness feature handoff for this task.
 First print the routing decision + exact stage/model handoff plan by running:
 
 ```bash
-node scripts/harness/prompt-router.mjs route --task "${input:task}" --json
+node scripts/harness/prompt-router.mjs route --profile feature --repo-root . --task "${input:task}" --json
 ```
 
 Then print the executable handoff plan:
 
 ```bash
-node scripts/harness/prompt-router.mjs handoff --task "${input:task}"
+node scripts/harness/prompt-router.mjs handoff --profile feature --repo-root . --task "${input:task}"
 ```
 
 Then follow the printed stage sequence exactly:
 
 1. **Understand** — load `understand-process` skill; run graph freshness gate; map impacted
    components, layers, and dependencies.
-2. **Architect** — load `architect` skill; run all five architectural gates; produce an Architecture
+2. **Architect** — Claude runtimes load the `architect` skill; Copilot and other runtimes load
+   `.github/instructions/03-ARCHITECT.md`; run all five architectural gates; produce an Architecture
    Brief (files, decisions, constraints, Do-NOTs, assumptions); save to
    `.github/harness/memory/briefs/`. New briefs must include a provenance line directly under the
    heading: `resource: <comma-separated-paths>`.
@@ -35,14 +36,18 @@ Then follow the printed stage sequence exactly:
    resolve blocking concerns before Implement. If the printed route omits `architect-challenge`
    because of a runtime/tool-limit adjustment, do an inline skeptical pass inside Architect before
    Implement and record that fallback in the brief.
-4. **Implement** — load the relevant domain skill(s); complete the pre-implementation checklist;
-   write code; run the self-review checklist. Optionally load the `pr` skill
+4. **Implement** — load the relevant domain skill(s) and
+   `.github/instructions/04-IMPLEMENT.md`; complete the pre-implementation checklist; write code;
+   run the self-review checklist. Optionally load the `pr` skill
    (`.github/skills/pr/SKILL.md`) to spawn a fresh verifier sub-agent that drives the running app
    and captures evidence before the Review Breadth handoff.
-5. **Review Breadth** — load `review-breadth` skill; produce a severity-tagged findings list.
-6. **Review Depth** — load `review-depth` skill; run gate verdicts and structural findings against
-   the Architecture Brief.
-7. **Feedback** — load `feedback` skill; produce the verdict table; update the Brief if decisions
+5. **Review Breadth** — Claude runtimes load `review-breadth`; Copilot and other runtimes load
+   `.github/instructions/05-REVIEW-BREADTH.md`; produce a severity-tagged findings list.
+6. **Review Depth** — Claude runtimes load `review-depth`; Copilot and other runtimes load
+   `.github/instructions/06-REVIEW-DEPTH.md`; run gate verdicts and structural findings against the
+   Architecture Brief.
+7. **Feedback** — Claude runtimes load `feedback`; Copilot and other runtimes load
+   `.github/instructions/07-FEEDBACK.md`; produce the verdict table; update the Brief if decisions
    changed.
 
 Important execution rule:

@@ -61,148 +61,76 @@ const STANDARDIZED_TASKS = {
   },
 };
 
-const PHASE_5_SKILLS = [
-  {
-    name: "pr",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-opus-5",
-    tier: "high-reasoning",
-    benchmark: "+252.3%",
-  },
-  {
-    name: "remember",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-opus-5",
-    tier: "high-reasoning",
-    benchmark: "+219.8%",
-  },
-  {
-    name: "feedback",
-    primary: "claude-opus-5",
-    fallback1: "claude-opus-4-8",
-    tier: "ultra-reasoning",
-    benchmark: "+219.0%",
-  },
-  {
-    name: "prototype",
-    primary: "claude-sonnet-5",
-    fallback1: "gpt-5.3-codex",
-    tier: "balanced-coding",
-    benchmark: "+219.0%",
-  },
-  {
-    name: "architect",
-    primary: "gpt-5.6-luna",
-    fallback1: "claude-opus-5",
-    tier: "ultra-reasoning",
-    benchmark: "+201.6%",
-  },
-  {
-    name: "understand-process",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-opus-5",
-    tier: "high-reasoning",
-    benchmark: "+199.5%",
-  },
-  {
-    name: "doubt-driven-development",
-    primary: "claude-opus-4-8",
-    fallback1: "gpt-5.5",
-    tier: "high-reasoning",
-    benchmark: "+149.4%",
-  },
-  {
-    name: "setup-harness-bootstrap",
-    primary: "claude-opus-4-8",
-    fallback1: "gemini-3.6-flash",
-    tier: "high-reasoning",
-    benchmark: "+145.0%",
-  },
-  {
-    name: "implement",
-    primary: "gpt-5.4",
-    fallback1: "gpt-5.3-codex",
-    tier: "balanced-coding",
-    benchmark: "+130.0%",
-  },
-  {
-    name: "review-breadth",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-opus-5",
-    tier: "high-reasoning",
-    benchmark: "+113.2%",
-  },
-  {
-    name: "budget-aware-execution",
-    primary: "gemini-3.5-flash",
-    fallback1: "claude-haiku-4-5",
-    tier: "fast-execution",
-    benchmark: "+111.8%",
-  },
-  {
-    name: "deterministic-validation",
-    primary: "claude-opus-4-8",
-    fallback1: "gpt-5.5",
-    tier: "high-reasoning",
-    benchmark: "+111.8%",
-  },
-  {
-    name: "context-engineering",
-    primary: "claude-opus-4-8",
-    fallback1: "gpt-5.5",
-    tier: "high-reasoning",
-    benchmark: "+111.4%",
-  },
-  {
-    name: "retrieval-quality-ops",
-    primary: "claude-opus-4-8",
-    fallback1: "gpt-5.5",
-    tier: "high-reasoning",
-    benchmark: "+110.5%",
-  },
-  {
-    name: "observability-and-instrumentation",
-    primary: "claude-opus-4-8",
-    fallback1: "gpt-5.5",
-    tier: "high-reasoning",
-    benchmark: "+108.4%",
-  },
-  {
-    name: "ai-techniques-radar",
-    primary: "gpt-5.5",
-    fallback1: "claude-opus-4-8",
-    tier: "high-reasoning",
-    benchmark: "+106.3%",
-  },
-  {
-    name: "teach-agent",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-sonnet-5",
-    tier: "high-reasoning",
-    benchmark: "+101.8%",
-  },
-  {
-    name: "run-loop",
-    primary: "claude-sonnet-5",
-    fallback1: "claude-opus-4-8",
-    tier: "balanced-coding",
-    benchmark: "+99.5%",
-  },
-  {
-    name: "review-depth",
-    primary: "claude-opus-4-8",
-    fallback1: "claude-opus-5",
-    tier: "high-reasoning",
-    benchmark: "+83.2%",
-  },
-  {
-    name: "eval-first-tuning",
-    primary: "gpt-5.5",
-    fallback1: "claude-opus-4-8",
-    tier: "high-reasoning",
-    benchmark: "+251.5%",
-  },
-];
+const LEGACY_BENCHMARKS = new Map([
+  ["pr", "+252.3%"],
+  ["eval-first-tuning", "+251.5%"],
+  ["remember", "+219.8%"],
+  ["feedback", "+219.0%"],
+  ["prototype", "+219.0%"],
+  ["architect", "+201.6%"],
+  ["understand-process", "+199.5%"],
+  ["doubt-driven-development", "+149.4%"],
+  ["setup-harness-bootstrap", "+145.0%"],
+  ["implement", "+130.0%"],
+  ["review-breadth", "+113.2%"],
+  ["budget-aware-execution", "+111.8%"],
+  ["deterministic-validation", "+111.8%"],
+  ["context-engineering", "+111.4%"],
+  ["retrieval-quality-ops", "+110.5%"],
+  ["observability-and-instrumentation", "+108.4%"],
+  ["ai-techniques-radar", "+106.3%"],
+  ["teach-agent", "+101.8%"],
+  ["run-loop", "+99.5%"],
+  ["review-depth", "+83.2%"],
+]);
+
+export const SYNTHETIC_MODEL_PROFILES = {
+  "gpt-5.6-sol": { role: "deep-reasoning", qualityBonus: 0.09, latencyMs: 4300, costPerOutputToken: 0.000030 },
+  "claude-opus-5": { role: "deep-reasoning", qualityBonus: 0.07, latencyMs: 3500, costPerOutputToken: 0.000025 },
+  "gpt-5.5": { role: "deep-reasoning", qualityBonus: 0.06, latencyMs: 2800, costPerOutputToken: 0.000030 },
+  "claude-opus-4-8": { role: "deep-reasoning", qualityBonus: 0.04, latencyMs: 2500, costPerOutputToken: 0.000025 },
+  "gpt-5.6-terra": { role: "balanced", qualityBonus: 0.05, latencyMs: 2400, costPerOutputToken: 0.000012 },
+  "gpt-5.4": { role: "balanced", qualityBonus: 0.04, latencyMs: 2200, costPerOutputToken: 0.000015 },
+  "claude-sonnet-5": { role: "balanced", qualityBonus: 0.03, latencyMs: 2600, costPerOutputToken: 0.000010 },
+  "gpt-5.3-codex": { role: "coding", qualityBonus: 0.03, latencyMs: 1800, costPerOutputToken: 0.000014 },
+  "gpt-5.6-luna": { role: "cheap-fast", qualityBonus: 0.01, latencyMs: 1600, costPerOutputToken: 0.0000012 },
+  "gpt-5.4-mini": { role: "cheap-fast", qualityBonus: 0.0, latencyMs: 1500, costPerOutputToken: 0.0000045 },
+  "gpt-5-mini": { role: "cheap-fast", qualityBonus: -0.01, latencyMs: 1400, costPerOutputToken: 0.000002 },
+  "mai-code-1-flash": { role: "cheap-fast", qualityBonus: 0.0, latencyMs: 1500, costPerOutputToken: 0.0000045 },
+  "gemini-3.6-flash": { role: "fast-execution", qualityBonus: -0.02, latencyMs: 2000, costPerOutputToken: 0.0000075 },
+  "gemini-3.5-flash": { role: "fast-execution", qualityBonus: -0.03, latencyMs: 1500, costPerOutputToken: 0.000009 },
+  "claude-haiku-4-5": { role: "cheap-fast", qualityBonus: -0.04, latencyMs: 1200, costPerOutputToken: 0.000005 },
+};
+
+export function loadPhase5Skills(configPath = CONFIG_PATH) {
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const mappings = config.skillModelMapping?.mappings;
+  if (!mappings || typeof mappings !== "object" || Object.keys(mappings).length === 0) {
+    throw new Error("Missing non-empty skillModelMapping.mappings in harness.config.json");
+  }
+
+  return Object.entries(mappings).map(([name, mapping]) => {
+    if (!mapping || typeof mapping !== "object") {
+      throw new Error(`Invalid model mapping for skill ${name}`);
+    }
+    if (typeof mapping.tier !== "string" || typeof mapping.primary !== "string") {
+      throw new Error(`Model mapping for skill ${name} must include tier and primary`);
+    }
+    if (!Array.isArray(mapping.fallback) || typeof mapping.fallback[0] !== "string") {
+      throw new Error(`Model mapping for skill ${name} must include at least one fallback`);
+    }
+    return {
+      name,
+      primary: mapping.primary,
+      fallback1: mapping.fallback[0],
+      tier: mapping.tier,
+      benchmark: mapping.phase4_benchmark ?? LEGACY_BENCHMARKS.get(name) ?? "n/a",
+      shifted: /upgrade|shift|refresh|optimizer/i.test(mapping.reasoning ?? ""),
+    };
+  });
+}
+
+const PHASE_5_SKILLS = loadPhase5Skills();
 
 // ============================================================================
 // TEST EXECUTION
@@ -216,15 +144,14 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
 
   try {
     // Simulate model execution (in production, call actual model)
-    const isShifted = [
-      "architect",
-      "feedback",
-      "eval-first-tuning",
-      "budget-aware-execution",
-      "implement",
-      "run-loop",
-    ].includes(skill.name);
+    const isShifted = skill.shifted === true;
     const isPrimary = model === skill.primary;
+    const modelProfile = SYNTHETIC_MODEL_PROFILES[model] ?? {
+      role: "unknown",
+      qualityBonus: 0,
+      latencyMs: 2000,
+      costPerOutputToken: 0.000010,
+    };
 
     // Synthetic quality scoring based on:
     // 1. Task fit (code gen = balanced tiers better, reasoning = high/ultra tiers better)
@@ -243,19 +170,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     }
 
     // Model specialization bonus
-    if (
-      model.includes("luna") ||
-      model.includes("opus-5") ||
-      model.includes("5.6")
-    ) {
-      baseQuality += 0.05;
-    } else if (
-      model.includes("haiku") ||
-      model.includes("mini") ||
-      model === "gemini-3.5-flash"
-    ) {
-      baseQuality -= 0.05;
-    }
+    baseQuality += modelProfile.qualityBonus;
 
     // Phase 5 shift impact
     if (isShifted && isPrimary) {
@@ -267,20 +182,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     const quality = Math.max(0.6, Math.min(1.0, baseQuality));
 
     // Latency estimation (ms)
-    const baseLatency = 2000;
-    const modelLatency = {
-      "claude-opus-5": 3500,
-      "claude-opus-4-8": 2500,
-      "gpt-5.6-luna": 4000,
-      "gpt-5.5": 2800,
-      "gpt-5.4": 2200,
-      "gpt-5.3-codex": 1800,
-      "claude-sonnet-5": 2600,
-      "gemini-3.6-flash": 2000,
-      "gemini-3.5-flash": 1500,
-      "claude-haiku-4-5": 1200,
-    };
-    const latency = modelLatency[model] || baseLatency;
+    const latency = modelProfile.latencyMs;
     const taskMultiplier = {
       basic_execution: 0.8,
       complex_reasoning: 1.5,
@@ -289,24 +191,12 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
     const totalLatency = latency * (taskMultiplier[taskKey] || 1.0);
 
     // Cost estimation (tokens)
-    const modelCost = {
-      "claude-opus-5": 0.015, // $15/1M output tokens
-      "claude-opus-4-8": 0.015,
-      "gpt-5.6-luna": 0.01, // $10/1M output
-      "gpt-5.5": 0.006,
-      "gpt-5.4": 0.008,
-      "gpt-5.3-codex": 0.008,
-      "claude-sonnet-5": 0.015,
-      "gemini-3.6-flash": 0.004,
-      "gemini-3.5-flash": 0.0015,
-      "claude-haiku-4-5": 0.004,
-    };
     const outputTokens = {
       basic_execution: 150,
       complex_reasoning: 450,
       code_generation: 250,
     };
-    const costPerToken = modelCost[model] || 0.01;
+    const costPerToken = modelProfile.costPerOutputToken;
     const tokens = outputTokens[taskKey] || 200;
     const cost = (costPerToken * tokens) / 1000000; // Cost in dollars
 
@@ -333,6 +223,7 @@ async function executeTest(skill, model, taskKey, taskConfig, isLocal = true) {
       timestamp: new Date().toISOString(),
       isPrimary,
       isFallback: !isPrimary,
+      model_role: modelProfile.role,
     };
   } catch (error) {
     return {
@@ -376,7 +267,7 @@ async function runValidationSuite(options = {}) {
   console.log("🚀 Phase 5b Validation Starting...\n");
   console.log(`📊 Test Plan:`);
   console.log(
-    `   • Skills: ${results.config.skills_count} (20 harness skills)`
+    `   • Skills: ${results.config.skills_count} (${results.config.skills_count} harness skills)`
   );
   console.log(
     `   • Tasks: ${results.config.tasks_count} (basic, reasoning, code)`
@@ -578,14 +469,7 @@ function printDashboard(results) {
   // Tier shifts validation
   console.log("🔄 PHASE 5 TIER SHIFTS VALIDATION");
   console.log("-".repeat(80));
-  const shiftedSkills = [
-    "architect",
-    "feedback",
-    "eval-first-tuning",
-    "budget-aware-execution",
-    "implement",
-    "run-loop",
-  ];
+  const shiftedSkills = PHASE_5_SKILLS.filter((skill) => skill.shifted).map((skill) => skill.name);
   for (const skillName of shiftedSkills) {
     const skillData = results.summary.by_skill[skillName];
     if (!skillData) continue;
@@ -612,7 +496,7 @@ function printDashboard(results) {
     }
   }
   console.log(
-    `   Healthy Cascades: ${healthyCount}/20 (${((healthyCount / 20) * 100).toFixed(1)}%)`
+    `   Healthy Cascades: ${healthyCount}/${PHASE_5_SKILLS.length} (${((healthyCount / PHASE_5_SKILLS.length) * 100).toFixed(1)}%)`
   );
   for (const [skillName, data] of Object.entries(results.summary.by_skill)) {
     if (data.metrics.cascade_health === "degraded") {
@@ -697,8 +581,10 @@ async function main() {
   console.log(`✅ Results saved to: ${path.join(RESULTS_DIR, "phase5b-validation-*.json")}`);
 }
 
-main().catch((error) => {
-  console.error("❌ Error:", error.message);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((error) => {
+    console.error("❌ Error:", error.message);
+    process.exit(1);
+  });
+}
 

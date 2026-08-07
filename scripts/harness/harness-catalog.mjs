@@ -57,6 +57,8 @@ export function buildCatalog() {
   const config = loadConfig();
   const catalog = config.catalog ?? {};
   const routing = config.routing ?? {};
+  const domainSpecialists = config.modelPolicy?.domainSpecialists ?? {};
+  const selectionWizard = config.modelPolicy?.modelSelectionWizard ?? {};
   const intentProfiles = routing.intentProfiles ?? {};
   const profiles = routing.profiles ?? {};
   const version = readPackageVersion();
@@ -82,6 +84,34 @@ export function buildCatalog() {
     tags: inferToolTags(spec.name),
   }));
 
+  const modelDomains = Object.entries(domainSpecialists)
+    .filter(([, details]) => details && typeof details === "object" && typeof details.primary === "string")
+    .map(([domain, details]) => ({
+      domain,
+      tier: typeof details.tier === "string" ? details.tier : "unspecified",
+      primary: details.primary,
+      fallback: Array.isArray(details.fallback) ? details.fallback : [],
+      companionSkills: Array.isArray(details.companionSkills) ? details.companionSkills : [],
+      advisoryOnly: domainSpecialists.advisoryOnly === true,
+    }));
+
+  const modelSelectionLevels = Object.entries(selectionWizard.levels ?? {}).map(([level, details]) => ({
+    level,
+    label: typeof details?.label === "string" ? details.label : level,
+    costRank: typeof details?.costRank === "number" ? details.costRank : null,
+    qualityRank: typeof details?.qualityRank === "number" ? details.qualityRank : null,
+    defaultModels: Array.isArray(details?.defaultModels) ? details.defaultModels : [],
+  }));
+  const modelModePackages = Object.entries(selectionWizard.modePackages ?? {}).flatMap(([mode, packages]) =>
+    Object.entries(packages ?? {}).map(([level, details]) => ({
+      mode,
+      level,
+      cloud: Array.isArray(details?.cloud) ? details.cloud : [],
+      local: typeof details?.local === "string" ? details.local : null,
+      context: typeof details?.context === "string" ? details.context : null,
+    })),
+  );
+
   return {
     meta: {
       name: catalog.name ?? "harness-kit",
@@ -104,6 +134,18 @@ export function buildCatalog() {
       intents,
     },
     capabilities: {
+      modelPolicy: {
+        domainSpecialists: modelDomains,
+        selectionWizard: {
+          docsSource: selectionWizard.docsSource ?? null,
+          snapshotDate: selectionWizard.snapshotDate ?? null,
+          levels: modelSelectionLevels,
+          modePackages: modelModePackages,
+          supportedModelCount: Array.isArray(selectionWizard.supportedCopilotModels)
+            ? selectionWizard.supportedCopilotModels.length
+            : 0,
+        },
+      },
       mcp: {
         toolCount: tools.length,
         tools,
@@ -134,6 +176,28 @@ export function renderLlmsTxt(catalog) {
     ...catalog.routing.intents.map(
       (intent) =>
         `- ${intent.intent}: profile=${intent.profile ?? "none"}; keywords=${intent.keywords.join(", ")}`,
+    ),
+    "",
+    "## Domain model specialists",
+    ...(catalog.capabilities.modelPolicy.domainSpecialists.length > 0
+      ? catalog.capabilities.modelPolicy.domainSpecialists.map(
+          (entry) =>
+            `- ${entry.domain}: tier=${entry.tier}; primary=${entry.primary}; fallback=${entry.fallback.join(", ")}; companionSkills=${entry.companionSkills.join(", ")}; advisoryOnly=${entry.advisoryOnly}`,
+        )
+      : ["- none"]),
+    "",
+    "## Model selection wizard",
+    `- Supported model snapshot: ${catalog.capabilities.modelPolicy.selectionWizard.snapshotDate ?? "unknown"}`,
+    `- Source: ${catalog.capabilities.modelPolicy.selectionWizard.docsSource ?? "not configured"}`,
+    `- Supported model count: ${catalog.capabilities.modelPolicy.selectionWizard.supportedModelCount}`,
+    ...catalog.capabilities.modelPolicy.selectionWizard.levels.map(
+      (entry) =>
+        `- ${entry.level}: cost=${entry.costRank ?? "?"}/3; quality=${entry.qualityRank ?? "?"}/3; defaults=${entry.defaultModels.join(", ")}`,
+    ),
+    "### Mode packages",
+    ...catalog.capabilities.modelPolicy.selectionWizard.modePackages.map(
+      (entry) =>
+        `- ${entry.mode}/${entry.level}: cloud=${entry.cloud.join(", ")}; local=${entry.local ?? "none"}; context=${entry.context ?? "not configured"}`,
     ),
     "",
     "## MCP tool discovery",

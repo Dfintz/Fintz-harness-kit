@@ -30,6 +30,7 @@ The kit ships a harness-first prompt routing policy through `scripts/harness/pro
 - `npm run harness:profile -- --task "<prompt>"` maps a task to an intent profile (`turnkey-coding`, `multi-agent-orchestration`, `drop-in-memory`).
 - `npm run harness:route -- --intent <intent> --task "<prompt>"` routes directly through that intent profile.
 - `npm run harness:feature -- --task "<feature task>"` or `npm run harness:handoff:feature -- --task "<feature task>"` prints the full operator handoff plan.
+- Project wrappers bind routing to the current workspace with `--repo-root .`; direct invocations can use `--repo-root <path>` or `HARNESS_PROJECT_ROOT` so config, telemetry, and run artifacts stay project-local.
 - `npm run harness:handoff:review -- --task "<review task>"` prints the review-only handoff plan.
 - `npm run harness:review` runs the plan-review workflow (backward-compatible behavior).
 - `npm run harness:docs:check` validates registry stage contracts, loop references, skill metadata, and cited script or npm command paths across the harness docs surfaces.
@@ -58,10 +59,12 @@ class works.
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
 | **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
 
-**Cross-model review:** implementer and reviewer must differ. The router enforces
-`models.implementer ≠ models.reviewer`. If both are on Copilot Auto, explicitly select distinct
-models for the `review-fix` pass to break single-model echo chambers. The cross-model pass runs
-the balanced-coding model first (implement), then the high-reasoning model as the independent
+**Cross-model review:** for an active route containing `implement`, its effective implementation
+model must differ from every active review-stage model (`review-breadth`, `review-depth`, and
+`feedback`). The router enforces this after resolving role defaults, `stageModels`, and selected
+`stageModelSets`; it cannot be disabled by configuration. If both are on Copilot Auto, explicitly
+select distinct models for the `review-fix` pass to break single-model echo chambers. The cross-model pass runs the
+balanced-coding model first (implement), then the high-reasoning model as the independent
 challenger.
 
 ---
@@ -109,6 +112,14 @@ Current model-invoked-eligible core subset:
 - `context-engineering`
 - `deterministic-validation`
 - `understand-process`
+
+Domain-specialist model guidance is advisory metadata, not executable routing. Use
+`harness.config.json` `modelPolicy.domainSpecialists` to pick a better model tier inside the active
+stage for frontend, UI/UX, database, infrastructure, or backend-heavy work. The prompt router still
+gets stage assignments from `skillModelMapping.mappings`; create a new specialist skill or agent
+only when the path needs materially different instructions, tools, approval policy, or output
+ownership. Pair database and infrastructure work with high-reasoning review and explicit validation
+before destructive migrations, permission expansion, or production deployment changes.
 
 Workflow-stage skills (`architect`, `implement`, `review-breadth`, `review-depth`, `feedback`) exist
 only under `.claude/skills/` as invocable commands; non-Claude agents get identical content from the

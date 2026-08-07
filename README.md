@@ -8,7 +8,7 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
-Latest release notes: [`RELEASE_NOTES_v3.1.1.md`](RELEASE_NOTES_v3.1.1.md).
+Latest release notes: [`RELEASE_NOTES_v3.5.0.md`](RELEASE_NOTES_v3.5.0.md).
 
 ## Install
 
@@ -42,6 +42,22 @@ kit scaffold per [`SETUP.md`](SETUP.md).
 For the **GitHub Copilot App inside a repository**, the scaffold also ships
 `.github/copilot-instructions.md`. Once the kit is present in a repo, Copilot can load the harness
 entrypoint directly from that file.
+
+### Agent Plugins pilot
+
+This repository also contains an experimental Agent Plugins v1 skills-only package at
+[`plugins/agent-plugins/harness-kit/`](plugins/agent-plugins/harness-kit/). It currently exports only
+the explicitly allowlisted, user-invoked `wait-what` skill. Regenerate and validate it with:
+
+```bash
+npm run harness:agent-plugins:export
+npm run harness:agent-plugins:validate
+npm run test:harness:agent-plugins
+```
+
+This is a portable package export, not an Agent Plugins client. It intentionally contains no
+`mcp.json`, command dispatch, or plugin-defined process execution. Interoperability still requires a
+load test in a conforming Agent Plugins client.
 
 ## What's inside
 
@@ -177,6 +193,27 @@ By default the shipped environment policy separates execution and judgment using
 Copilot Auto is a safe default for the hosted tiers. Pin a specific model in `harness.config.json`
 only when you need consistent identity for reproducible evals or cross-model review. The router
 enforces that `models.implementer ≠ models.reviewer` to prevent single-model echo chambers.
+
+For domain-heavy work, `harness.config.json` also exposes advisory
+`modelPolicy.domainSpecialists` guidance. It recommends model tiers and companion skills for
+frontend, UI/UX, database, infrastructure, and backend tasks while keeping executable stage routing
+owned by `skillModelMapping.mappings`. Treat those domain entries as model-selection guidance inside
+the current stage, not as checked-in specialist skills or automatic router dispatch.
+
+Use the model-selection wizard to pick from the supported Copilot model snapshot and compare three
+cost/quality levels:
+
+```bash
+npm run harness:model-wizard -- recommend --domain frontend --level balanced
+npm run harness:model-wizard -- recommend --mode dev --level high
+npm run harness:model-wizard -- recommend --mode super-plus --level balanced --json
+npm run harness:model-wizard -- recommend --domain database --level high --json
+npm run harness:model-wizard -- check
+```
+
+The wizard reads `modelPolicy.modelSelectionWizard` in `harness.config.json`. Its supported-models
+snapshot records the GitHub Docs source and date; organization, plan, client, and model-picker
+policies can still restrict what an individual user sees.
 
 ## Autoresearch with a local model
 

@@ -5,29 +5,54 @@
  * It does not intercept editor prompts on its own. Instead it gives operators and wrapper commands
  * a deterministic stage/model handoff plan that mirrors the harness environment policy.
  */
+import { randomUUID } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
   mkdirSync,
   readdirSync,
-  realpathSync,
   readFileSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { createManifestAllowlist } from "./manifest-allowlist.mjs";
-import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 
+import { buildGraphStatusCore } from "./graph-provider.mjs";
 import {
   getStageContractMetadata,
   getStagePromptPackMetadata,
 } from "./registry.mjs";
-import { buildGraphStatusCore } from "./graph-provider.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+function resolveRepoRootArgument(argv) {
+  const inline = argv.find((arg) => arg.startsWith("--repo-root="));
+  if (inline) {
+    const value = inline.slice("--repo-root=".length);
+    if (!value) {
+      fail("--repo-root requires a path");
+    }
+    return resolve(process.cwd(), value);
+  }
+
+  const index = argv.findIndex((arg) => arg === "--repo-root");
+  if (index === -1) {
+    return null;
+  }
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    fail("--repo-root requires a path");
+  }
+  return resolve(process.cwd(), value);
+}
+
+const repoRoot = resolve(
+  resolveRepoRootArgument(process.argv.slice(2)) ??
+    process.env.HARNESS_PROJECT_ROOT ??
+    resolve(dirname(fileURLToPath(import.meta.url)), "..", ".."),
+);
 const require = createRequire(import.meta.url);
 const configPath = join(repoRoot, "harness.config.json");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
@@ -210,23 +235,64 @@ function parseArgs(argv) {
       flags[arg.slice(2)] = true;
     } else if (arg === "--allow-degraded-preflight") {
       flags.allowDegradedPreflight = true;
+    } else if (arg === "--repo-root") {
+      flags.repoRoot = argv[++i];
+    } else if (arg.startsWith("--repo-root=")) {
+      flags.repoRoot = arg.slice("--repo-root=".length);
     } else if (arg === "--out") {
       flags.out = argv[++i];
+    } else if (arg.startsWith("--out=")) {
+      flags.out = arg.slice("--out=".length);
     } else if (arg === "--profile") {
       flags.profile = argv[++i];
+    } else if (arg.startsWith("--profile=")) {
+      flags.profile = arg.slice("--profile=".length);
     } else if (arg === "--task") {
       flags.task = argv[++i];
+    } else if (arg.startsWith("--task=")) {
+      flags.task = arg.slice("--task=".length);
     } else if (arg === "--intent") {
       flags.intent = argv[++i];
+    } else if (arg.startsWith("--intent=")) {
+      flags.intent = arg.slice("--intent=".length);
     } else if (arg === "--pack") {
       flags.pack = argv[++i];
+    } else if (arg.startsWith("--pack=")) {
+      flags.pack = arg.slice("--pack=".length);
     } else if (arg === "--pack-latest") {
       flags.packLatest = true;
+    } else if (arg === "--repo-root") {
+      flags.repoRoot = argv[++i];
     } else {
       flags._.push(arg);
     }
   }
+
+  applyNpmForwardedFlags(flags);
   return flags;
+}
+
+function npmConfigValue(name) {
+  const value = process.env[`npm_config_${name}`];
+  if (typeof value !== "string" || value.trim().length === 0 || value === "true") {
+    return null;
+  }
+  return value;
+}
+
+function applyNpmForwardedFlags(flags) {
+  flags.json ||= process.env.npm_config_json === "true";
+  flags.stdin ||= process.env.npm_config_stdin === "true";
+  flags.help ||= process.env.npm_config_help === "true";
+  flags.allowDegradedPreflight ||=
+    process.env.npm_config_allow_degraded_preflight === "true";
+  flags.repoRoot ??= npmConfigValue("repo_root");
+  flags.out ??= npmConfigValue("out");
+  flags.profile ??= npmConfigValue("profile");
+  flags.task ??= npmConfigValue("task");
+  flags.intent ??= npmConfigValue("intent");
+  flags.pack ??= npmConfigValue("pack");
+  flags.packLatest ||= process.env.npm_config_pack_latest === "true";
 }
 
 function readStdin() {
@@ -347,7 +413,15 @@ function getStageSkillName(stage) {
   }
 }
 
-function getStageModel(config, stage, roleModels) {
+function getStageModel(config, stage, roleModels, stageModelSet = null) {
+  const stageModelEntry = stageModelSet?.[stage];
+  if (typeof stageModelEntry === "string" && stageModelEntry.trim()) {
+    return stageModelEntry;
+  }
+  if (typeof stageModelEntry?.model === "string" && stageModelEntry.model.trim()) {
+    return stageModelEntry.model;
+  }
+
   const skillName = getStageSkillName(stage);
   if (skillName) {
     const defaultModel =
@@ -534,9 +608,7 @@ function recommendIntentProfile(taskText, config, explicitIntent = null) {
 
 function validateModelSeparation(config) {
   const { implementer, reviewer } = getModelAssignments(config);
-  const mustDiffer =
-    config.routing?.requireDistinctReviewerAndImplementer !== false;
-  if (mustDiffer && implementer === reviewer) {
+  if (implementer === reviewer) {
     fail(
       `implementer and reviewer must be different models in this repo (both are ${implementer}). Update harness.config.json.`,
     );
@@ -544,20 +616,48 @@ function validateModelSeparation(config) {
   return { implementer, reviewer };
 }
 
-function buildModelRouting(config) {
+function resolveStageModelSet(config, modelSetName = null) {
+  const routing = config.routing ?? {};
+  if (modelSetName) {
+    const modelSet = routing.stageModelSets?.[modelSetName];
+    if (modelSet && typeof modelSet === "object") {
+      return modelSet;
+    }
+  }
+  return routing.stageModels && typeof routing.stageModels === "object"
+    ? routing.stageModels
+    : null;
+}
+
+function buildModelRouting(config, modelSetName = null) {
   const roleModels = validateModelSeparation(config);
+  const stageModelSet = resolveStageModelSet(config, modelSetName);
   return {
-    understand: getStageModel(config, "understand", roleModels),
-    architect: getStageModel(config, "architect", roleModels),
-    "architect-challenge": getStageModel(config, "architect-challenge", roleModels),
-    implement: getStageModel(config, "implement", roleModels),
-    "review-breadth": getStageModel(config, "review-breadth", roleModels),
-    "review-depth": getStageModel(config, "review-depth", roleModels),
-    feedback: getStageModel(config, "feedback", roleModels),
-    "build-fix": getStageModel(config, "build-fix", roleModels),
-    "test-fix": getStageModel(config, "test-fix", roleModels),
+    understand: getStageModel(config, "understand", roleModels, stageModelSet),
+    architect: getStageModel(config, "architect", roleModels, stageModelSet),
+    "architect-challenge": getStageModel(config, "architect-challenge", roleModels, stageModelSet),
+    implement: getStageModel(config, "implement", roleModels, stageModelSet),
+    "review-breadth": getStageModel(config, "review-breadth", roleModels, stageModelSet),
+    "review-depth": getStageModel(config, "review-depth", roleModels, stageModelSet),
+    feedback: getStageModel(config, "feedback", roleModels, stageModelSet),
+    "build-fix": getStageModel(config, "build-fix", roleModels, stageModelSet),
+    "test-fix": getStageModel(config, "test-fix", roleModels, stageModelSet),
     "cross-model-review": `${roleModels.implementer} -> ${roleModels.reviewer}`,
   };
+}
+
+function validateResolvedModelSeparation(stages, models) {
+  if (!stages.includes("implement")) return;
+
+  const implementModel = models.implement;
+  const collidingStages = ["review-breadth", "review-depth", "feedback"].filter(
+    (stage) => stages.includes(stage) && models[stage] === implementModel,
+  );
+  if (collidingStages.length > 0) {
+    fail(
+      `effective implementation model ${implementModel} must differ from active review stages: ${collidingStages.join(", ")}. Update harness.config.json.`,
+    );
+  }
 }
 
 function summarizeCrossModelReview(stages, models) {
@@ -933,6 +1033,7 @@ function buildStateFactors({
   profile,
   profileName,
   intentRecommendation,
+  taskClassSelection,
   trivialHit,
   nonTrivialHit,
   trivialEligible,
@@ -944,6 +1045,9 @@ function buildStateFactors({
     intentRecommendation?.intent
       ? `intent-detected:${intentRecommendation.intent}`
       : "intent-detected:none",
+    taskClassSelection?.id
+      ? `task-class:${taskClassSelection.id}`
+      : "task-class:none",
     trivialHit ? `trivial-keyword-hit:${trivialHit}` : "trivial-keyword-hit:none",
     nonTrivialHit
       ? `non-trivial-keyword-hit:${nonTrivialHit}`
@@ -957,6 +1061,7 @@ function buildRationalePayload({
   profile,
   profileName,
   intentRecommendation,
+  taskClassSelection,
   trivial,
   trivialHit,
   nonTrivialHit,
@@ -983,6 +1088,7 @@ function buildRationalePayload({
     profile,
     profileName,
     intentRecommendation,
+    taskClassSelection,
     trivialHit,
     nonTrivialHit,
     trivialEligible,
@@ -990,6 +1096,37 @@ function buildRationalePayload({
   });
 
   return { conditionsMatched, exclusions, stateFactors };
+}
+
+function matchesTaskClass(text, taskClass) {
+  const keywords = Array.isArray(taskClass?.matchAnyKeywords)
+    ? taskClass.matchAnyKeywords
+    : [];
+  if (keywords.length === 0) {
+    return false;
+  }
+  return keywords.some((keyword) => {
+    const normalizedKeyword = normalizeText(keyword);
+    return normalizedKeyword && text.includes(normalizedKeyword);
+  });
+}
+
+function selectTaskClass(text, routing) {
+  const matrix = Array.isArray(routing.taskClassMatrix)
+    ? routing.taskClassMatrix
+    : [];
+  if (matrix.length === 0) {
+    return null;
+  }
+
+  const matched = matrix.find((taskClass) => matchesTaskClass(text, taskClass));
+  if (matched) {
+    return { ...matched, source: "task-class-matrix" };
+  }
+
+  const defaultId = routing.defaultTaskClass;
+  const fallback = matrix.find((taskClass) => taskClass.id === defaultId);
+  return fallback ? { ...fallback, source: "task-class-default" } : null;
 }
 
 function buildStageModels(stages, modelRouting) {
@@ -1010,14 +1147,24 @@ export function planTask(taskText, config, options = {}) {
     options.intent ?? null,
   );
   const profileExplicit = Boolean(options.profile);
-  const profileName =
-    options.profile ?? intentRecommendation?.profile ?? null;
-  const profile = getProfile(config, profileName);
 
   const trivialHit = trivialKeywords.find((keyword) => text.includes(keyword));
   const nonTrivialHit = nonTrivialKeywords.find((keyword) =>
     text.includes(keyword),
   );
+
+  const taskClassCandidate = !options.profile && !resolveTrivialEligibility(
+    null,
+    trivialHit,
+    nonTrivialHit,
+    textLength,
+  )
+    ? selectTaskClass(text, routing)
+    : null;
+  const profileName =
+    options.profile ?? taskClassCandidate?.profile ?? intentRecommendation?.profile ?? null;
+  const profile = getProfile(config, profileName);
+  const taskClassSelection = taskClassCandidate;
 
   const trivial = resolveTrivialEligibility(
     profile,
@@ -1028,7 +1175,8 @@ export function planTask(taskText, config, options = {}) {
   const stages = resolveStages(profile, trivial, routing);
   const selectedMode = resolveSelectedMode(profile, trivial);
 
-  const modelRouting = buildModelRouting(config);
+  const modelSetName = profile?.modelSet ?? taskClassSelection?.modelSet ?? null;
+  const modelRouting = buildModelRouting(config, modelSetName);
 
   const why = resolveRoutingWhy({
     profile,
@@ -1043,6 +1191,7 @@ export function planTask(taskText, config, options = {}) {
     profile,
     profileName,
     intentRecommendation,
+    taskClassSelection,
     trivial,
     trivialHit,
     nonTrivialHit,
@@ -1051,10 +1200,14 @@ export function planTask(taskText, config, options = {}) {
     trivialEligible: trivial,
   });
   const stageModels = buildStageModels(stages, modelRouting);
+  validateResolvedModelSeparation(stages, stageModels);
 
   return {
     task: String(taskText ?? "").trim(),
     profile: profileName,
+    taskClass: taskClassSelection?.id ?? null,
+    taskClassSource: taskClassSelection?.source ?? null,
+    modelSet: modelSetName,
     intent: intentRecommendation?.intent ?? null,
     intentSource: intentRecommendation?.source ?? null,
     mode: selectedMode,
@@ -1417,13 +1570,14 @@ function showHelp() {
           'node scripts/harness/prompt-router.mjs handoff --profile feature --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs handoff --profile review --task "review auth audit"',
           'node scripts/harness/prompt-router.mjs route --task "ship auth audit" --allow-degraded-preflight',
+          'node scripts/harness/prompt-router.mjs route --profile feature --repo-root . --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs prompt-pack --profile feature --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs next-actions --task "ship auth audit"',
           'node scripts/harness/prompt-router.mjs next-actions --pack ship-auth-audit --profile feature',
           'node scripts/harness/prompt-router.mjs next-actions --pack-latest',
           'echo "typo in README" | node scripts/harness/prompt-router.mjs route --stdin --json',
         ],
-        note: "Deterministic repo policy helper. It does not intercept editor prompts by itself; use it via session hooks and repo instructions.",
+        note: "Deterministic repo policy helper. Use --repo-root or HARNESS_PROJECT_ROOT to bind config, telemetry, and run artifacts to a project. It does not intercept editor prompts by itself; use it via session hooks and repo instructions.",
       },
       null,
       2,

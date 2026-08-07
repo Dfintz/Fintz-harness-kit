@@ -11,17 +11,17 @@
  * -----------------------------------------------
  *
  * CLOUD MODELS (Copilot-available, from harness.config.json):
- *   ultra-reasoning    → gpt-5.6-luna        (frontier reasoning: architect, feedback)
+ *   ultra-reasoning    → gpt-5.6-sol         (deep reasoning: architect, feedback)
  *   high-reasoning     → claude-opus-5       (multi-hop reasoning: 13 high-reasoning skills)
  *   balanced-coding    → gpt-5.4             (code + reasoning balance: implement, prototype)
  *   fast-execution     → gemini-3.5-flash    (speed optimized: budget-aware-execution)
  *   universal-fallback → claude-haiku-4-5    (guaranteed availability)
  *
  * LOCAL MODELS (Ollama):
- *   ultra-reasoning    → deepseek-r1:14b     (chain-of-thought, multi-hop reasoning)
- *   high-reasoning     → deepseek-r1:14b     (sustained analysis, impact mapping)
+ *   ultra-reasoning    → devstral:24b        (agentic coding + long local context)
+ *   high-reasoning     → qwen2.5-coder:14b   (reliable local analysis baseline)
  *   balanced-coding    → devstral:24b        (agentic coding, SWE-bench optimised)
- *   fast-execution     → qwen2.5-coder:32b   (large coder, structured output)
+ *   fast-execution     → qwen2.5:latest      (fast local assistant/dev loops)
  *   universal-fallback → qwen2.5-coder:14b   (proven baseline)
  *
  * WHAT IT MEASURES
@@ -75,7 +75,7 @@ const TIMEOUT_MS = 90_000; // 90s — deepseek-r1 thinking tokens + cloud API la
 
 // Cloud model tier mapping (from harness.config.json)
 const CLOUD_TIER_MODEL_MAP = {
-  'ultra-reasoning':    'gpt-5.6-luna',        // Frontier reasoning
+  'ultra-reasoning':    'gpt-5.6-sol',         // Deep reasoning
   'high-reasoning':     'claude-opus-5',       // Multi-hop reasoning
   'balanced-coding':    'gpt-5.4',             // Code + reasoning balance
   'fast-execution':     'gemini-3.5-flash',    // Speed optimized
@@ -84,19 +84,19 @@ const CLOUD_TIER_MODEL_MAP = {
 
 // GitHub Copilot model tier mapping (optimized for reasoning + code)
 const COPILOT_TIER_MODEL_MAP = {
-  'ultra-reasoning':    'claude-opus-5',           // Strongest reasoning (complex multi-step)
+  'ultra-reasoning':    'gpt-5.6-sol',             // Deep reasoning over large codebases
   'high-reasoning':     'claude-sonnet-5',         // Excellent reasoning + code understanding
-  'balanced-coding':    'gpt-5.6-luna',            // Best balance for code + reasoning
-  'fast-execution':     'gpt-5.4-mini',            // Fast and capable
+  'balanced-coding':    'gpt-5.6-terra',           // Balanced everyday agentic coding
+  'fast-execution':     'gpt-5.6-luna',            // Fast and cheap
   'universal-fallback': 'gpt-5.4',                 // Fallback safety net
 };
 
 // Local Ollama tier mapping
 const LOCAL_TIER_MODEL_MAP = {
-  'ultra-reasoning':    'deepseek-r1:14b',
-  'high-reasoning':     'qwen2.5-coder:32b',
+  'ultra-reasoning':    'devstral:24b',
+  'high-reasoning':     'qwen2.5-coder:14b',
   'balanced-coding':    'devstral:24b',
-  'fast-execution':     'qwen2.5-coder:32b',
+  'fast-execution':     'qwen2.5:latest',
   'universal-fallback': 'qwen2.5-coder:14b',
 };
 
@@ -112,7 +112,7 @@ const CLOUD_PROVIDERS = {
     label: 'Azure OpenAI (GPT)',
     apiKey: process.env.AZURE_OPENAI_KEY || '',
     endpoint: process.env.AZURE_OPENAI_ENDPOINT || '',
-    models: ['gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex'],
+    models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex'],
   },
   google: {
     label: 'Google Gemini',
@@ -123,7 +123,7 @@ const CLOUD_PROVIDERS = {
     label: 'GitHub Copilot',
     apiKey: process.env.GITHUB_TOKEN || process.env.COPILOT_API_KEY || '',
     endpoint: 'https://models.inference.ai.github.com/v1',
-    models: ['gpt-5.6-luna', 'gpt-5.4', 'claude-opus-5', 'claude-sonnet-5'],
+    models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.4', 'claude-opus-5', 'claude-sonnet-5'],
   },
 };
 
