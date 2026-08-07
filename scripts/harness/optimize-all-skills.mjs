@@ -36,13 +36,18 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BRIDGE_SCRIPT = join(repoRoot, 'scripts', 'harness', 'dspy-bridge.mjs');
 const SKILLS_DIRS = [join(repoRoot, '.github', 'skills'), join(repoRoot, '.claude', 'skills')];
+const REPORT_DIR = join(repoRoot, '.github', 'harness', 'optimization-reports');
+const STATE_VERSION = 1;
+const TERMINAL_STATUSES = new Set(['success', 'no-improvement', 'skipped']);
 
 // Model configurations (Ollama first, then cloud providers)
 const MODELS = {
@@ -139,6 +144,7 @@ function discoverSkills() {
       }
 
       skills.push({
+        id: toWorkspacePath(skillMdFile),
         name: skillName,
         dir: skillPath,
         skillFile: skillMdFile,
@@ -148,6 +154,14 @@ function discoverSkills() {
   }
 
   return skills.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function toWorkspacePath(filePath) {
+  return relative(repoRoot, filePath).replaceAll('\\', '/');
+}
+
+function sha256File(filePath) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
 /**
@@ -166,6 +180,135 @@ function findEvalSet(skill) {
   if (existsSync(evalSetPath2)) return evalSetPath2;
 
   return null;
+}
+
+function describeSkill(skill) {
+  const evalSet = findEvalSet(skill);
+  return {
+    id: skill.id,
+    name: skill.name,
+    skillFile: toWorkspacePath(skill.skillFile),
+    targetFingerprint: sha256File(skill.skillFile),
+    evalSet: evalSet ? toWorkspacePath(evalSet) : null,
+    evalSetFingerprint: evalSet ? sha256File(evalSet) : null,
+  };
+}
+
+function selectSkills(skills, selectors) {
+  if (selectors.length === 0) return skills;
+
+  const selected = new Map();
+  for (const selector of selectors) {
+    const exactId = skills.find(skill => skill.id === selector);
+    if (exactId) {
+      selected.set(exactId.id, exactId);
+      continue;
+    }
+
+    const nameMatches = skills.filter(skill => skill.name === selector);
+    if (nameMatches.length === 0) {
+      throw new Error(`Unknown skill selector "${selector}". Use a skill name or canonical SKILL.md path.`);
+    }
+    if (nameMatches.length > 1) {
+      throw new Error(
+        `Ambiguous skill selector "${selector}". Use one of: ${nameMatches.map(skill => skill.id).join(', ')}`
+      );
+    }
+    selected.set(nameMatches[0].id, nameMatches[0]);
+  }
+
+  return skills.filter(skill => selected.has(skill.id));
+}
+
+function stateModel(modelName, config) {
+  return {
+    provider: modelName,
+    model: config.model,
+    dspyModel: config.dspyModel,
+    apiBase: config.apiBase || null,
+  };
+}
+
+function createState(modelName, config, skills) {
+  const now = new Date().toISOString();
+  return {
+    schemaVersion: STATE_VERSION,
+    runId: randomUUID(),
+    status: 'running',
+    repositoryRoot: repoRoot,
+    model: stateModel(modelName, config),
+    selectedSkills: skills.map(describeSkill),
+    results: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function stateFilePath(state) {
+  return join(REPORT_DIR, `optimization-state--${state.model.provider}--${state.runId}.json`);
+}
+
+function writeState(statePath, state) {
+  mkdirSync(dirname(statePath), { recursive: true });
+  state.updatedAt = new Date().toISOString();
+  const temporaryPath = `${statePath}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, JSON.stringify(state, null, 2));
+  renameSync(temporaryPath, statePath);
+}
+
+function readState(statePath) {
+  try {
+    const parsed = JSON.parse(readFileSync(statePath, 'utf8'));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function stateIsCompatible(state, modelName, config, skills) {
+  if (!state || state.schemaVersion !== STATE_VERSION || state.status === 'completed') return false;
+  if (state.repositoryRoot !== repoRoot) return false;
+  if (JSON.stringify(state.model) !== JSON.stringify(stateModel(modelName, config))) return false;
+  if (!Array.isArray(state.selectedSkills) || !Array.isArray(state.results)) return false;
+
+  const current = new Map(skills.map(skill => [skill.id, describeSkill(skill)]));
+  return state.selectedSkills.every(saved => {
+    const actual = current.get(saved?.id);
+    return actual
+      && actual.targetFingerprint === saved.targetFingerprint
+      && actual.evalSet === saved.evalSet
+      && actual.evalSetFingerprint === saved.evalSetFingerprint;
+  });
+}
+
+function resolveStateFile(resumeValue, modelName, config, skills, stateDirectory = REPORT_DIR) {
+  if (!resumeValue) return null;
+  if (resumeValue !== 'latest') {
+    const requested = resolve(resumeValue);
+    const relativeStatePath = relative(stateDirectory, requested);
+    if (relativeStatePath.startsWith('..') || isAbsolute(relativeStatePath)) {
+      throw new Error(`Optimizer state must be inside ${stateDirectory}`);
+    }
+    if (!existsSync(requested)) throw new Error(`Optimizer state file not found: ${requested}`);
+    const state = readState(requested);
+    if (!stateIsCompatible(state, modelName, config, skills)) {
+      throw new Error(`Optimizer state is malformed, completed, or incompatible: ${requested}`);
+    }
+    return { statePath: requested, state };
+  }
+
+  if (!existsSync(stateDirectory)) throw new Error('No resumable optimizer state files found.');
+  const matches = readdirSync(stateDirectory)
+    .filter(file => file.startsWith(`optimization-state--${modelName}--`) && file.endsWith('.json'))
+    .map(file => join(stateDirectory, file))
+    .map(statePath => ({ statePath, state: readState(statePath) }))
+    .filter(candidate => stateIsCompatible(candidate.state, modelName, config, skills));
+
+  if (matches.length === 0) throw new Error('No compatible unfinished optimizer state files found.');
+  if (matches.length > 1) {
+    throw new Error(`Multiple compatible unfinished optimizer states found: ${matches.map(match => match.statePath).join(', ')}`);
+  }
+  return matches[0];
 }
 
 // ---------- Validation ----------
@@ -226,7 +369,7 @@ function validateModel(modelName) {
  * @param {boolean} dryRun - If true, don't actually run optimization
  * @returns {Object} Result with status, timing, and metrics
  */
-function optimizeSkill(skill, modelName, dryRun = false) {
+function optimizeSkill(skill, modelName, dryRun = false, outputPath = null) {
   const evalSet = findEvalSet(skill);
   if (!evalSet) {
     return {
@@ -240,8 +383,7 @@ function optimizeSkill(skill, modelName, dryRun = false) {
   const outputDir = join(repoRoot, '.github', 'harness', 'optimized-skills');
   mkdirSync(outputDir, { recursive: true });
 
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-  const outputPath = join(outputDir, `${skill.name}--${modelName}--${timestamp}.md`);
+  const resolvedOutputPath = outputPath || join(outputDir, `${skill.name}--${modelName}--preview.md`);
 
   if (dryRun) {
     return {
@@ -250,7 +392,7 @@ function optimizeSkill(skill, modelName, dryRun = false) {
       status: 'dry-run',
       skillFile: skill.skillFile,
       evalSet,
-      outputPath,
+      outputPath: resolvedOutputPath,
     };
   }
 
@@ -262,7 +404,7 @@ function optimizeSkill(skill, modelName, dryRun = false) {
     '--eval-set',
     evalSet,
     '--output',
-    outputPath,
+    resolvedOutputPath,
     '--model',
     config.dspyModel,
   ];
@@ -274,7 +416,7 @@ function optimizeSkill(skill, modelName, dryRun = false) {
   console.log(`\n[optimize-skills] Optimizing ${skill.name} with ${MODELS[modelName].label}...`);
   console.log(`  Skill: ${skill.skillFile}`);
   console.log(`  Eval set: ${evalSet}`);
-  console.log(`  Output: ${outputPath}`);
+  console.log(`  Output: ${resolvedOutputPath}`);
 
   const startTime = Date.now();
   const result = spawnSync('node', [BRIDGE_SCRIPT, ...bridgeArgs], {
@@ -290,7 +432,7 @@ function optimizeSkill(skill, modelName, dryRun = false) {
       model: modelName,
       status: 'success',
       duration: elapsed,
-      outputPath,
+      outputPath: resolvedOutputPath,
       stdout: result.stdout?.substring(0, 500), // Summary only
     };
   } else if (result.status === 1) {
@@ -371,6 +513,17 @@ function generateReport(results, modelName, dryRun) {
   };
 }
 
+function saveReport(markdown, summary) {
+  mkdirSync(REPORT_DIR, { recursive: true });
+  const timestamp = new Date().toISOString().split('T')[0];
+  const reportFile = join(REPORT_DIR, `optimization-report--${timestamp}.md`);
+  const reportJson = join(REPORT_DIR, `optimization-report--${timestamp}.json`);
+
+  writeFileSync(reportFile, markdown);
+  writeFileSync(reportJson, JSON.stringify(summary, null, 2));
+  return { reportFile, reportJson };
+}
+
 // ---------- CLI & Main ----------
 
 function printHelp() {
@@ -378,7 +531,7 @@ function printHelp() {
 optimize-all-skills.mjs — DSPy skill optimization orchestrator
 
 Usage (auto-detect best available model):
-  node scripts/harness/optimize-all-skills.mjs [--dry-run]
+  node scripts/harness/optimize-all-skills.mjs [--skill <name-or-path>] [--resume <latest|state-file>] [--dry-run]
 
 Usage (force specific model):
   node scripts/harness/optimize-all-skills.mjs --model <name> [--dry-run]
@@ -390,13 +543,18 @@ Available models (auto-priority: local Ollama > Claude > GPT-4 > Gemini):
   gemini        Google Gemini (requires GOOGLE_API_KEY)
 
 Options:
+  --skill <name-or-path>  Optimize a selected skill; repeatable. Use SKILL.md path for duplicate names.
+  --resume <state>        Resume one compatible unfinished run, or use "latest".
   --dry-run     Show what would run without executing optimization
+  --self-test   Run deterministic CLI and state-contract checks
   --help        Show this message
 
 Examples:
   # Auto-detect and use best available (usually local Ollama)
   node scripts/harness/optimize-all-skills.mjs
   node scripts/harness/optimize-all-skills.mjs --dry-run
+  node scripts/harness/optimize-all-skills.mjs --skill to-questionnaire --dry-run
+  node scripts/harness/optimize-all-skills.mjs --resume latest
 
   # Force specific model
   node scripts/harness/optimize-all-skills.mjs --model claude --dry-run
@@ -411,6 +569,9 @@ function parseArgs(argv) {
   const args = {
     model: undefined, // Will be auto-detected if not specified
     dryRun: false,
+    skills: [],
+    resume: undefined,
+    selfTest: false,
     help: false,
   };
 
@@ -418,6 +579,9 @@ function parseArgs(argv) {
     const a = argv[i];
     if (a === '--model' || a === '--provider') args.model = argv[++i];
     else if (a === '--dry-run') args.dryRun = true;
+    else if (a === '--skill') args.skills.push(argv[++i]);
+    else if (a === '--resume') args.resume = argv[++i];
+    else if (a === '--self-test') args.selfTest = true;
     else if (a === '--help' || a === '-h') args.help = true;
     else console.error(`[optimize-skills] Unknown option: ${a}`);
   }
@@ -425,81 +589,184 @@ function parseArgs(argv) {
   return args;
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function runSelfTest() {
+  const tests = [];
+  const check = (name, predicate) => tests.push({ name, passed: predicate() });
+  const temporaryDir = mkdtempSync(join(tmpdir(), 'harness-optimizer-'));
 
-  if (args.help) {
-    printHelp();
-    process.exit(0);
+  try {
+    const parsed = parseArgs(['--skill', 'one', '--skill', '.github/skills/two/SKILL.md', '--resume', 'latest']);
+    check('argument parser accepts repeatable --skill and --resume', () =>
+      parsed.skills.length === 2 && parsed.resume === 'latest'
+    );
+    check('canonical selection resolves unique display names', () =>
+      selectSkills([{ id: '.github/skills/one/SKILL.md', name: 'one' }], ['one']).length === 1
+    );
+    check('ambiguous display names fail', () => {
+      try {
+        selectSkills([
+          { id: '.github/skills/one/SKILL.md', name: 'duplicate' },
+          { id: '.claude/skills/duplicate/SKILL.md', name: 'duplicate' },
+        ], ['duplicate']);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+
+    const skill = discoverSkills().find(candidate => candidate.name === 'to-questionnaire');
+    const state = createState('ollama', MODELS.ollama, [skill]);
+    const statePath = join(temporaryDir, `optimization-state--ollama--${state.runId}.json`);
+    writeState(statePath, state);
+    check('atomic state write is readable', () => readState(statePath)?.schemaVersion === STATE_VERSION);
+    check('fingerprinted state accepts unchanged inputs', () =>
+      stateIsCompatible(readState(statePath), 'ollama', MODELS.ollama, discoverSkills())
+    );
+    const changedState = readState(statePath);
+    changedState.selectedSkills[0].targetFingerprint = 'changed';
+    check('fingerprinted state rejects changed inputs', () =>
+      !stateIsCompatible(changedState, 'ollama', MODELS.ollama, discoverSkills())
+    );
+    const secondState = createState('ollama', MODELS.ollama, [skill]);
+    writeState(join(temporaryDir, `optimization-state--ollama--${secondState.runId}.json`), secondState);
+    check('latest resume rejects ambiguous compatible checkpoints', () => {
+      try {
+        resolveStateFile('latest', 'ollama', MODELS.ollama, discoverSkills(), temporaryDir);
+        return false;
+      } catch (error) {
+        return String(error.message).startsWith('Multiple compatible unfinished optimizer states found:');
+      }
+    });
+    check('terminal status classification is stable', () =>
+      TERMINAL_STATUSES.has('success') && !TERMINAL_STATUSES.has('error')
+    );
+  } finally {
+    rmSync(temporaryDir, { recursive: true, force: true });
   }
 
-  // Determine which model to use (auto-detect if not specified)
+  const passed = tests.filter(test => test.passed).length;
+  for (const test of tests) console.log(`  ${test.passed ? '✓' : '✗'} ${test.name}`);
+  console.log(`\n[optimize-skills] ${passed}/${tests.length} self-tests passed`);
+  return passed === tests.length ? 0 : 1;
+}
+
+function resolveModelName(args) {
   let modelName = args.model;
   if (!modelName) {
     console.log('[optimize-skills] Auto-detecting best available model...');
     modelName = detectBestModel();
     if (!modelName) {
-      console.error('[optimize-skills] No models available!');
-      console.error('[optimize-skills] Please configure Ollama or set cloud provider credentials');
-      process.exit(1);
+      throw new Error('No models available. Configure Ollama or set cloud provider credentials.');
     }
     console.log(`[optimize-skills] Using ${MODELS[modelName].label}`);
   }
+  if (!MODELS[modelName]) {
+    throw new Error(`Unknown model: ${modelName}`);
+  }
+  return modelName;
+}
 
-  // Discover skills
+function validateExecutionArgs(args) {
+  if (args.resume && args.dryRun) {
+    throw new Error('--resume cannot be used with --dry-run');
+  }
+  if (args.resume && args.skills.length > 0) {
+    throw new Error('--resume cannot be combined with --skill');
+  }
+}
+
+function discoverSelectedSkills(args) {
   console.log('[optimize-skills] Discovering skills...');
-  const skills = discoverSkills();
-  console.log(`[optimize-skills] Found ${skills.length} skills`);
-
+  const discoveredSkills = discoverSkills();
+  const skills = selectSkills(discoveredSkills, args.skills);
+  console.log(`[optimize-skills] Found ${discoveredSkills.length} skills; selected ${skills.length}`);
   if (skills.length === 0) {
-    console.error('[optimize-skills] No skills found!');
-    process.exit(1);
+    throw new Error('No skills found.');
+  }
+  return { discoveredSkills, skills };
+}
+
+function verifyModel(modelName) {
+  if (!validateModel(modelName)) {
+    throw new Error(`Validation failed for ${modelName}`);
+  }
+}
+
+function renderAndSaveReport(results, modelName, dryRun, extraSummary = {}) {
+  const { markdown, summary } = generateReport(results, modelName, dryRun);
+  Object.assign(summary, extraSummary);
+  const { reportFile, reportJson } = saveReport(markdown, summary);
+  console.log(`\n${markdown}`);
+  console.log(`\n[optimize-skills] Report saved to ${reportFile}`);
+  console.log(`[optimize-skills] JSON saved to ${reportJson}`);
+}
+
+function runDryRun(skills, modelName) {
+  renderAndSaveReport(skills.map(skill => optimizeSkill(skill, modelName, true)), modelName, true);
+}
+
+function runOptimization(args, modelName, discoveredSkills, skills) {
+  const config = MODELS[modelName];
+  const resumed = resolveStateFile(args.resume, modelName, config, discoveredSkills);
+  const state = resumed?.state || createState(modelName, config, skills);
+  const statePath = resumed?.statePath || stateFilePath(state);
+  writeState(statePath, state);
+  const selectedById = new Map(discoveredSkills.map(skill => [skill.id, skill]));
+  for (const savedSkill of state.selectedSkills) {
+    const skill = selectedById.get(savedSkill.id);
+    if (!skill) continue;
+    if (state.results.some(result => result.id === skill.id && TERMINAL_STATUSES.has(result.status))) continue;
+
+    const outputDir = join(repoRoot, '.github', 'harness', 'optimized-skills');
+    const outputPath = join(outputDir, `${skill.name}--${modelName}--${state.runId}.md`);
+    const result = { id: skill.id, ...optimizeSkill(skill, modelName, false, outputPath) };
+    state.results = state.results.filter(existing => existing.id !== skill.id);
+    state.results.push(result);
+    writeState(statePath, state);
   }
 
-  // Validate chosen model
+  state.status = state.results.length === state.selectedSkills.length
+    && state.results.every(result => TERMINAL_STATUSES.has(result.status))
+    ? 'completed'
+    : 'incomplete';
+  state.finishedAt = new Date().toISOString();
+  writeState(statePath, state);
+
+  renderAndSaveReport(state.results, modelName, false, {
+    stateFile: toWorkspacePath(statePath),
+    stateStatus: state.status,
+  });
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.selfTest) return runSelfTest();
+  if (args.help) {
+    printHelp();
+    return 0;
+  }
+
+  const modelName = resolveModelName(args);
+  validateExecutionArgs(args);
+  const { discoveredSkills, skills } = discoverSelectedSkills(args);
+
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[optimize-skills] Starting optimization with ${MODELS[modelName].label}`);
   console.log(`${'='.repeat(60)}`);
+  verifyModel(modelName);
 
-  if (!validateModel(modelName)) {
-    console.error(`[optimize-skills] Validation failed for ${modelName}`);
-    process.exit(1);
-  }
-
-  // Run optimization
-  const results = [];
-  for (const skill of skills) {
-    const result = optimizeSkill(skill, modelName, args.dryRun);
-    results.push(result);
-  }
-
-  const { markdown, summary } = generateReport(results, modelName, args.dryRun);
-  console.log(`\n${markdown}`);
-
-  // Save reports
-  const reportDir = join(repoRoot, '.github', 'harness', 'optimization-reports');
-  mkdirSync(reportDir, { recursive: true });
-  const timestamp = new Date().toISOString().split('T')[0];
-  const reportFile = join(reportDir, `optimization-report--${timestamp}.md`);
-  const reportJson = join(reportDir, `optimization-report--${timestamp}.json`);
-
-  writeFileSync(reportFile, markdown);
-  writeFileSync(reportJson, JSON.stringify(summary, null, 2));
-
-  console.log(`\n[optimize-skills] Report saved to ${reportFile}`);
-  console.log(`[optimize-skills] JSON saved to ${reportJson}`);
+  if (args.dryRun) runDryRun(skills, modelName);
+  else runOptimization(args, modelName, discoveredSkills, skills);
 
   console.log(`\n${'='.repeat(60)}`);
   console.log('[optimize-skills] Optimization complete');
   console.log(`${'='.repeat(60)}`);
+  return 0;
 }
 
-main().catch(err => {
+try {
+  process.exitCode = main();
+} catch (err) {
   console.error('[optimize-skills] Fatal error:', err);
-  process.exit(2);
-});
-
-main().catch(err => {
-  console.error('[optimize-skills] Fatal error:', err);
-  process.exit(2);
-});
+  process.exitCode = 2;
+}

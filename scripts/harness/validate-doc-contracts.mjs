@@ -102,7 +102,7 @@ function isGeneratedOptimizedSkillDoc(markdownPath) {
   const rel = relativePath(markdownPath);
   if (!rel.startsWith(".github/harness/optimized-skills/")) return false;
   const filename = rel.split("/").pop() ?? "";
-  return /--ollama--\d{4}-\d{2}-\d{2}\.md$/i.test(filename);
+  return /--ollama--(?:\d{4}-\d{2}-\d{2}|[0-9a-f-]{36})\.md$/i.test(filename);
 }
 
 function validateWorkflowStages(registry, findings) {
@@ -482,6 +482,7 @@ function validateImmutabilityMarkers(findings, options = {}) {
 
   for (const relPath of changedFiles) {
     if (!relPath.toLowerCase().endsWith(".md")) continue;
+    if (isGeneratedOptimizedSkillDoc(join(repoRoot, relPath))) continue;
     const family = classifyArtifactFamily(relPath);
     if (!family) continue;
 
