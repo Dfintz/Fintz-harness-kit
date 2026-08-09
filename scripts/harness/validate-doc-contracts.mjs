@@ -448,6 +448,11 @@ function classifyArtifactFamily(relPath) {
   if (lower.startsWith(".github/agents/")) {
     return null;
   }
+  // Stage instruction files are the contract, not an artifact produced by it. 06-REVIEW-DEPTH.md
+  // matches the review filename pattern without being a review artifact.
+  if (lower.startsWith(".github/instructions/")) {
+    return null;
+  }
 
   if (filename.startsWith("architect-challenge-verdict") || filename.includes("-challenge-verdict")) {
     return "challenge";

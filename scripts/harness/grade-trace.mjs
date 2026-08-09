@@ -275,6 +275,88 @@ export function gradeTrajectory(journal, opts = {}) {
   };
 }
 
+// ---- failure batching ------------------------------------------------------------------------
+// Adapted from Harness-R1 (arXiv 2608.02276) — see .github/harness/memory/radar/.
+
+/**
+ * failureRecords — derive zero or more groupable failure records from a graded trajectory.
+ *
+ * Consumes a gradeTrajectory result rather than re-reading the journal, so no threshold is
+ * duplicated. A record is the unit that gets batched; one run may contribute several.
+ *
+ * @param {object} grade - a gradeTrajectory result
+ * @param {{ runId?: string }} [meta]
+ * @returns {Array<{runId: string, loop: string, failureClass: string, groupKey: string, evidence: string}>}
+ */
+export function failureRecords(grade, meta = {}) {
+  if (!grade || grade.gradeable !== true) return [];
+  const runId = safe(meta.runId ?? "unknown");
+  const loop = safe(grade.loop ?? "unknown");
+  const signals = grade.signals ?? {};
+  const earlyStop = grade.earlyStop ?? {};
+  const out = [];
+  const add = (failureClass, evidence) =>
+    out.push({
+      runId,
+      loop,
+      failureClass,
+      groupKey: `${loop}::${failureClass}`,
+      evidence,
+    });
+
+  if (grade.improved === false)
+    add(
+      "never-beat-baseline",
+      `${signals.iterations ?? 0} iteration(s) never beat baseline ${grade.metric}`,
+    );
+  if ((earlyStop.wastedIterations ?? 0) > 0)
+    add(
+      "trailing-waste",
+      `${earlyStop.wastedIterations} iteration(s) after the last gain`,
+    );
+  if ((signals.oscillation ?? 0) >= 2)
+    add("thrash", `metric changed direction ${signals.oscillation} time(s)`);
+  if (signals.terminalState === "stuck")
+    add("stuck-early", `terminated via stuck-detection at iteration ${signals.iterations ?? 0}`);
+
+  return out;
+}
+
+/**
+ * groupFailures — batch records by loop and failure class.
+ *
+ * A group below minBatch is marked provisional, never dropped: on a quiet repository the honest
+ * answer is "seen once, cause unconfirmed", not silence. Only a non-provisional group is strong
+ * enough evidence to write a general harness rule from.
+ *
+ * @param {Array} records - output of failureRecords, possibly across many runs
+ * @param {{ minBatch?: number }} [opts]
+ * @returns {Array<{groupKey: string, loop: string, failureClass: string, occurrences: number, runIds: string[], provisional: boolean, evidence: string[]}>}
+ */
+export function groupFailures(records, opts = {}) {
+  const minBatch = Number.isInteger(opts.minBatch) ? opts.minBatch : 2;
+  const groups = new Map();
+  for (const r of Array.isArray(records) ? records : []) {
+    if (!r?.groupKey) continue;
+    if (!groups.has(r.groupKey))
+      groups.set(r.groupKey, {
+        groupKey: r.groupKey,
+        loop: r.loop,
+        failureClass: r.failureClass,
+        occurrences: 0,
+        runIds: [],
+        evidence: [],
+      });
+    const g = groups.get(r.groupKey);
+    g.occurrences += 1;
+    if (!g.runIds.includes(r.runId)) g.runIds.push(r.runId);
+    g.evidence.push(r.evidence);
+  }
+  return [...groups.values()]
+    .map((g) => ({ ...g, provisional: g.occurrences < minBatch }))
+    .sort((a, b) => b.occurrences - a.occurrences || a.groupKey.localeCompare(b.groupKey));
+}
+
 // ---- journal discovery -----------------------------------------------------------------------
 
 function loadJournal(path) {
@@ -318,6 +400,7 @@ function parseArgs(argv) {
       a === "--self-test" ||
       a === "--latest" ||
       a === "--all" ||
+      a === "--failures" ||
       a === "--json" ||
       a === "--help"
     ) {
@@ -326,6 +409,8 @@ function parseArgs(argv) {
       flags.file = argv[++i];
     } else if (a === "--min-grade") {
       flags.minGrade = Number(argv[++i]);
+    } else if (a === "--min-batch") {
+      flags.minBatch = Number(argv[++i]);
     } else if (a === "--stall-allowance") {
       flags.stallAllowance = Number(argv[++i]);
     } else if (a.startsWith("--")) {
@@ -535,6 +620,51 @@ function runSelfTest({ json }) {
     `got ${injected.loop}`,
   );
 
+  // Failure batching.
+  const flatline = gradeTrajectory({
+    kind: "experiment",
+    terminalState: "exhausted",
+    loop: "demo",
+    metric: { name: "score", direction: "maximize", baseline: 10, best: 10 },
+    iterations: [
+      { iteration: 1, metric: 9, best: 10, kept: false },
+      { iteration: 2, metric: 11, best: 10, kept: false },
+      { iteration: 3, metric: 9, best: 10, kept: false },
+      { iteration: 4, metric: 11, best: 10, kept: false },
+    ],
+  });
+  const flatRecords = failureRecords(flatline, { runId: "run-a.json" });
+  expect(
+    "failureRecords → classifies a never-improving run",
+    flatRecords.some((r) => r.failureClass === "never-beat-baseline"),
+    JSON.stringify(flatRecords.map((r) => r.failureClass)),
+  );
+  expect(
+    "failureRecords → declines an ungradeable journal",
+    failureRecords({ gradeable: false }).length === 0,
+  );
+
+  const grouped = groupFailures(
+    [...flatRecords, ...failureRecords(flatline, { runId: "run-b.json" })],
+    { minBatch: 2 },
+  );
+  const neverBeat = grouped.find(
+    (g) => g.failureClass === "never-beat-baseline",
+  );
+  expect(
+    "groupFailures → batches the same class across runs",
+    neverBeat?.occurrences === 2 && neverBeat.runIds.length === 2,
+    JSON.stringify(neverBeat),
+  );
+  expect(
+    "groupFailures → marks a single occurrence provisional, not dropped",
+    groupFailures(flatRecords, { minBatch: 2 }).every((g) => g.provisional),
+  );
+  expect(
+    "groupFailures → honours a minBatch of 1",
+    groupFailures(flatRecords, { minBatch: 1 }).every((g) => !g.provisional),
+  );
+
   const passed = checks.every((c) => c.ok);
   if (json) {
     process.stdout.write(
@@ -624,12 +754,64 @@ function summarizeAll({ json, stallAllowance }) {
   }
 }
 
+function summarizeFailures({ json, stallAllowance, minBatch }) {
+  const batchFloor = Number.isInteger(minBatch) ? minBatch : 2;
+  const records = [];
+  for (const abs of experimentJournalFiles()) {
+    let journal;
+    try {
+      journal = JSON.parse(readFileSync(abs, "utf8"));
+    } catch {
+      continue;
+    }
+    const grade = gradeTrajectory(journal, { stallAllowance });
+    records.push(
+      ...failureRecords(grade, { runId: abs.split(/[\\/]/).pop() }),
+    );
+  }
+  const groups = groupFailures(records, { minBatch: batchFloor });
+  const batched = groups.filter((g) => !g.provisional);
+
+  if (json) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          minBatch: batchFloor,
+          records: records.length,
+          groups,
+          batched: batched.length,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return;
+  }
+  if (groups.length === 0) {
+    process.stdout.write(
+      `[grade-trace] no failure records across ${runsDir} — nothing to batch.\n`,
+    );
+    return;
+  }
+  process.stdout.write(
+    `[grade-trace] ${records.length} failure record(s) in ${groups.length} group(s), min-batch ${batchFloor}\n`,
+  );
+  for (const g of groups) {
+    process.stdout.write(
+      `  ${g.provisional ? "provisional" : "batched   "}  x${g.occurrences}  ${g.groupKey}\n`,
+    );
+  }
+  process.stdout.write(
+    `  ${batched.length} group(s) meet the batch threshold — only these are strong enough to write a rule from.\n`,
+  );
+}
+
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
       {
         usage:
-          "node scripts/harness/grade-trace.mjs [--self-test | --latest | --file <path> | --all] [--json] [--min-grade n] [--stall-allowance n]",
+          "node scripts/harness/grade-trace.mjs [--self-test | --latest | --file <path> | --all | --failures] [--json] [--min-grade n] [--stall-allowance n] [--min-batch n]",
         modes: {
           "--self-test": "validate the grader deterministically (no journals)",
           "--latest":
@@ -637,9 +819,13 @@ function showHelp() {
           "--file <path>": "grade a specific journal",
           "--all":
             "summarize every experiment journal (avg grade, total wasted iterations)",
+          "--failures":
+            "batch failure records across every journal by loop and failure class",
         },
         gating:
           "--min-grade <0..1> is opt-in: exit 1 when the process score is below the floor. Advisory (exit 0) otherwise.",
+        batching:
+          "--min-batch <n> (default 2) is the occurrence count below which a failure group is marked provisional. A provisional group is reported, never dropped, and is not sufficient evidence for a general rule.",
         note: "Deterministic process critic — scores the trajectory, recommends noImprovementStop. Outcome scoring lives in run-eval.mjs.",
       },
       null,
@@ -660,6 +846,8 @@ function main() {
 
   if (flags["self-test"]) return runSelfTest({ json });
   if (flags.all) return summarizeAll({ json, stallAllowance });
+  if (flags.failures)
+    return summarizeFailures({ json, stallAllowance, minBatch: flags.minBatch });
 
   let journalPath = flags.file ?? flags._[0];
   let journal;

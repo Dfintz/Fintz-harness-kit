@@ -115,6 +115,54 @@ Before writing guidance, classify the failure mode you are addressing. The wrong
 
 ---
 
+## Output Shape: Progressive Disclosure
+
+Adapted from [virgiliojr94/book-to-skill](https://github.com/virgiliojr94/book-to-skill).
+
+Applies when the source material is larger than a single rule — a document set, a runbook family, a
+standard, or anything ingested through `scripts/harness/doc-ingest.mjs`. A small rule stays a single
+file; this section is about what happens when it does not.
+
+**The rule:** pay the structuring cost once, at authoring time, so query cost stays proportional to
+the answer. A skill that inlines everything charges its full size on every load, whether or not the
+current task needs any of it.
+
+### Package layout
+
+| File | Loading | Holds |
+|---|---|---|
+| `SKILL.md` | always | Core mental models, decision rules, and an index of the section files |
+| `sections/<topic>.md` | on demand | One topic per file, loaded only when that topic is asked about |
+| `glossary.md` | on demand | Key terms with pointers to the section that defines each |
+| `patterns.md` | on demand | Named techniques and their applicability conditions |
+| `cheatsheet.md` | on demand | Decision tables and quick-reference rules |
+
+### Distribution rules
+
+- `SKILL.md` holds what a reader needs to decide *which* section to open. If it holds the answer
+  itself, the split bought nothing.
+- One topic per section file. A section that needs "and" to describe it should be two files.
+- Every section file must be reachable from the index in `SKILL.md`. An unreferenced section is
+  unreachable and therefore dead.
+- Set the always-loaded budget against this repository's own context budgets — see the
+  `budget-aware-execution` skill. Do not import a token figure from an external project as if it
+  were measured here.
+
+### Never copy raw passages
+
+A generated section is a synthesized derivative: framework names, definitions, decision rules, and
+takeaways in your own words. It is not a reproduction of the source text.
+
+This is both a quality rule and a legal one. A synthesized structure is more useful to an agent than
+a quoted excerpt, and quoting at length from material the repository does not own creates a
+redistribution problem when the skill is committed.
+
+This rule is not machine-enforced. It is checked at review, so state the source and its license in
+the skill's provenance line and keep skills derived from third-party material out of public
+repositories.
+
+---
+
 ## Skill Discovery Optimization (SDO)
 
 Adapted from [obra/superpowers `writing-skills`](https://github.com/obra/superpowers/blob/main/skills/writing-skills/SKILL.md).

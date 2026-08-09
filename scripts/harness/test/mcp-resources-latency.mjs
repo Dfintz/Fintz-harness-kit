@@ -42,9 +42,12 @@ async function benchmarkLatency() {
 
   try {
     const listed = await session.client.listResources();
-    const readableResource = listed.resources.find((resource) =>
-      resource.uri.includes("/memory/") || resource.uri.includes("/graph/"),
-    );
+    // Prefer memory-backed resources for deterministic read-path latency.
+    const readableResource =
+      listed.resources.find((resource) => resource.uri.includes("/memory/lessons/"))
+      || listed.resources.find((resource) => resource.uri.includes("/memory/briefs/"))
+      || listed.resources.find((resource) => resource.uri.includes("/memory/"))
+      || listed.resources.find((resource) => resource.uri.includes("/graph/"));
     if (!readableResource) {
       throw new Error("No readable MCP resource is available; cannot measure resource read latency.");
     }

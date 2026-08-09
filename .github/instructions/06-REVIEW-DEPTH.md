@@ -195,6 +195,63 @@ Flag as a depth finding (Gate 3/4) when:
 
 ---
 
+## Line-level criteria
+
+Adapted from [bholmesdev/skills `simplify`](https://github.com/bholmesdev/skills), which in turn
+applies Orwell's rules from "Politics and the English Language" to code.
+
+**Scope limit:** these criteria justify findings *within the current change only*. They are never a
+mandate to rewrite untouched code. If a criterion flags something the change did not introduce or
+move, note it as pre-existing and leave it alone.
+
+The gates above judge structure at module granularity. These judge the line: names, comments, and
+file layout are the surfaces every future reader hits first.
+
+### Names
+
+Variable, function, and file names are prose. Judge them as prose.
+
+- One word per concept, one concept per word. If `sync` names "pull remote changes," it cannot also
+  name "flush edits to disk." Rename one.
+- Cut words the context already carries. A module named `workspaceWatcher` does not need
+  `startNativeWorkspaceWatcher`.
+- Prefer the short, physical verb over the abstract one: `prune`, `run`, `watch`, `drop` over
+  `reconcile`, `coalesce`, `normalize`.
+- A compound name is usually a hedge. `lastObservedDiskContent` is a specification to defend;
+  `baseline` is a description to read.
+
+### Comments
+
+A comment states the constraint the code cannot show.
+
+- Keep a comment that explains why something non-obvious exists.
+- Keep a doc comment on a function with complex behavior or side effects.
+- Flag a comment that narrates the change history of the conversation or pull request.
+- Flag a comment that restates code whose behavior is self-evident.
+
+### Structure
+
+- **Inverted pyramid.** Within a file, exported and significant functions lead; helpers sit below.
+- **Derivability.** If a value can be computed from values already in scope, flag passing or storing
+  it separately. An `isDirty` parameter that is always `content !== baseline` should be dropped.
+- **Overlapping concepts.** If two types, functions, or constants substantially overlap, flag the
+  duplication — fewer distinct concepts is the goal.
+
+### Overfitting
+
+Code must stand on its own. If a change only makes sense to someone who watched it happen, it is
+overfitted to this conversation.
+
+- Flag a name or comment that requires the conversation to be understood.
+- **Flag backwards compatibility with unshipped code.** An alias, old signature, or legacy data
+  shape that only ever existed earlier in the same branch is compatibility with something never
+  deployed. The old path should be deleted and its callers updated.
+
+Both overfitting rules apply with extra force to agent-authored changes, which reliably produce
+conversation-narrating comments and preserve their own superseded signatures.
+
+---
+
 ## Findings rules
 
 - Do not repeat breadth findings unless the same issue has a deeper structural cause.

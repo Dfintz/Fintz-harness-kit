@@ -1196,8 +1196,22 @@ function buildMemoryEntryFromResourceDescriptor(resource, includeContent = false
   };
 }
 
+function policyRequiresMemoryContent(policy) {
+  if (policy?.enabled !== true) return false;
+  const zones = Array.isArray(policy?.zones) ? policy.zones : [];
+  return zones.some((zone) => {
+    const tags = zone?.match?.tags;
+    return Array.isArray(tags) && tags.length > 0;
+  });
+}
+
 function isMemoryResourceAllowed(resource, caller, policy, includeContent = false) {
-  const entry = buildMemoryEntryFromResourceDescriptor(resource, includeContent);
+  if (policy?.enabled !== true) {
+    return true;
+  }
+
+  const shouldIncludeContent = includeContent && policyRequiresMemoryContent(policy);
+  const entry = buildMemoryEntryFromResourceDescriptor(resource, shouldIncludeContent);
   if (!entry) return true;
   const verdict = evaluateMemoryAccess(entry, caller, policy);
   return verdict.allowed;
@@ -1562,6 +1576,7 @@ function createServer() {
   server.setRequestHandler(StreamingListResourcesRequestSchema, async (request) => {
     try {
       const { caller, policy } = buildMemoryAccessState(request.params);
+      const includeContentForAcl = policyRequiresMemoryContent(policy);
 
       // Phase 2a: Support streaming request from client
       const wantsStreaming = request.params?.streaming === true;
@@ -1569,7 +1584,7 @@ function createServer() {
       // Build all resources (memory + graph) with cache
       const allResources = await buildAllResources(cache);
       const resources = allResources.filter((resource) =>
-        isMemoryResourceAllowed(resource, caller, policy, true),
+        isMemoryResourceAllowed(resource, caller, policy, includeContentForAcl),
       );
 
       // If client supports streaming, use chunked response

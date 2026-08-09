@@ -209,6 +209,10 @@ Before handing off, work through these checks.
 - [ ] Existing patterns were reused where appropriate
 - [ ] New artifacts have an immediate consumer
 - [ ] Names, responsibilities, and placement are consistent with nearby code or workflow structure
+- [ ] No comment narrates the change history of this conversation
+- [ ] No comment restates code whose behavior is self-evident
+- [ ] No alias, signature, or data shape was kept for compatibility with code that never shipped
+- [ ] No name or comment requires this conversation to be understood
 
 ### Safety and validation
 

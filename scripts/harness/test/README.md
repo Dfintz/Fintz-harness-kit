@@ -30,6 +30,9 @@ node scripts/harness/test/mcp-resources-streaming-test.mjs
 node scripts/harness/test/mcp-resources-streaming-latency.mjs
 node scripts/harness/test/mcp-resources-cache-benchmark.mjs
 node scripts/harness/test/mcp-resources-graph-latency.mjs
+node scripts/harness/test/mcp-resources-latency-graph-only.mjs
+# Strict threshold enforcement for companion graph-only benchmark
+node scripts/harness/test/mcp-resources-latency-graph-only.mjs --enforce-threshold
 
 # Or all at once (sequential runner)
 for test in scripts/harness/test/mcp-resources-*.mjs; do node "$test"; done
@@ -38,11 +41,12 @@ for test in scripts/harness/test/mcp-resources-*.mjs; do node "$test"; done
 ## Test Coverage
 
 | Test File | Purpose | Isolation |
-|-----------|---------|-----------|
+| ----------- | --------- | ----------- |
 | mcp-resources-streaming-test.mjs | Streaming + buffered modes, cache behavior | _flushCache() between tests |
 | mcp-resources-streaming-latency.mjs | Mock chunking plus live `resource_chunk` first-chunk SLA validation (25/50/100 items) | Initialized SDK client per chunk size |
 | mcp-resources-cache-benchmark.mjs | Cache hit/miss/expiry patterns | _flushCache() between scenarios |
 | mcp-resources-graph-latency.mjs | Graph adapter latency + graceful degradation | Reads only; no state mutation |
+| mcp-resources-latency-graph-only.mjs | Stdio MCP graph-resource-only read latency (companion benchmark) | Reads only; no state mutation |
 
 ## Cache Isolation Validation
 
@@ -75,4 +79,6 @@ Expected failure codes asserted by this test:
 Strict command:
 
 - `npm run harness:docs:check:strict-pilot`
+
+End of MCP resources test notes.
 

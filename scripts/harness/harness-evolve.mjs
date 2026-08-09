@@ -23,9 +23,11 @@
  *   node scripts/harness/harness-evolve.mjs --agent "<cmd>"         # evolve (no commit)
  *   node scripts/harness/harness-evolve.mjs --agent "<cmd>" --commit --max-iterations 3
  *
- * Exit codes: 0 ok / improved, 1 aborted (integrity violation or no improvement), 2 config error.
+ * Exit codes: 0 ok / improved, 1 aborted (integrity violation or no improvement), 2 config error,
+ *             4 inconclusive (an iteration was never evaluated — see classifyIterationOutcome).
  */
 import { execSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +43,7 @@ import { defangInjections } from "./untrusted.mjs";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const loopsDir = join(repoRoot, ".github", "harness", "loops");
 const researchDir = join(repoRoot, ".github", "harness", "research");
+const evalTasksDir = join(repoRoot, "scripts", "harness", "eval", "tasks");
 const runExperiment = resolve(
   repoRoot,
   "scripts",
@@ -192,6 +195,73 @@ function applyAcceptanceRule(scores, opts = {}) {
   return heldOut >= heldIn + threshold;
 }
 
+// ---- matched-baseline scoring ------------------------------------------------------------------
+// Adapted from Harness-R1 (arXiv 2608.02276) — see .github/harness/memory/radar/.
+
+/**
+ * evalTaskManifest — the identity of every eval task, not just its aggregate hash.
+ *
+ * computeIntegrity() already DETECTS any change to the suite. This exists so the abort can say
+ * WHICH task changed. It is diagnosis, never a substitute for the integrity check.
+ *
+ * @returns {Array<{id: string, hash: string}>} sorted by id
+ */
+function evalTaskManifest() {
+  if (!existsSync(evalTasksDir)) return [];
+  const entries = [];
+  for (const id of readdirSync(evalTasksDir)) {
+    const taskFile = join(evalTasksDir, id, "task.json");
+    if (!existsSync(taskFile)) continue;
+    const hash = createHash("sha256")
+      .update(readFileSync(taskFile))
+      .digest("hex");
+    entries.push({ id, hash: `sha256:${hash.slice(0, 16)}` });
+  }
+  return entries.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * manifestDiff — name the tasks that differ between two manifests.
+ *
+ * @param {Array<{id: string, hash: string}>} before
+ * @param {Array<{id: string, hash: string}>} after
+ * @returns {{added: string[], removed: string[], changed: string[], matched: boolean}}
+ */
+function manifestDiff(before, after) {
+  const a = new Map((before || []).map((t) => [t.id, t.hash]));
+  const b = new Map((after || []).map((t) => [t.id, t.hash]));
+  const byId = (x, y) => x.localeCompare(y);
+  const added = [...b.keys()].filter((id) => !a.has(id)).sort(byId);
+  const removed = [...a.keys()].filter((id) => !b.has(id)).sort(byId);
+  const changed = [...b.keys()]
+    .filter((id) => a.has(id) && a.get(id) !== b.get(id))
+    .sort(byId);
+  return {
+    added,
+    removed,
+    changed,
+    matched: added.length === 0 && removed.length === 0 && changed.length === 0,
+  };
+}
+
+/**
+ * classifyIterationOutcome — separate "the change was bad" from "nothing was measured".
+ *
+ * run-experiment exits 0 improved, 1 exhausted, 3 stuck. Anything else — a spawn error, a signal
+ * kill, a null status, or a config error (2) — means no evaluation happened. Reading that as
+ * "no improvement" lets a crashed run masquerade as evidence against the candidate.
+ *
+ * @param {{status: number|null, signal: string|null, error: Error|undefined}} result
+ * @returns {"improved"|"no-improvement"|"missing-evaluation"}
+ */
+function classifyIterationOutcome(result) {
+  const { status = null, signal = null, error } = result || {};
+  if (error || signal !== null || status === null) return "missing-evaluation";
+  if (status === 0) return "improved";
+  if (status === 1 || status === 3) return "no-improvement";
+  return "missing-evaluation";
+}
+
 function showHelp() {
   process.stdout.write(
     `${JSON.stringify(
@@ -201,7 +271,14 @@ function showHelp() {
         rules: [
           "RULE 1: target may never resolve to a forbidden path (eval suite / guardrails / memory / config / evolve machinery).",
           "RULE 2: eval-suite + forbidden-file integrity is checked before AND after every iteration; any change aborts the run.",
+          "RULE 3: an iteration that never ran is a missing evaluation, not a negative result. It is never retried and never counts toward the no-improvement streak.",
         ],
+        exitCodes: {
+          0: "improved (or --check passed)",
+          1: "aborted (integrity violation) or no improvement",
+          2: "config error",
+          4: "inconclusive — at least one iteration was never evaluated and none improved",
+        },
         research:
           "--research feeds an UNTRUSTED brief (Phase 4 sensor) to the agent as data (wrapped + defanged at use). Opt-in.",
         autonomy:
@@ -252,12 +329,25 @@ function runOneExperimentIteration(loopName, agentCmd) {
     cwd: repoRoot,
     stdio: "inherit",
   });
-  return result.status ?? 1; // run-experiment: 0 improved, 1 exhausted, 3 stuck
+  return classifyIterationOutcome(result);
 }
 
-function abortOnTamper(loopName) {
+// Name the tasks that differ, so the abort message is actionable rather than an opaque hash.
+function describeManifestDrift(manifestBefore) {
+  const diff = manifestDiff(manifestBefore, evalTaskManifest());
+  if (diff.matched)
+    return "eval task identities are unchanged — a verifier or guarded file was edited instead.";
+  const parts = [];
+  if (diff.added.length) parts.push(`added [${diff.added.join(", ")}]`);
+  if (diff.removed.length) parts.push(`removed [${diff.removed.join(", ")}]`);
+  if (diff.changed.length) parts.push(`changed [${diff.changed.join(", ")}]`);
+  return `eval task manifest ${parts.join(", ")}`;
+}
+
+function abortOnTamper(manifestBefore) {
   process.stderr.write(
     `[harness-evolve] ABORTED — eval-suite/guardrail integrity changed during the run.\n` +
+      `[harness-evolve] ${describeManifestDrift(manifestBefore)}\n` +
       `[harness-evolve] Something edited a forbidden path (the scorer or a guardrail). This is exactly\n` +
       `[harness-evolve] the reward-hacking the guard exists to stop. Inspect and restore:\n` +
       `[harness-evolve]   git status && git diff -- scripts/harness/eval .github/harness/memory\n` +
@@ -343,6 +433,62 @@ function runSelfTest() {
         return result1 === false && result2 === true;
       },
     },
+    // Matched-baseline scoring tests
+    {
+      name: "classifyIterationOutcome maps run-experiment exit codes",
+      ok: () =>
+        classifyIterationOutcome({ status: 0 }) === "improved" &&
+        classifyIterationOutcome({ status: 1 }) === "no-improvement" &&
+        classifyIterationOutcome({ status: 3 }) === "no-improvement",
+    },
+    {
+      name: "classifyIterationOutcome treats a crash as a missing evaluation, not a failure",
+      ok: () =>
+        classifyIterationOutcome({ status: null }) === "missing-evaluation" &&
+        classifyIterationOutcome({ status: null, signal: "SIGKILL" }) ===
+          "missing-evaluation" &&
+        classifyIterationOutcome({ error: new Error("ENOENT") }) ===
+          "missing-evaluation" &&
+        classifyIterationOutcome({ status: 2 }) === "missing-evaluation",
+    },
+    {
+      name: "manifestDiff names added, removed, and changed tasks",
+      ok: () => {
+        const before = [
+          { id: "build-fix", hash: "a" },
+          { id: "metric-improve", hash: "b" },
+        ];
+        const after = [
+          { id: "build-fix", hash: "a" },
+          { id: "metric-improve", hash: "CHANGED" },
+          { id: "new-task", hash: "c" },
+        ];
+        const diff = manifestDiff(before, after);
+        return (
+          diff.matched === false &&
+          diff.added.join() === "new-task" &&
+          diff.removed.length === 0 &&
+          diff.changed.join() === "metric-improve"
+        );
+      },
+    },
+    {
+      name: "manifestDiff reports a match for identical manifests",
+      ok: () => manifestDiff([{ id: "x", hash: "1" }], [{ id: "x", hash: "1" }]).matched,
+    },
+    {
+      name: "evalTaskManifest returns sorted ids with hashes",
+      ok: () => {
+        const manifest = evalTaskManifest();
+        const ids = manifest.map((t) => t.id);
+        const sorted = [...ids].sort((a, b) => a.localeCompare(b));
+        return (
+          Array.isArray(manifest) &&
+          manifest.every((t) => typeof t.hash === "string") &&
+          ids.join() === sorted.join()
+        );
+      },
+    },
   ];
 
   let passed = 0;
@@ -359,6 +505,80 @@ function runSelfTest() {
   const result = { ok: passed === checks.length, passed, total: checks.length };
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exit(result.ok ? 0 : 1);
+}
+
+// Run the bounded iteration loop and own the terminal state. Exits the process; never returns.
+function runEvolutionLoop({
+  loopName,
+  agentCmd,
+  baseline,
+  taskManifest,
+  targetFiles,
+  maxIterations,
+  noImprovementStop,
+  commit,
+}) {
+  let streak = 0;
+  let missingEvaluations = 0;
+  let improvements = 0;
+
+  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    // Pre-gate.
+    if (!integrityMatches(baseline, computeIntegrity()))
+      abortOnTamper(taskManifest);
+
+    process.stdout.write(
+      `[harness-evolve] iteration ${iteration}/${maxIterations}\n`,
+    );
+    const outcome = runOneExperimentIteration(loopName, agentCmd);
+
+    // Post-gate — the agent may have touched a forbidden path; verify BEFORE trusting/committing.
+    if (!integrityMatches(baseline, computeIntegrity()))
+      abortOnTamper(taskManifest);
+
+    if (outcome === "missing-evaluation") {
+      // Nothing was measured, so this is not evidence against the candidate. Never retried: a run
+      // repeated until it turns positive is not a result.
+      missingEvaluations += 1;
+      process.stdout.write(
+        `[harness-evolve]   MISSING EVALUATION — iteration ${iteration} never produced a score.\n` +
+          `[harness-evolve]   Not counted as a failed change and not retried. Fix the environment, then re-run.\n`,
+      );
+    } else if (outcome === "improved") {
+      streak = 0;
+      improvements += 1;
+      if (commit) commitTargets(targetFiles, loopName, iteration);
+      else
+        process.stdout.write(
+          `[harness-evolve]   improvement kept on disk (commit OFF — review then commit)\n`,
+        );
+    } else {
+      streak += 1;
+      if (streak >= noImprovementStop) {
+        process.stdout.write(
+          `[harness-evolve] stopping — ${streak} iteration(s) without improvement.\n`,
+        );
+        process.exit(missingEvaluations > 0 && improvements === 0 ? 4 : 1);
+      }
+    }
+  }
+
+  if (missingEvaluations > 0 && improvements === 0) {
+    process.stdout.write(
+      `[harness-evolve] INCONCLUSIVE — ${missingEvaluations} of ${maxIterations} iteration(s) were never evaluated and none improved.\n` +
+        `[harness-evolve] This is not a verdict on the candidate. Report it as a missing evaluation.\n`,
+    );
+    process.exit(4);
+  }
+
+  const missingNote =
+    missingEvaluations > 0
+      ? `, ${missingEvaluations} missing evaluation(s)`
+      : "";
+  process.stdout.write(
+    `[harness-evolve] done — ${maxIterations} iteration(s), integrity intact${missingNote}.\n`,
+  );
+  process.exit(0);
 }
 
 function main() {
@@ -392,6 +612,7 @@ function main() {
 
   // RULE 2 — integrity baseline (also a health gate: refuses a broken scorer).
   const baseline = computeIntegrity();
+  const taskManifest = evalTaskManifest();
 
   if (flags.check || flags.dryRun) {
     process.stdout.write(
@@ -400,6 +621,7 @@ function main() {
           loop: flags.loop,
           targetViolations: violations,
           integrity: baseline,
+          evalTasks: taskManifest,
           dryRun: flags.dryRun,
           autonomy: "off (default)",
         },
@@ -459,47 +681,20 @@ function main() {
   process.stdout.write(
     `[harness-evolve] "${flags.loop}" — target ${targetFiles.join(", ") || loop.target.join(", ")}\n` +
       `[harness-evolve] integrity baseline: suite ${baseline.suiteHash}, ${baseline.forbiddenFileCount} guarded files\n` +
+      `[harness-evolve] eval tasks: ${taskManifest.map((t) => t.id).join(", ") || "(none)"}\n` +
       `[harness-evolve] autonomy: commit=${flags.commit ? "on (explicit)" : "OFF"}, push=never\n`,
   );
 
-  let streak = 0;
-  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
-    // Pre-gate.
-    if (!integrityMatches(baseline, computeIntegrity()))
-      abortOnTamper(flags.loop);
-
-    process.stdout.write(
-      `[harness-evolve] iteration ${iteration}/${maxIterations}\n`,
-    );
-    const status = runOneExperimentIteration(flags.loop, agentCmd);
-
-    // Post-gate — the agent may have touched a forbidden path; verify BEFORE trusting/committing.
-    if (!integrityMatches(baseline, computeIntegrity()))
-      abortOnTamper(flags.loop);
-
-    const improved = status === 0;
-    if (improved) {
-      streak = 0;
-      if (flags.commit) commitTargets(targetFiles, flags.loop, iteration);
-      else
-        process.stdout.write(
-          `[harness-evolve]   improvement kept on disk (commit OFF — review then commit)\n`,
-        );
-    } else {
-      streak += 1;
-      if (streak >= noImprovementStop) {
-        process.stdout.write(
-          `[harness-evolve] stopping — ${streak} iteration(s) without improvement.\n`,
-        );
-        process.exit(1);
-      }
-    }
-  }
-
-  process.stdout.write(
-    `[harness-evolve] done — ${maxIterations} iteration(s), integrity intact.\n`,
-  );
-  process.exit(0);
+  runEvolutionLoop({
+    loopName: flags.loop,
+    agentCmd,
+    baseline,
+    taskManifest,
+    targetFiles,
+    maxIterations,
+    noImprovementStop,
+    commit: flags.commit,
+  });
 }
 
 main();

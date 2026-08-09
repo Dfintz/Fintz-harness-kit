@@ -8,7 +8,7 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
-Latest release notes: [`RELEASE_NOTES_v3.5.0.md`](RELEASE_NOTES_v3.5.0.md).
+Latest release notes: [`RELEASE_NOTES_v3.5.1.md`](RELEASE_NOTES_v3.5.1.md).
 
 ## Install
 
