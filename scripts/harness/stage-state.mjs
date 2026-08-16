@@ -42,6 +42,10 @@ const TMP_SUFFIX = '.tmp';
 
 export const APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected', 'not-required']);
 export const VALID_MODES = new Set(['dev', 'doc-workflow']);
+export const GOAL_STATUSES = new Set(['idle', 'active', 'paused', 'budget-limited', 'complete', 'error']);
+export const CONTINUATION_STATUSES = new Set(['idle', 'eligible', 'waiting', 'budget-limited', 'blocked']);
+export const REFINEMENT_STATUSES = new Set(['none', 'proposed', 'in-review', 'applied', 'rejected']);
+export const REFINEMENT_SCOPES = new Set(['local', 'global']);
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -123,6 +127,9 @@ export function writeStageState(state, options) {
       : VALID_MODES.has(existing.mode) ? existing.mode
       : 'dev',
     approval: normalizeApprovalField(state.approval ?? existing.approval),
+    goal: normalizeGoalField(state.goal ?? existing.goal),
+    continuation: normalizeContinuationField(state.continuation ?? existing.continuation),
+    refinement: normalizeRefinementField(state.refinement ?? existing.refinement),
     updatedAt: now,
   };
 
@@ -261,6 +268,68 @@ function normalizeMaintenanceManifest(raw) {
   };
 }
 
+function normalizeNonNegativeInteger(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.trunc(number) : fallback;
+}
+
+function normalizePositiveIntegerOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.trunc(number) : null;
+}
+
+function normalizeStringOrNull(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function normalizeGoalField(raw) {
+  const g = raw && typeof raw === 'object' ? raw : {};
+  const status = GOAL_STATUSES.has(g.status) ? g.status : 'idle';
+  return {
+    goalId: normalizeStringOrNull(g.goalId),
+    objective: normalizeStringOrNull(g.objective),
+    status,
+    tokenBudget: normalizePositiveIntegerOrNull(g.tokenBudget),
+    tokensUsed: normalizeNonNegativeInteger(g.tokensUsed),
+    timeBudgetSeconds: normalizePositiveIntegerOrNull(g.timeBudgetSeconds),
+    timeUsedSeconds: normalizeNonNegativeInteger(g.timeUsedSeconds),
+    continuationBudget: normalizePositiveIntegerOrNull(g.continuationBudget),
+    continuationsUsed: normalizeNonNegativeInteger(g.continuationsUsed),
+    lastReason: normalizeStringOrNull(g.lastReason),
+  };
+}
+
+function normalizeContinuationField(raw) {
+  const c = raw && typeof raw === 'object' ? raw : {};
+  const status = CONTINUATION_STATUSES.has(c.status) ? c.status : 'idle';
+  return {
+    status,
+    continuationBudget: normalizePositiveIntegerOrNull(c.continuationBudget),
+    continuationsUsed: normalizeNonNegativeInteger(c.continuationsUsed),
+    tokenBudget: normalizePositiveIntegerOrNull(c.tokenBudget),
+    tokensUsed: normalizeNonNegativeInteger(c.tokensUsed),
+    wallClockBudgetSeconds: normalizePositiveIntegerOrNull(c.wallClockBudgetSeconds),
+    elapsedSeconds: normalizeNonNegativeInteger(c.elapsedSeconds),
+    checkpointRef: normalizeStringOrNull(c.checkpointRef),
+    note: normalizeStringOrNull(c.note),
+  };
+}
+
+function normalizeRefinementField(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const status = REFINEMENT_STATUSES.has(r.status) ? r.status : 'none';
+  const scope = REFINEMENT_SCOPES.has(r.scope) ? r.scope : null;
+  return {
+    status,
+    scope,
+    proposalRef: normalizeStringOrNull(r.proposalRef),
+    completionEventRef: normalizeStringOrNull(r.completionEventRef),
+    appliedEdits: normalizeNonNegativeInteger(r.appliedEdits),
+    note: normalizeStringOrNull(r.note),
+  };
+}
+
 export function evaluateMaintenanceApproval(request, options) {
   const req = request && typeof request === 'object' ? request : {};
   const isMaintenanceAction = req.kind === 'destructive-memory-maintenance';
@@ -326,7 +395,7 @@ function showHelp() {
     commands: {
       status: 'Print current live stage state (null if none).',
       approvals: 'Print all approval records. Use --run-id <id> to filter.',
-      write: 'Write or update live state. Flags: --loop, --stage, --iteration, --mode, --run-id.',
+      write: 'Write or update live state. Flags include stage metadata plus metadata-only --goal-*, --continuation-*, and --refinement-* fields.',
       approve: 'Record an approval decision. Flags: --run-id, --decision, --note, --decided-by.',
       clear: 'Clear the live state file.',
     },
@@ -341,6 +410,53 @@ function showHelp() {
       'npm run harness:state -- status',
     ],
   });
+}
+
+function hasAnyFlag(flags, prefix) {
+  return Object.keys(flags).some((key) => key.startsWith(prefix));
+}
+
+function buildGoalFromFlags(flags) {
+  if (!hasAnyFlag(flags, 'goal-')) return undefined;
+  return {
+    goalId: flags['goal-id'],
+    objective: flags['goal-objective'],
+    status: flags['goal-status'],
+    tokenBudget: flags['goal-token-budget'],
+    tokensUsed: flags['goal-tokens-used'],
+    timeBudgetSeconds: flags['goal-time-budget-seconds'],
+    timeUsedSeconds: flags['goal-time-used-seconds'],
+    continuationBudget: flags['goal-continuation-budget'],
+    continuationsUsed: flags['goal-continuations-used'],
+    lastReason: flags['goal-last-reason'],
+  };
+}
+
+function buildContinuationFromFlags(flags) {
+  if (!hasAnyFlag(flags, 'continuation-')) return undefined;
+  return {
+    status: flags['continuation-status'],
+    continuationBudget: flags['continuation-budget'],
+    continuationsUsed: flags['continuation-used'],
+    tokenBudget: flags['continuation-token-budget'],
+    tokensUsed: flags['continuation-tokens-used'],
+    wallClockBudgetSeconds: flags['continuation-wall-clock-budget-seconds'],
+    elapsedSeconds: flags['continuation-elapsed-seconds'],
+    checkpointRef: flags['continuation-checkpoint-ref'],
+    note: flags['continuation-note'],
+  };
+}
+
+function buildRefinementFromFlags(flags) {
+  if (!hasAnyFlag(flags, 'refinement-')) return undefined;
+  return {
+    status: flags['refinement-status'],
+    scope: flags['refinement-scope'],
+    proposalRef: flags['refinement-proposal-ref'],
+    completionEventRef: flags['refinement-completion-ref'],
+    appliedEdits: flags['refinement-applied-edits'],
+    note: flags['refinement-note'],
+  };
 }
 
 async function main() {
@@ -367,6 +483,9 @@ async function main() {
       stage: flags.stage || undefined,
       iteration: flags.iteration ? Number(flags.iteration) : undefined,
       mode: flags.mode || undefined,
+      goal: buildGoalFromFlags(flags),
+      continuation: buildContinuationFromFlags(flags),
+      refinement: buildRefinementFromFlags(flags),
     });
     printJson({ ok: true, state: readStageState() });
     return;

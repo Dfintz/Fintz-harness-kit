@@ -182,6 +182,25 @@ at an unconfirmed seam. Ask: "What's the public interface, and which seams shoul
 
 ---
 
+## Independence Line and Self-Auditing Gates
+
+Adapted from [coleam00/skills `build-dark-factory`](https://github.com/coleam00/skills/tree/main/.claude/skills/build-dark-factory).
+
+- **Draw an independence line after integration tests.** Unit and integration checks run inside the
+  same optimization loop as the agent writing the code, so given enough iterations they will start
+  to satisfy what was measured rather than what was meant. Stacking more tests below the line is not
+  a substitute for a check the agent cannot optimize against — an end-to-end assertion driven as a
+  real user would, or a reviewer/gate outside the implementation loop.
+- **Empty is not pass.** A gate must assert *how many checks ran*, not just how many failed. A
+  skipped suite, an empty test file, or a query that matched nothing returns zero failures and looks
+  identical to success unless the ran-count is checked explicitly.
+- **Audit the gate scripts themselves.** A deterministic check that has never been proven to fail is
+  unproven. Where practical, reintroduce a known-fixed defect into a throwaway copy and confirm the
+  relevant gate script (build, lint, acceptance, doc-check) goes red; a check that stays green with
+  the defect restored is decoration, not a gate.
+
+---
+
 ## This Repo's Preferred Proof Sources
 
 | Scope              | Preferred proof source                                                                 |

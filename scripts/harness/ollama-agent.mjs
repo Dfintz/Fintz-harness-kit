@@ -67,6 +67,7 @@ function showHelp() {
             '--system <text>': 'Optional system prompt.',
             '--temperature <n>': 'Optional temperature.',
             '--num-predict <n>': 'Optional max tokens.',
+            '--metrics-file <path>': 'Append provider token usage to a JSONL file.',
           },
         },
       },
@@ -122,6 +123,7 @@ async function main() {
       prompt,
       temperature,
       numPredict,
+      metricsFile: flags['metrics-file'] || process.env.HARNESS_EVAL_METRICS_FILE,
     })
   ).trim();
 

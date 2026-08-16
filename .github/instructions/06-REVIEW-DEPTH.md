@@ -255,7 +255,9 @@ conversation-narrating comments and preserve their own superseded signatures.
 ## Findings rules
 
 - Do not repeat breadth findings unless the same issue has a deeper structural cause.
-- Every finding must cite the gate or depth check it failed.
+- Every finding must cite the gate or depth check it failed — "Line-level criteria" (Names, Comments,
+  Structure, Overfitting) is itself a citable depth check, distinct from Gates 1-5/4b since it does
+  not require ownership/boundary judgment.
 - Prefer concrete relocation or extraction guidance over abstract criticism.
 - State confidence on every finding.
 

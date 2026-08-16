@@ -115,6 +115,40 @@ This should go in the relevant brief, experiment note, or radar follow-up.
 
 ---
 
+## Ablation: Does This Instruction/Skill Earn Its Keep?
+
+Adapted from [coleam00/skills `ablate-ai-layer`](https://github.com/coleam00/skills/tree/main/.claude/skills/ablate-ai-layer).
+
+`.github/copilot-instructions.md`, `AGENTS.md`, `.claude/skills/`, and `.github/skills/` all grow
+over time. Ablation is the falsifiable check for whether one of those files still earns its
+always-on context cost: strip it, rerun a fixed task with and without it, and diff the verified
+outcome. If nothing changes, it isn't earning its keep.
+
+```bash
+node scripts/harness/eval/ablate-artifact.mjs --list
+node scripts/harness/eval/ablate-artifact.mjs --self-test
+node scripts/harness/eval/ablate-artifact.mjs \
+  --target .github/skills/<skill>/SKILL.md \
+  --relevant-tasks <id,id,...> \
+  --agent "<cmd>"
+```
+
+This reuses `run-eval.mjs`'s sandbox, fixed tasks, and deterministic verifiers — the only variable
+that changes between the two arms is whether the target artifact's content is inlined into the
+task prompt, per Step 3's "change one variable at a time."
+
+**The applicability gate is mandatory, not optional.** `--relevant-tasks` must be given explicitly.
+A zero-delta result against a task that doesn't exercise the artifact's domain (e.g. testing a
+security-review skill against the `build-fix` task) is not evidence the artifact is safe to trim —
+it's just an unrelated probe. The script fails fast rather than guess relevance for you.
+
+The output is a recommendation only — `keep`, `candidate-for-trim`, or `rejected` (when
+`dangerous-diff` flags a change) — journaled to `.github/harness/runs/ablate-*.json`. It never edits
+or deletes the target file; a human decides what to do with the result, per this repo's
+human-review-gate stance.
+
+---
+
 ## Anti-Rationalization Table
 
 | Excuse                                    | Counter                                                              |

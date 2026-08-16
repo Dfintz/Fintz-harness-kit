@@ -110,6 +110,26 @@ of the adapted files.
   pairs with the `plan-review` loop), and git-guardrails is generalized from a Claude-Code-only hook
   into an agent-neutral deterministic classifier with a `--self-test`, usable from any runtime.
 
+### Cole Medin — coleam00/skills
+
+- **Source:** https://github.com/coleam00/skills (MIT)
+- **What we adapted:** from `build-dark-factory`, three validation principles — the independence
+  line (checks above integration are outside the coding agent's own optimization loop), "empty is
+  not pass" (assert ran-count, not just pass-count), and self-mutation-auditing a gate script by
+  reintroducing a known-fixed defect and confirming it goes red. From `ablate-ai-layer`, the
+  technique of stripping an instruction/skill file, rerunning a fixed task with and without it, and
+  diffing the verified outcome to test whether it earns its always-on context cost.
+- **Where:** [`.github/skills/deterministic-validation/SKILL.md`](.github/skills/deterministic-validation/SKILL.md),
+  [`.github/skills/eval-first-tuning/SKILL.md`](.github/skills/eval-first-tuning/SKILL.md),
+  [`scripts/harness/eval/ablate-artifact.mjs`](scripts/harness/eval/ablate-artifact.mjs).
+- **How we differ:** we did not adopt the skill's autonomous/unattended-merge premise, its
+  `templates/runner/` execution layer, or its five-level autonomy dial — only the validation
+  principles and the ablation technique above. The ablation CLI reuses this repo's own
+  `run-eval.mjs` sandbox/task/verifier machinery rather than the source skill's approach, and adds a
+  mandatory applicability-gate flag (`--relevant-tasks`) with no equivalent upstream. See
+  `.github/harness/memory/radar/coleam00-*.md` for the full triage of that repository (33 skills),
+  including the entries parked or rejected for scope reasons.
+
 ## Original to this kit
 
 - The unified harness contract (skill routing + stage machine + loop protocol), the five

@@ -16,6 +16,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { ResourceCache } from './mcp-cache.mjs';
 import { resolveValue } from './config.mjs';
 
@@ -206,16 +207,41 @@ function extractOllamaText(data, model) {
   return text;
 }
 
+function extractUsage(provider, data) {
+  if (provider === 'ollama') {
+    const promptTokens = data?.prompt_eval_count;
+    const completionTokens = data?.eval_count;
+    return {
+      promptTokens: Number.isFinite(promptTokens) ? promptTokens : null,
+      completionTokens: Number.isFinite(completionTokens) ? completionTokens : null,
+      totalTokens:
+        Number.isFinite(promptTokens) && Number.isFinite(completionTokens)
+          ? promptTokens + completionTokens
+          : null,
+    };
+  }
+  const usage = data?.usage;
+  return {
+    promptTokens: Number.isFinite(usage?.prompt_tokens) ? usage.prompt_tokens : null,
+    completionTokens: Number.isFinite(usage?.completion_tokens) ? usage.completion_tokens : null,
+    totalTokens: Number.isFinite(usage?.total_tokens) ? usage.total_tokens : null,
+  };
+}
+
+function recordMetrics(metricsFile, metrics) {
+  if (metricsFile) appendFileSync(metricsFile, `${JSON.stringify(metrics)}\n`);
+}
+
 async function generateWithLmstudio({ host, model, system, prompt, temperature, numPredict, timeoutMs }) {
   const body = buildLmstudioBody({ model, system, prompt, temperature, numPredict });
   const data = await postJson(`${host}/v1/chat/completions`, body, timeoutMs);
-  return extractLmstudioText(data, model);
+  return { text: extractLmstudioText(data, model), usage: extractUsage('lmstudio', data) };
 }
 
 async function generateWithOllama({ host, model, system, prompt, temperature, numPredict, timeoutMs }) {
   const body = buildOllamaBody({ model, system, prompt, temperature, numPredict });
   const data = await postJson(`${host}/api/generate`, body, timeoutMs);
-  return extractOllamaText(data, model);
+  return { text: extractOllamaText(data, model), usage: extractUsage('ollama', data) };
 }
 
 /**
@@ -226,7 +252,7 @@ async function generateWithOllama({ host, model, system, prompt, temperature, nu
 export async function generateText(opts = {}) {
   const provider = resolveProvider(opts.provider);
   const host = normalizeHost(opts.host, provider);
-  const { model, system, prompt, temperature, numPredict, timeoutMs } = opts;
+  const { model, system, prompt, temperature, numPredict, timeoutMs, metricsFile } = opts;
   if (!model) throw new Error('generateText requires a model.');
   if (typeof prompt !== 'string' || prompt.trim().length === 0) {
     throw new Error('generateText requires a non-empty prompt.');
@@ -239,28 +265,12 @@ export async function generateText(opts = {}) {
     promptPrefixCache: opts.promptPrefixCache,
   });
   const effectiveSystem = cachedPrefix.system;
+  const result = provider === 'lmstudio'
+    ? await generateWithLmstudio({ host, model, system: effectiveSystem, prompt, temperature, numPredict, timeoutMs })
+    : await generateWithOllama({ host, model, system: effectiveSystem, prompt, temperature, numPredict, timeoutMs });
 
-  if (provider === 'lmstudio') {
-    return generateWithLmstudio({
-      host,
-      model,
-      system: effectiveSystem,
-      prompt,
-      temperature,
-      numPredict,
-      timeoutMs,
-    });
-  }
-
-  return generateWithOllama({
-    host,
-    model,
-    system: effectiveSystem,
-    prompt,
-    temperature,
-    numPredict,
-    timeoutMs,
-  });
+  recordMetrics(metricsFile, { provider, model, ...result.usage });
+  return result.text;
 }
 
 /**

@@ -98,6 +98,36 @@ re-examination — not a confirmation that the old findings are gone.
     output. Speed of review is imperative. (Adapted from
     [mattpocock/skills `loop-me`](https://github.com/mattpocock/skills/tree/main/skills/in-progress/loop-me))
 
+### Continuity State (Long-Running Work)
+
+For long-running harness work, live continuity metadata belongs in `stage-state`, while completed
+history stays in run journals. This keeps pause/resume state machine-readable without adding a
+daemon, scheduler, or hidden prompt-injection mechanism.
+
+`scripts/harness/stage-state.mjs write` may record these metadata-only objects:
+
+- `goal` - current objective identity, status, token/time/continuation budgets, observed usage, and
+   last reason. Goal status is informational; loop success still requires checks or rubric verdicts.
+- `continuation` - current continuation eligibility, consumed budget, elapsed time, checkpoint
+   reference, and note. It does not enqueue another prompt or restart a loop.
+- `refinement` - proposed or completed refinement metadata, scope, proposal reference, completion
+   event reference, applied-edit count, and note. It does not apply memory, prompt, skill, or subagent
+   changes by itself.
+
+Allowed statuses are intentionally narrow:
+
+| Field | Status values |
+| --- | --- |
+| `goal.status` | `idle`, `active`, `paused`, `budget-limited`, `complete`, `error` |
+| `continuation.status` | `idle`, `eligible`, `waiting`, `budget-limited`, `blocked` |
+| `refinement.status` | `none`, `proposed`, `in-review`, `applied`, `rejected` |
+| `refinement.scope` | `local`, `global` |
+
+Safety boundary: continuity state records what is happening; it never decides that work is done.
+Budget exhaustion is `budget-limited`, not success. Refinement entries are reviewable pointers, not
+trusted writes. Any transition that would weaken guardrails, write promoted memory, or widen tools
+still goes through the normal Architecture Brief, approval, quarantine, and review stages.
+
 ### Wave Boundaries (workflow loops only)
 
 A workflow loop may define optional `waveBoundary` to inject synthetic checkpoints and context injection at iteration boundaries, preventing [context rot](https://en.wikipedia.org/wiki/Context_rot) in long-running loops:

@@ -23,26 +23,22 @@
  * Exit codes: 0 ok / self-test passed, 1 self-test failed or run rejected, 2 config error.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import {
-  existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
-  statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 import {
-  applyOverlay,
   copyInto,
-  listFiles,
   makeSandbox,
   readIfExists,
   removeSandbox,
 } from "./lib/sandbox.mjs";
+import { computeSuiteHash, loadTasks, loadVerifier, scanDanger, selfTestTasks } from "./lib/tasks.mjs";
 import dangerousDiff from "./verifiers/dangerous-diff.mjs";
 
 const evalDir = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -86,90 +82,9 @@ function parseArgs(argv) {
   return flags;
 }
 
-function loadTasks() {
-  if (!existsSync(tasksDir)) return [];
-  const tasks = [];
-  for (const id of readdirSync(tasksDir)) {
-    const dir = join(tasksDir, id);
-    if (!statSync(dir).isDirectory()) continue;
-    const taskFile = join(dir, "task.json");
-    if (!existsSync(taskFile)) continue;
-    const task = JSON.parse(readFileSync(taskFile, "utf8"));
-    tasks.push({ ...task, dir });
-  }
-  return tasks.sort((a, b) => String(a.id).localeCompare(String(b.id)));
-}
-
-async function loadVerifier(name) {
-  const path = join(verifiersDir, `${name}.mjs`);
-  if (!existsSync(path)) throw new Error(`verifier not found: ${name}`);
-  const mod = await import(pathToFileURL(path).href);
-  if (typeof mod.default !== "function")
-    throw new Error(`verifier ${name} has no default export`);
-  return mod.default;
-}
-
-// Hash of every file under tasks/ + verifiers/ (sorted) — tamper-evidence for the evolve loop.
-function computeSuiteHash() {
-  const hash = createHash("sha256");
-  for (const root of [tasksDir, verifiersDir]) {
-    for (const rel of listFiles(root).sort()) {
-      hash.update(rel);
-      hash.update("\0");
-      hash.update(readFileSync(join(root, rel)));
-      hash.update("\0");
-    }
-  }
-  return `sha256:${hash.digest("hex")}`;
-}
-
-// dangerous-diff scans only files the agent CHANGED or ADDED relative to the original fixture —
-// never pre-existing task inputs (a planted vulnerability being reviewed is input, not a backdoor).
-// Prose/review (.md) and a task's declared review artifact are excluded (they legitimately quote
-// risky constructs).
-function scanDanger(workdir, originalDir, { excludeFiles = [] } = {}) {
-  const exclude = new Set(excludeFiles);
-  const files = listFiles(workdir)
-    .filter((rel) => !rel.endsWith(".md") && !exclude.has(rel))
-    .map((rel) => ({ rel, content: readIfExists(join(workdir, rel)) || "" }))
-    .filter(({ rel, content }) => {
-      const before = readIfExists(join(originalDir, rel));
-      return before === null || before !== content; // new or modified only
-    })
-    .map(({ rel, content }) => ({ path: rel, content }));
-  return dangerousDiff({ files });
-}
-
 async function runSelfTest({ json }) {
-  const tasks = loadTasks();
-  const checks = [];
-
-  for (const task of tasks) {
-    const verifier = await loadVerifier(task.verifier);
-    const sandbox = makeSandbox();
-    try {
-      copyInto(join(task.dir, "workdir"), sandbox);
-      const unsolved = verifier({ workdir: sandbox, task });
-      checks.push({
-        name: `${task.id}: verifier fails on unsolved`,
-        ok: unsolved.pass === false,
-        detail: unsolved.detail,
-      });
-
-      const solvedDir = task.selfTest?.solvedDir
-        ? join(task.dir, task.selfTest.solvedDir)
-        : null;
-      applyOverlay(solvedDir, sandbox);
-      const solved = verifier({ workdir: sandbox, task });
-      checks.push({
-        name: `${task.id}: verifier passes on solved`,
-        ok: solved.pass === true,
-        detail: solved.detail,
-      });
-    } finally {
-      removeSandbox(sandbox);
-    }
-  }
+  const tasks = loadTasks(tasksDir);
+  const checks = await selfTestTasks(tasks, verifiersDir);
 
   // Security control must stay quiet on benign and FIRE on malicious.
   const benign = dangerousDiff({
@@ -200,7 +115,7 @@ async function runSelfTest({ json }) {
   });
 
   const passed = checks.every((c) => c.ok);
-  const suiteHash = computeSuiteHash();
+  const suiteHash = computeSuiteHash(tasksDir, verifiersDir);
   const result = {
     ok: passed,
     mode: "self-test",
@@ -248,24 +163,36 @@ function invokeAgent(agentCmd, task, sandbox, withHarness) {
     }
   }
   const prompt = `${task.prompt}${harnessNote}`;
+  const metricsFile = join(sandbox, ".harness-eval-metrics.jsonl");
+  const startedAt = Date.now();
   const result = spawnSync(agentCmd, {
     cwd: sandbox,
     shell: true,
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
-    env: { ...process.env, HARNESS_EVAL_SANDBOX: sandbox },
+    env: {
+      ...process.env,
+      HARNESS_EVAL_SANDBOX: sandbox,
+      HARNESS_EVAL_METRICS_FILE: metricsFile,
+    },
   });
-  return result.status ?? 1;
+  let usage = null;
+  if (existsSync(metricsFile)) {
+    const lines = readFileSync(metricsFile, "utf8").trim().split(/\r?\n/).filter(Boolean);
+    if (lines.length > 0) usage = JSON.parse(lines.at(-1));
+    unlinkSync(metricsFile);
+  }
+  return { status: result.status ?? 1, durationMs: Date.now() - startedAt, usage };
 }
 
 async function runWithAgent({ agentCmd, json }) {
-  const tasks = loadTasks();
+  const tasks = loadTasks(tasksDir);
   const startedAt = new Date().toISOString();
   const records = [];
   let dangerousFlagged = 0;
 
   for (const task of tasks) {
-    const verifier = await loadVerifier(task.verifier);
+    const verifier = await loadVerifier(verifiersDir, task.verifier);
     const reviewArtifact = task.expected?.file ? [task.expected.file] : [];
 
     // Baseline — no harness context.
@@ -273,8 +200,9 @@ async function runWithAgent({ agentCmd, json }) {
     let baseline;
     try {
       copyInto(join(task.dir, "workdir"), baseSandbox);
-      invokeAgent(agentCmd, task, baseSandbox, false);
+      const baselineRun = invokeAgent(agentCmd, task, baseSandbox, false);
       baseline = verifier({ workdir: baseSandbox, task });
+      baseline.run = baselineRun;
     } finally {
       removeSandbox(baseSandbox);
     }
@@ -285,8 +213,9 @@ async function runWithAgent({ agentCmd, json }) {
     let danger;
     try {
       copyInto(join(task.dir, "workdir"), harnessSandbox);
-      invokeAgent(agentCmd, task, harnessSandbox, true);
+      const harnessRun = invokeAgent(agentCmd, task, harnessSandbox, true);
       harness = verifier({ workdir: harnessSandbox, task });
+      harness.run = harnessRun;
       danger = scanDanger(harnessSandbox, join(task.dir, "workdir"), {
         excludeFiles: reviewArtifact,
       });
@@ -302,11 +231,15 @@ async function runWithAgent({ agentCmd, json }) {
         pass: baseline.pass,
         score: baseline.score,
         detail: baseline.detail,
+        durationMs: baseline.run.durationMs,
+        usage: baseline.run.usage,
       },
       harness: {
         pass: harness.pass,
         score: harness.score,
         detail: harness.detail,
+        durationMs: harness.run.durationMs,
+        usage: harness.run.usage,
       },
       dangerous: { flagged: danger.flagged, matches: danger.matches },
     });
@@ -315,19 +248,38 @@ async function runWithAgent({ agentCmd, json }) {
   const n = records.length || 1;
   const baselineScore = records.reduce((s, r) => s + r.baseline.score, 0) / n;
   const harnessScore = records.reduce((s, r) => s + r.harness.score, 0) / n;
+  const sum = (arm, field) => records.reduce((total, record) => {
+    const value = record[arm]?.[field];
+    return total + (Number.isFinite(value) ? value : 0);
+  }, 0);
+  const sumTokens = (arm, field) => {
+    const values = records
+      .map(record => record[arm]?.usage?.[field])
+      .filter(value => Number.isFinite(value));
+    return values.length === records.length ? values.reduce((total, value) => total + value, 0) : null;
+  };
   const rejected = dangerousFlagged > 0;
   const journal = {
     kind: "eval",
     startedAt,
     finishedAt: new Date().toISOString(),
     agent: agentCmd,
-    suiteHash: computeSuiteHash(),
+    suiteHash: computeSuiteHash(tasksDir, verifiersDir),
     verdict: rejected ? "rejected" : "ok",
     tasks: records,
     aggregate: {
       baselineScore: Number(baselineScore.toFixed(4)),
       harnessScore: Number(harnessScore.toFixed(4)),
       delta: Number((harnessScore - baselineScore).toFixed(4)),
+      baselineDurationMs: sum("baseline", "durationMs"),
+      harnessDurationMs: sum("harness", "durationMs"),
+      durationDeltaMs: sum("harness", "durationMs") - sum("baseline", "durationMs"),
+      baselinePromptTokens: sumTokens("baseline", "promptTokens"),
+      harnessPromptTokens: sumTokens("harness", "promptTokens"),
+      baselineCompletionTokens: sumTokens("baseline", "completionTokens"),
+      harnessCompletionTokens: sumTokens("harness", "completionTokens"),
+      baselineTotalTokens: sumTokens("baseline", "totalTokens"),
+      harnessTotalTokens: sumTokens("harness", "totalTokens"),
       dangerousFlagged,
     },
   };
@@ -375,7 +327,7 @@ async function main() {
   }
 
   if (flags.list) {
-    const tasks = loadTasks();
+    const tasks = loadTasks(tasksDir);
     process.stdout.write(
       `${JSON.stringify({ count: tasks.length, tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, description: t.description })) }, null, 2)}\n`,
     );
