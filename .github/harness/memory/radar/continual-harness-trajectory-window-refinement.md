@@ -42,3 +42,4 @@ All options remain future candidates. None authorize runtime mutation, trusted-m
 |---|---|---|---|
 | 2026-08-10 | parked | Useful evidence pattern, but direct reset-free self-mutation conflicts with current trusted-memory and review-gate boundaries. Revisit only as a proposal/quarantine workflow. | copilot |
 | 2026-08-10 | parked | Integration review completed. Best future candidate is a trajectory-window proposal packet that writes untrusted suggestions to quarantine/review artifacts; skill/subagent CRUD remains rejected for now. | copilot |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. Distinct from the newly captured recitation and note-taking entries, which are prompt-level and carry no trust-boundary risk; this entry's live-store-mutation shape is unchanged and still parked. | radar-reevaluation |

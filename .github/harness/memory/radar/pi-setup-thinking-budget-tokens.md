@@ -31,4 +31,5 @@ The harness-kit's HARNESS.md model tier table documents tier names (high-reasoni
 |---|---|---|---|
 | 2026-07-24 | candidate | Initial capture from my-pi-setup cherry-pick pass | radar-pass |
 | 2026-07-24 | parked | No tooling hook in the current harness runner. Informative but not actionable until extended thinking becomes a first-class harness feature. | architect-pass |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. Still no first-class extended-thinking config surface in the harness; no status change. | radar-reevaluation |
 

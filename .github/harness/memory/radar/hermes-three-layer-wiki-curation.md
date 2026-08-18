@@ -27,3 +27,4 @@ The harness already distinguishes radar, briefs, lessons, and graph data, but it
 | Date | Status | Decision | By |
 |---|---|---|
 | 2026-08-05 | parked | Preserve current memory surfaces; do not create a parallel wiki subsystem. | Copilot |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. No new evidence changes the assessment; radar/briefs/lessons remain the correct memory surfaces. Still parked. | radar-reevaluation |

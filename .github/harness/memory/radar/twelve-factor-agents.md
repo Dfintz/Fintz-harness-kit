@@ -37,3 +37,4 @@ Several of these principles are already in the harness-kit (loop journal for res
 |---|---|---|---|
 | 2026-07-24 | candidate | Initial capture from walkinglabs/awesome-harness-engineering | radar-pass |
 | 2026-07-24 | parked | Several factors already covered by the harness. Need to read the full article to identify specific gaps. Park until article is read and compared factor-by-factor. | radar-pass |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. The "bounded context" and "clean pause-resume" factors are now partially addressed by the newly captured Anthropic context-compaction and agentic-memory-file-notes entries; still parked pending the factor-by-factor read-through. | radar-reevaluation |

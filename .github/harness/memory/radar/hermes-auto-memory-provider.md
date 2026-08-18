@@ -27,3 +27,4 @@ The harness has local committed memory and retrieval experiments, but no approve
 | Date | Status | Decision | By |
 |---|---|---|
 | 2026-08-05 | parked | Do not add auto-capture or auto-recall without explicit policy and measurement gates. | Copilot |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. `anthropic-agentic-memory-file-notes.md` captures a safer local alternative (agent-owned scratch file, no hosted service, no auto-capture); prefer that path over a hosted auto-memory provider if a memory need is confirmed. Still parked. | radar-reevaluation |

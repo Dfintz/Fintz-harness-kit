@@ -29,3 +29,4 @@ This can improve retrieval robustness in harness search flows, but only after co
 |---|---|---|---|
 | 2026-08-05 | candidate | Initial capture | copilot |
 | 2026-08-05 | parked | Parked behind benchmark gate to avoid premature complexity | copilot |
+| 2026-08-18 | parked | Reevaluated during a token/context/memory radar pass. No new benchmark evidence surfaced; benchmark gate still unmet. Still parked. | radar-reevaluation |

@@ -45,6 +45,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertSafeCliCommand } from './command-validation.mjs';
 import { resolveTokens } from './config.mjs';
+import { checkPromptSize } from './context-growth-guard.mjs';
 import { classifyGitCommand } from './git-guard.mjs';
 import {
   acquireLease,
@@ -756,11 +757,11 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   );
   const preIteration = snapshotTargets(targetFiles);
 
-  invokeAgent(
-    agentCmd,
-    composeImprovementPrompt(loop, iteration, best, best, record.iterations),
-    targetFiles
-  );
+  const improvementPrompt = composeImprovementPrompt(loop, iteration, best, best, record.iterations);
+  const promptSize = checkPromptSize(improvementPrompt, {
+    label: `run-experiment "${loop.name}" iteration ${iteration}`,
+  });
+  invokeAgent(agentCmd, improvementPrompt, targetFiles);
 
   const measure = measureMetric(loop);
   const improved =
@@ -789,6 +790,7 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
     metric: measure.value,
     best,
     kept: improved,
+    promptChars: promptSize.chars,
   });
   record.metric.best = best;
   record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);

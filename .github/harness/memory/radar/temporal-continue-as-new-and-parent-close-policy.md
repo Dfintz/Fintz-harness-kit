@@ -1,6 +1,6 @@
 ---
 summary: Temporal workflow durability patterns for long-running harness loops.
-status: parked
+status: rejected
 source: https://github.com/temporalio/temporal
 author_project: temporalio/temporal
 captured: 2026-08-05
@@ -29,3 +29,4 @@ This directly relates to long-running loop reliability and terminal-state clarit
 |---|---|---|---|
 | 2026-08-05 | candidate | Initial capture | copilot |
 | 2026-08-05 | parked | Parked until reliability gaps exceed current loop architecture limits | copilot |
+| 2026-08-18 | rejected | Reevaluated during a token/context/memory radar pass. Anthropic's context-compaction pattern (`anthropic-context-compaction.md`) solves the same bounded-long-loop problem at a fraction of the orchestration complexity, without adopting a full durable-workflow engine. Reject full Temporal-style continue-as-new; the compaction entry is now the active candidate for this problem space. | radar-reevaluation |

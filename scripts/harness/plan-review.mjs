@@ -57,6 +57,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assertSafeCliCommand } from "./command-validation.mjs";
+import { checkPromptSize } from "./context-growth-guard.mjs";
 import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
@@ -237,7 +238,7 @@ export function runReviewLoop({
   let previousNonApprovedSignature = null;
 
   for (let round = 1; round <= maxRounds; round += 1) {
-    const { text, flaggedTamper = false } =
+    const { text, flaggedTamper = false, promptChars = null } =
       review(current, rounds, round) || {};
     const verdict = parseVerdict(text);
     const nonApprovedSignature =
@@ -249,6 +250,7 @@ export function runReviewLoop({
       critique: String(text ?? ""),
       flaggedTamper,
       critiqueSignature: nonApprovedSignature,
+      promptChars,
     });
 
     if (verdict === "APPROVED") {
@@ -537,6 +539,9 @@ function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds)
       round,
       maxRounds,
     );
+    const promptSize = checkPromptSize(prompt, {
+      label: `plan-review ${lens} round ${round}`,
+    });
     const result = runPreparedCommand(reviewer, {
       input: prompt,
       encoding: "utf8",
@@ -572,7 +577,7 @@ function makeCliReview(lens, subjectPath, contextBlocks, reviewerCmd, maxRounds)
         `[plan-review]   reviewer exited ${result.status} with no output.\n`,
       );
     }
-    return { text, flaggedTamper };
+    return { text, flaggedTamper, promptChars: promptSize.chars };
   };
 }
 
