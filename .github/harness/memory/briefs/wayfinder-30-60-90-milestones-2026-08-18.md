@@ -72,8 +72,8 @@ Baseline date: 2026-08-18
 
 | Milestone | Owner role | Tickets | Acceptance gates |
 | --- | --- | --- | --- |
-| M60-1: Trigger-watch review | Context Engineering Owner | T3, T5, T6 (watch only) | 1) Journals/metrics from the 30 days since T2 shipped are reviewed for any of the three named trigger conditions. 2) Explicit written finding: "triggered — open a ticket" or "not triggered — remain parked," for each of T3/T5/T6 individually. 3) No implementation starts unless a finding is "triggered" with cited evidence. |
-| M60-2: KV-cache watchlist review | LLM Provider Owner | T4 (watch only) | 1) Confirm no tool-calling schema was added to `llm-provider.mjs` in the period, or if one was, the re-audit from T4 was actually run before merge. 2) Finding recorded either way. |
+| M60-1: Trigger-watch review | Context Engineering Owner | T3, T5, T6 (watch only) | 1) Journals/metrics from the 30 days since T2 shipped are reviewed for any of the three named trigger conditions. 2) Explicit written finding: "triggered — open a ticket" or "not triggered — remain parked," for each of T3/T5/T6 individually. 3) No implementation starts unless a finding is "triggered" with cited evidence. **Interim check (2026-08-18): HOLD — insufficient elapsed time.** Same-day-as-T2-ship review found zero post-T2 loop journals to evaluate; all three remain parked-until-trigger, unchanged. See `wayfinder-day60-t3-t5-t6-t4-checkpoint-2026-08-18.md`. Full evidence-backed review still due at the real 2026-10-17 date. |
+| M60-2: KV-cache watchlist review | LLM Provider Owner | T4 (watch only) | 1) Confirm no tool-calling schema was added to `llm-provider.mjs` in the period, or if one was, the re-audit from T4 was actually run before merge. 2) Finding recorded either way. **Interim check (2026-08-18): PASS.** Grep confirms no tool-calling patterns in `llm-provider.mjs`; T4 stays watchlist-only. See `wayfinder-day60-t3-t5-t6-t4-checkpoint-2026-08-18.md`. Recheck at the real Day-60 date. |
 
 ### Day 90 checkpoint (due 2026-11-16)
 
