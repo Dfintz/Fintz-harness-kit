@@ -1,6 +1,6 @@
 ---
 summary: Context compaction — summarize a near-full context window and reinitiate with the summary plus recently touched files, instead of truncating or hard-resetting history
-status: candidate
+status: adopted
 source: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 author_project: Anthropic (Applied AI team)
 captured: 2026-08-18
@@ -48,3 +48,4 @@ orchestration engine.
 |---|---|---|---|
 | 2026-08-18 | candidate | Initial capture from Anthropic context-engineering post; identified as the lighter-weight alternative to the parked Temporal continue-as-new pattern. | radar-pass |
 | 2026-08-18 | candidate | Measured per the "Next step": audited `run-experiment.mjs` (`composeImprovementPrompt`) and `plan-review.mjs` (`composeReviewerPrompt`). Neither shows the unbounded-context symptom compaction solves — prior-attempt history is already one compact line per iteration, and both are bounded by validated `maxIterations`/`maxRounds`. No code changes made in this pass; see `.github/harness/memory/briefs/radar-batch-governance-gate-and-token-hardening-2026-08-18.md`. Stays `candidate` (not `parked`) since the pattern remains worth applying if a future loop's context does grow unbounded. | radar-batch-2026-08-18 |
+| 2026-08-18 | adopted | Implemented same-day on explicit human override of the trigger-gate (no real trigger evidence exists yet — see the Day-60 interim checkpoint). Shipped `scripts/harness/context-compaction.mjs`: deterministic (non-generative) keep-recent-N compaction wired into both `run-experiment.mjs` and `plan-review.mjs`. See `.github/harness/memory/briefs/wayfinder-t3-t5-t6-today-implementation-2026-08-18.md`. | human-override-2026-08-18 |

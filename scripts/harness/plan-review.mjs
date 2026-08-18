@@ -58,6 +58,7 @@ import { fileURLToPath } from "node:url";
 
 import { assertSafeCliCommand } from "./command-validation.mjs";
 import { checkPromptSize } from "./context-growth-guard.mjs";
+import { compactRoundHistory } from "./context-compaction.mjs";
 import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
 
@@ -296,11 +297,7 @@ function composeReviewerPrompt(
   maxRounds,
 ) {
   const def = LENSES[lens];
-  const history = priorRounds
-    .map(
-      (r) => `### Round ${r.round} verdict: ${r.verdict}\n${r.critique.trim()}`,
-    )
-    .join("\n\n");
+  const history = compactRoundHistory(priorRounds).join("\n\n");
   return [
     `You are an INDEPENDENT, ADVERSARIAL reviewer from a DIFFERENT model/provider than the author.`,
     `This is round ${round} of at most ${maxRounds}. Apply the review lens below READ-ONLY — do not`,

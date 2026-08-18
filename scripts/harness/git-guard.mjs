@@ -29,6 +29,7 @@
  *
  * Exit codes: 0 allowed (allow|warn) / self-test passed, 1 blocked / self-test failed, 2 config error.
  */
+import { pathToFileURL } from "node:url";
 
 function fail(message, code = 2) {
   process.stderr.write(`[git-guard] ${message}\n`);
@@ -395,4 +396,9 @@ function main() {
   process.exit(verdict.severity === "block" ? 1 : 0);
 }
 
-main();
+// Guard against side effects when this module is imported (e.g. `classifyGitCommand` used by
+// run-experiment.mjs) rather than invoked directly as a CLI. Without this, importing the module
+// would hijack the importer's own process.argv and call process.exit() on its behalf.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

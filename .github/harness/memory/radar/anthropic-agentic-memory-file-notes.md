@@ -1,6 +1,6 @@
 ---
 summary: Structured note-taking (agentic memory) — the agent writes persistent notes to a file outside the context window and rereads them after a reset, instead of relying on a hosted auto-memory service
-status: parked
+status: adopted
 source: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
 author_project: Anthropic (Applied AI team)
 captured: 2026-08-18
@@ -51,3 +51,4 @@ agent explicitly writes and rereads is transparent, local, and needs no new trus
 |---|---|---|---|
 | 2026-08-18 | candidate | Initial capture from Anthropic context-engineering post. | radar-pass |
 | 2026-08-18 | parked | No concrete loop currently shows the drift/re-discovery symptom this solves; also flagged as the safer local alternative to the parked `hermes-auto-memory-provider` hosted-service idea. | radar-pass |
+| 2026-08-18 | adopted | Implemented same-day on explicit human override of the trigger-gate (no drift/re-discovery evidence exists yet). Shipped as an opt-in (`--scratch-notes` / `HARNESS_EXPERIMENT_SCRATCH_NOTES=true`, default OFF) per-run scratch file in `run-experiment.mjs`, kept explicitly separate from committed harness memory. See `.github/harness/memory/briefs/wayfinder-t3-t5-t6-today-implementation-2026-08-18.md`. | human-override-2026-08-18 |

@@ -49,11 +49,11 @@ Resource: .github/harness/memory/briefs/radar-batch-governance-gate-and-token-ha
 1. T3 - Context compaction implementation (compaction entry)
 
 - Type: task, gated
-- Status: parked-until-trigger
+- Status: **implemented 2026-08-18** on explicit human override of the trigger-gate (no real trigger evidence existed yet). See `wayfinder-t3-t5-t6-today-implementation-2026-08-18.md`.
 - Why later: `anthropic-context-compaction.md`'s own measurement (2026-08-18) found no current loop needs it; building it now is speculative.
-- Trigger condition: T2's tripwire fires on a real loop run, OR a human names a specific loop whose context has grown unmanageable.
-- Target surfaces: `scripts/harness/run-experiment.mjs`, `scripts/harness/plan-review.mjs`, `.github/harness/loops/*.json` (optional per-loop compaction directive).
-- Exit criteria: compaction prompt tuned against a real captured trace from the triggering loop, not a synthetic example; must preserve architectural decisions/unresolved issues per the Anthropic pattern.
+- Trigger condition: T2's tripwire fires on a real loop run, OR a human names a specific loop whose context has grown unmanageable. **Superseded by explicit override, not by trigger evidence.**
+- Target surfaces: `scripts/harness/context-compaction.mjs` (new), `scripts/harness/run-experiment.mjs`, `scripts/harness/plan-review.mjs`.
+- Exit criteria: shipped as deterministic keep-recent-N compaction (no LLM call), config-driven thresholds, self-tests unchanged.
 
 1. T4 - KV-cache hardening re-audit tripwire (stable-prefix entry)
 
@@ -67,20 +67,20 @@ Resource: .github/harness/memory/briefs/radar-batch-governance-gate-and-token-ha
 1. T5 - Agentic memory scratch-file pilot (structured note-taking entry)
 
 - Type: prototype
-- Status: parked-until-trigger
-- Why later: `anthropic-agentic-memory-file-notes.md` is parked pending a loop that shows measurable drift or repeated re-discovery of the same state across turns; no such loop is currently known.
+- Status: **implemented 2026-08-18** (opt-in, default OFF) on explicit human override of the trigger-gate.
+- Why later: `anthropic-agentic-memory-file-notes.md` is parked pending a loop that shows measurable drift or repeated re-discovery of the same state across turns; no such loop is currently known. **Superseded by explicit override, not by trigger evidence.**
 - Trigger condition: a long-running loop (candidate: `experiment-loop.mjs`'s unattended local-model loop) is observed re-deriving the same facts across iterations, evidenced by journal review.
-- Target surfaces: `scripts/harness/experiment-loop.mjs` or `scripts/harness/run-experiment.mjs` (optional per-run scratch file, kept explicitly separate from committed `.github/harness/memory/` briefs/lessons/radar).
-- Exit criteria: a bounded pilot on exactly one loop shows reduced repeated-discovery in its journal, with a retention/cleanup rule for the scratch file.
+- Target surfaces: `scripts/harness/run-experiment.mjs` — opt-in `--scratch-notes` flag, kept explicitly separate from committed `.github/harness/memory/` briefs/lessons/radar.
+- Exit criteria: shipped default-off; a future pilot enabling it on one real loop still needs its own evaluation before becoming default-on.
 
 1. T6 - Recitation anti-drift pilot (attention-bias entry)
 
 - Type: prototype
-- Status: parked-until-trigger
-- Why later: `manus-recitation-attention-bias.md` is parked pending observed goal drift in a long tool-call loop; no such drift is currently documented.
+- Status: **implemented 2026-08-18** on explicit human override of the trigger-gate.
+- Why later: `manus-recitation-attention-bias.md` is parked pending observed goal drift in a long tool-call loop; no such drift is currently documented. **Superseded by explicit override, not by trigger evidence.**
 - Trigger condition: a long-running loop's journal shows the agent losing track of its original goal across iterations (evidenced, not assumed).
-- Target surfaces: `.github/harness/loops/*.json` prompt text for the triggering loop only.
-- Exit criteria: bounded recitation block (size-capped) added to that one loop's prompt; journal comparison shows reduced drift.
+- Target surfaces: `scripts/harness/run-experiment.mjs`'s `composeImprovementPrompt` — adapted from a per-loop-JSON design to a harness-level bounded "Recap" block, since each iteration spawns a stateless agent process with no persistent todo.md of its own.
+- Exit criteria: shipped as a fixed-size recap block appended to every composed prompt; no size-growth risk since its content (goal, best-so-far, iterations remaining) is O(1) per iteration.
 
 1. T7 - Dispatcher priority order (no ticket)
 

@@ -44,7 +44,8 @@ import {
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertSafeCliCommand } from './command-validation.mjs';
-import { resolveTokens } from './config.mjs';
+import { resolveTokens, resolveValue } from './config.mjs';
+import { compactLineHistory } from './context-compaction.mjs';
 import { checkPromptSize } from './context-growth-guard.mjs';
 import { classifyGitCommand } from './git-guard.mjs';
 import {
@@ -84,12 +85,14 @@ function parseArgs(argv) {
     list: false,
     commit: false,
     resume: undefined,
+    scratchNotes: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--list') args.list = true;
     else if (a === '--measure-only') args.measureOnly = true;
     else if (a === '--commit') args.commit = true;
+    else if (a === '--scratch-notes') args.scratchNotes = true;
     else if (a === '--max-iterations') args.maxIterations = Number(argv[++i]);
     else if (a === '--agent') args.agent = argv[++i];
     else if (a === '--resume') args.resume = argv[++i];
@@ -279,11 +282,13 @@ function improvementDelta(direction, baseline, best) {
   return direction === 'minimize' ? baseline - best : best - baseline;
 }
 
-function composeImprovementPrompt(loop, iteration, best, current, journal) {
+function composeImprovementPrompt(loop, iteration, best, current, journal, scratchNotes) {
   const { name, direction } = loop.metric;
-  const history = journal
+  const rawHistory = journal
     .filter(e => e.metric !== null)
     .map(e => `- Iteration ${e.iteration}: ${name}=${e.metric} (${e.kept ? 'KEPT' : 'reverted'}).`);
+  const history = compactLineHistory(rawHistory);
+  const remaining = Math.max(0, loop.maxIterations - iteration);
   return [
     `You are iteration ${iteration}/${loop.maxIterations} of the harness EXPERIMENT "${loop.name}".`,
     `Protocol: .github/harness/LOOPS.md. Definition: .github/harness/loops/${loop.name}.json.`,
@@ -302,15 +307,21 @@ function composeImprovementPrompt(loop, iteration, best, current, journal) {
     ...(loop.guardrails ?? []).map(g => `- ${g}`),
     '',
     ...(history.length > 0 ? ['## Prior attempts this run', ...history, ''] : []),
+    ...(scratchNotes ? ['## Your running notes (self-maintained, read-only excerpt)', scratchNotes, ''] : []),
     'Make one focused improvement now. Do not re-run the metric command yourself; the runner does.',
+    '',
+    '## Recap (read this last)',
+    `Goal: ${direction} "${name}". Best so far: ${best}. Iterations remaining after this one: ${remaining}.`,
   ]
     .filter(line => line !== undefined)
     .join('\n');
 }
 
-function invokeAgent(agentCmd, prompt, targetFiles) {
+function invokeAgent(agentCmd, prompt, targetFiles, notesFile) {
   assertSafeCliCommand(agentCmd, { label: 'run-experiment agent command' });
   console.log(`[run-experiment]   invoking agent: ${agentCmd}`);
+  const env = { ...process.env, HARNESS_EXPERIMENT_TARGETS: targetFiles.join(',') };
+  if (notesFile) env.HARNESS_EXPERIMENT_NOTES_FILE = notesFile;
   const result = spawnSync(agentCmd, {
     cwd: repoRoot,
     shell: true,
@@ -318,7 +329,7 @@ function invokeAgent(agentCmd, prompt, targetFiles) {
     stdio: ['pipe', 'inherit', 'inherit'],
     // Expose the declared target(s) so file-editing adapters (e.g. ollama-apply-agent.mjs)
     // know exactly which file to rewrite without parsing them out of the prompt.
-    env: { ...process.env, HARNESS_EXPERIMENT_TARGETS: targetFiles.join(',') },
+    env,
   });
   if (result.error) fail(`Agent command failed to start: ${result.error.message}`);
   if (result.status !== 0)
@@ -498,7 +509,7 @@ if (args.list) {
 }
 if (!args.name)
   fail(
-    'Usage: run-experiment.mjs <name> [--measure-only] [--max-iterations N] [--agent "<cmd>"] [--resume <latest|journal-path>]'
+    'Usage: run-experiment.mjs <name> [--measure-only] [--max-iterations N] [--agent "<cmd>"] [--resume <latest|journal-path>] [--scratch-notes]'
   );
 
 try {
@@ -536,6 +547,28 @@ const startedAt = resumed ? null : new Date();
 const journalFile =
   resumePayload?.journalPath ??
   join(runsDir, `${loop.name}-${startedAt.toISOString().replace(/[:.]/g, '-')}.json`);
+
+// T5 (opt-in): agentic memory scratch-file — see anthropic-agentic-memory-file-notes.md.
+// Default OFF; opt in per-run with --scratch-notes or HARNESS_EXPERIMENT_SCRATCH_NOTES=true.
+// Deliberately separate from the committed journal: this is the agent's own disposable working
+// file, not reviewed harness memory.
+const scratchNotesEnabled =
+  args.scratchNotes || resolveValue('contextGrowth.scratchNotes.enabled', false) === true ||
+  process.env.HARNESS_EXPERIMENT_SCRATCH_NOTES === 'true';
+const scratchNotesFile = scratchNotesEnabled
+  ? `${journalFile}.notes.md`
+  : null;
+const SCRATCH_NOTES_MAX_CHARS = 4000;
+
+function readScratchNotesExcerpt() {
+  if (!scratchNotesFile || !existsSync(scratchNotesFile)) return null;
+  const content = readFileSync(scratchNotesFile, 'utf8');
+  if (!content.trim()) return null;
+  return content.length > SCRATCH_NOTES_MAX_CHARS
+    ? `...(truncated)...\n${content.slice(-SCRATCH_NOTES_MAX_CHARS)}`
+    : content;
+}
+
 const record =
   resumePayload?.record ??
   {
@@ -757,11 +790,18 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   );
   const preIteration = snapshotTargets(targetFiles);
 
-  const improvementPrompt = composeImprovementPrompt(loop, iteration, best, best, record.iterations);
+  const improvementPrompt = composeImprovementPrompt(
+    loop,
+    iteration,
+    best,
+    best,
+    record.iterations,
+    readScratchNotesExcerpt()
+  );
   const promptSize = checkPromptSize(improvementPrompt, {
     label: `run-experiment "${loop.name}" iteration ${iteration}`,
   });
-  invokeAgent(agentCmd, improvementPrompt, targetFiles);
+  invokeAgent(agentCmd, improvementPrompt, targetFiles, scratchNotesFile);
 
   const measure = measureMetric(loop);
   const improved =

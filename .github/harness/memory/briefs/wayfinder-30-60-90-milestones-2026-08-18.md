@@ -88,10 +88,10 @@ Baseline date: 2026-08-18
 | --- | --- | --- | --- |
 | T1 | Governance Tooling Owner | Security/Compliance Reviewer | Ready (gate shipped, decision pending) |
 | T2 | Loop Reliability Owner | Observability Reviewer | Ready |
-| T3 | Context Engineering Owner | Loop Reliability Reviewer | Parked-until-trigger |
+| T3 | Context Engineering Owner | Loop Reliability Reviewer | **Implemented 2026-08-18 (explicit human override, ahead of trigger evidence)** |
 | T4 | LLM Provider Owner | Security Reviewer | Watchlist |
-| T5 | Context Engineering Owner | Memory Surfaces Reviewer | Parked-until-trigger |
-| T6 | Context Engineering Owner | Loop Reliability Reviewer | Parked-until-trigger |
+| T5 | Context Engineering Owner | Memory Surfaces Reviewer | **Implemented 2026-08-18, opt-in default OFF (explicit human override, ahead of trigger evidence)** |
+| T6 | Context Engineering Owner | Loop Reliability Reviewer | **Implemented 2026-08-18 (explicit human override, ahead of trigger evidence)** |
 | T7 | — | — | No ticket (parked, unattached) |
 
 ## Inline skeptical pass (architect challenge omitted by route)

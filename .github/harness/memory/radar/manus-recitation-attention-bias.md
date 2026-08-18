@@ -1,6 +1,6 @@
 ---
 summary: Recitation — an agent rewrites a running todo/plan file at the end of its own context on every long-loop step, biasing its own attention back onto the goal instead of drifting over dozens of tool calls
-status: parked
+status: adopted
 source: https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus
 author_project: Manus AI (Yichao 'Peak' Ji)
 captured: 2026-08-18
@@ -48,3 +48,4 @@ maintain and restate each turn.
 |---|---|---|---|
 | 2026-08-18 | candidate | Initial capture from Manus context-engineering post. | radar-pass |
 | 2026-08-18 | parked | No currently-observed drift symptom to fix against; low-risk prompt-only technique to revisit once a long loop shows the symptom. | radar-pass |
+| 2026-08-18 | adopted | Implemented same-day on explicit human override of the trigger-gate (no observed-drift evidence exists yet). Adapted from a literal port: `run-experiment.mjs` spawns a fresh stateless agent process per iteration, so there is no persistent agent-owned todo.md to recite from turn to turn. Instead, the harness itself appends a short, bounded "Recap" block (goal, best-so-far, iterations remaining) at the end of every composed prompt. See `.github/harness/memory/briefs/wayfinder-t3-t5-t6-today-implementation-2026-08-18.md`. | human-override-2026-08-18 |
