@@ -1,12 +1,11 @@
 /**
  * Auth framework: Extract and validate caller identity from MCP context
- * Phase 2a: Logging only (no enforcement); enforcement in Phase 2c
+ * Extracts caller identity and enforces configured command permissions.
  * @module mcp-auth-validator
  */
 
 /**
  * Extract caller identity from MCP request context
- * Phase 2a: Extracts fields; validation logic added in Phase 2c
  * @param {object} mpcContext - MCP request context with caller metadata
  * @returns {object} {callerId, token, role, valid, errors}
  */
@@ -66,12 +65,30 @@ function extractCallerIdentity(mcpContext = {}) {
  * @returns {object} {authorized, reason}
  */
 function isAuthorized(caller, commandName, config = {}) {
-  // Phase 2a: Logging-only; all callers pass through
-  // Phase 2c will check role permissions and command whitelist
+  if (config?.enabled === false) {
+    return { authorized: true, reason: 'auth-disabled' };
+  }
+
+  if (!caller || caller.valid === false) {
+    return { authorized: false, reason: 'invalid-caller' };
+  }
+
+  const rolePermissions = config?.rolePermissions;
+  if (!rolePermissions || typeof rolePermissions !== 'object' || Array.isArray(rolePermissions)) {
+    return { authorized: false, reason: 'no-role-permissions' };
+  }
+
+  const permissions = rolePermissions[caller.role];
+  if (!Array.isArray(permissions)) {
+    return { authorized: false, reason: 'role-denied' };
+  }
+
+  const command = typeof commandName === 'string' ? commandName.trim() : '';
+  const authorized = permissions.includes('*') || permissions.includes(command);
 
   return {
-    authorized: true,
-    reason: 'phase-2a-logging-only',
+    authorized,
+    reason: authorized ? 'role-permission' : 'command-denied',
   };
 }
 

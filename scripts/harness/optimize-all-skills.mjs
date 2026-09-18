@@ -41,6 +41,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { validateSkillRoutingCoverage } from './skill-routing-eval.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BRIDGE_SCRIPT = join(repoRoot, 'scripts', 'harness', 'dspy-bridge.mjs');
@@ -199,7 +200,8 @@ function selectSkills(skills, selectors) {
 
   const selected = new Map();
   for (const selector of selectors) {
-    const exactId = skills.find(skill => skill.id === selector);
+    const normalizedSelector = String(selector).replaceAll('\\', '/');
+    const exactId = skills.find(skill => skill.id === normalizedSelector);
     if (exactId) {
       selected.set(exactId.id, exactId);
       continue;
@@ -749,6 +751,12 @@ function main() {
   const modelName = resolveModelName(args);
   validateExecutionArgs(args);
   const { discoveredSkills, skills } = discoverSelectedSkills(args);
+  const routingCoverage = validateSkillRoutingCoverage({
+    skills: undefined,
+  });
+  if (!routingCoverage.ok) {
+    throw new Error(`Skill routing/eval coverage failed:\n${routingCoverage.errors.join('\n')}`);
+  }
 
   console.log(`\n${'='.repeat(60)}`);
   console.log(`[optimize-skills] Starting optimization with ${MODELS[modelName].label}`);

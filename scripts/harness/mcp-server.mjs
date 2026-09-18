@@ -36,7 +36,7 @@ import { logCommandDispatchAudit, buildCommandDispatchRecord } from "./mcp-audit
 import { exportGraphLayers, exportGraphNodes, getGraphNodeBoundary, isGraphReady } from "./graph-resources.mjs";
 import { readGraphEvents } from "./graph-provider.mjs";
 import { createRateLimiter } from "./mcp-rate-limiter.mjs";
-import { extractCallerIdentity, getCallerAuditInfo } from "./mcp-auth-validator.mjs";
+import { extractCallerIdentity, getCallerAuditInfo, isAuthorized } from "./mcp-auth-validator.mjs";
 import {
   buildCallerAccessContext,
   evaluateMemoryAccess,
@@ -674,7 +674,7 @@ const toolSpecs = [
         },
         context: {
           type: "object",
-          description: "Optional MCP caller context for auth logging (Phase 2a).",
+          description: "Optional MCP caller context used for role-based command authorization.",
           properties: {
             caller: {
               type: "object",
@@ -951,6 +951,7 @@ export function createPendingTask(toolName, args, options = {}) {
     updatedAt: now,
     readyAt: now + delayMs,
     arguments: sanitizeTaskArguments(args),
+    caller: options.caller ?? null,
     result: null,
     error: null,
   });
@@ -1709,15 +1710,28 @@ function createServer() {
   });
 
   /**
-   * Phase 2a governance guard for harness-command-dispatch tool.
+  * Governance guard for harness-command-dispatch tool.
    * Extracted here to keep the CallToolRequestSchema handler as a thin dispatcher.
    * Returns {allowed, callerInfo, quotaInfo, dispatchConfig} or {allowed: false, errorResponse}.
-   * Phase 2b/2c: add template resolution, role enforcement, persistent quota here.
+  * Template resolution remains owned by the command wrapper; authorization is enforced here
+  * before any command process is spawned.
    */
   function runDispatchGuard(params) {
     const dispatchConfig = loadConfig();
     const mcpContext = params?.context || {};
     const callerInfo = extractCallerIdentity(mcpContext);
+    const commandName = params?.arguments?.command ?? params?.command;
+    const authConfig = dispatchConfig?.commandDispatch?.auth ?? {};
+    const authorization = isAuthorized(callerInfo, commandName, authConfig);
+    if (!authorization.authorized) {
+      return {
+        allowed: false,
+        errorResponse: createErrorResponse(
+          ErrorCode.INVALID_ARGUMENTS,
+          `Command authorization denied: ${authorization.reason}`,
+        ),
+      };
+    }
 
     const rateLimitEnabled = dispatchConfig?.commandDispatch?.rateLimit?.enabled !== false;
     if (rateLimitEnabled) {
@@ -1834,6 +1848,23 @@ function createServer() {
       };
     }
 
+    if (task.toolName === "harness-command-dispatch") {
+      const config = loadConfig();
+      const authorization = isAuthorized(
+        task.caller || extractCallerIdentity({}),
+        task.arguments?.command,
+        config?.commandDispatch?.auth ?? {},
+      );
+      if (!authorization.authorized) {
+        return {
+          ok: false,
+          code: "AUTHORIZATION_DENIED",
+          error: `Command authorization denied: ${authorization.reason}`,
+          status: 403,
+        };
+      }
+    }
+
     const result = runWrapper(task.toolName, cliArgs);
     if (!result.ok) {
       return {
@@ -1888,13 +1919,13 @@ function createServer() {
     return { response: null };
   }
 
-  function maybeCreateAsyncTask(toolName, args) {
+  function maybeCreateAsyncTask(toolName, args, caller) {
     const mode = readTaskMode(args);
     if (mode !== TASK_MODE_ASYNC) return null;
     if (toolName === "tasks-get" || toolName === "tasks-update") {
       throw new Error("Task helper methods cannot be invoked with __task.mode=async");
     }
-    const payload = createPendingTask(toolName, args, { delayMs: readTaskDelayMs(args) });
+    const payload = createPendingTask(toolName, args, { delayMs: readTaskDelayMs(args), caller });
     return {
       structuredContent: payload,
       ...buildToolCallTextPayload(payload),
@@ -1925,7 +1956,16 @@ function createServer() {
       if (mrtr.response) return mrtr.response;
       effectiveArgs = mrtr.effectiveArgs;
 
-      const asyncTaskResponse = maybeCreateAsyncTask(toolName, effectiveArgs);
+      const dispatchGuard = toolName === "harness-command-dispatch"
+        ? runDispatchGuard({ arguments: effectiveArgs, context: request.params.context })
+        : null;
+      if (dispatchGuard && !dispatchGuard.allowed) return dispatchGuard.errorResponse;
+
+      const asyncTaskResponse = maybeCreateAsyncTask(
+        toolName,
+        effectiveArgs,
+        dispatchGuard?.callerInfo ?? extractCallerIdentity({}),
+      );
       if (asyncTaskResponse) return asyncTaskResponse;
     } catch (error) {
       return createErrorResponse(

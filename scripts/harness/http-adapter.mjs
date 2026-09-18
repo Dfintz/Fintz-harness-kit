@@ -41,7 +41,7 @@ import { fileURLToPath } from 'node:url';
 
 import { mcpToolSpecs } from './mcp-contracts.mjs';
 import { loadConfig } from './config.mjs';
-import { extractCallerIdentity, validateIssuerBinding } from './mcp-auth-validator.mjs';
+import { extractCallerIdentity, isAuthorized, validateIssuerBinding } from './mcp-auth-validator.mjs';
 import {
   buildCallerAccessContext,
   evaluateMemoryAccess,
@@ -225,6 +225,15 @@ function buildCallerFromRequest(req, config) {
 
   const callerInfo = extractCallerIdentity({ caller: headerCaller });
   return buildCallerAccessContext(callerInfo, { caller: headerCaller });
+}
+
+function authorizeHttpCommand(req, args, config) {
+  const caller = extractCallerIdentity({ caller: buildCallerFromRequest(req, config) });
+  return isAuthorized(caller, args?.command, config?.commandDispatch?.auth ?? {});
+}
+
+function getHttpCaller(req, config) {
+  return extractCallerIdentity({ caller: buildCallerFromRequest(req, config) });
 }
 
 function readSafeMemoryFile(path) {
@@ -586,6 +595,16 @@ function handleMcpToolsCall(req, route, body, config) {
   }
 
   const taskMode = readTaskMode(callArguments);
+  if (route.toolName === 'harness-command-dispatch') {
+    const authorization = authorizeHttpCommand(req, callArguments, config);
+    if (!authorization.authorized) {
+      return {
+        status: 403,
+        payload: toMcpResponseEnvelope(route.id, buildMcpInternalError(`AUTHORIZATION_DENIED: ${authorization.reason}`)),
+      };
+    }
+  }
+
   if (taskMode === 'async') {
     if (route.toolName === 'tasks-get' || route.toolName === 'tasks-update') {
       return {
@@ -593,7 +612,10 @@ function handleMcpToolsCall(req, route, body, config) {
         payload: toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Task helper methods cannot be invoked with __task.mode=async')),
       };
     }
-    const taskResult = createPendingTask(route.toolName, callArguments, { delayMs: readTaskDelayMs(callArguments) });
+    const taskResult = createPendingTask(route.toolName, callArguments, {
+      delayMs: readTaskDelayMs(callArguments),
+      caller: route.toolName === 'harness-command-dispatch' ? getHttpCaller(req, config) : null,
+    });
     return {
       status: 200,
       payload: toMcpResponseEnvelope(route.id, { result: taskResult }),
@@ -737,6 +759,14 @@ async function handleToolInvokeRequest(req, res, config, toolName) {
   } catch (err) {
     json(res, err.status || 400, { error: err.message, code: err.code || 'BODY_ERROR' });
     return;
+  }
+
+  if (toolName === 'harness-command-dispatch') {
+    const authorization = authorizeHttpCommand(req, body, config);
+    if (!authorization.authorized) {
+      json(res, 403, { error: `Command authorization denied: ${authorization.reason}`, code: 'AUTHORIZATION_DENIED' });
+      return;
+    }
   }
 
   const dispatch = dispatchTool(toolName, body);
@@ -1050,7 +1080,12 @@ async function handleAuthenticatedRoute(req, res, config, path, method) {
       methodNotAllowed(res);
       return;
     }
-    await handleMcpRequest(req, res, { maxBodyBytes: config.maxBodyBytes, baseUrl: config.baseUrl });
+    await handleMcpRequest(req, res, {
+      maxBodyBytes: config.maxBodyBytes,
+      baseUrl: config.baseUrl,
+      commandDispatch: config.commandDispatch,
+      callerHeaders: config.callerHeaders,
+    });
     return;
   }
 
@@ -1159,7 +1194,14 @@ async function main() {
     );
   }
 
-  const config = { expectedKeyBuffer, maxBodyBytes, baseUrl, oauthHardening, callerHeaders };
+  const config = {
+    expectedKeyBuffer,
+    maxBodyBytes,
+    baseUrl,
+    oauthHardening,
+    callerHeaders,
+    commandDispatch: harnessConfig.commandDispatch,
+  };
 
   const server = createServer(async (req, res) => {
     try {

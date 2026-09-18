@@ -45,7 +45,7 @@ const testConfig = {
   assert.strictEqual(quota.remaining, 9, 'T1: Remaining = 9 after 1 token consumed');
 
   const auth = isAuthorized(caller, 'lint', testConfig.commandDispatch.auth);
-  assert.strictEqual(auth.authorized, true, 'T1: Authorized (Phase 2a logging-only)');
+  assert.strictEqual(auth.authorized, true, 'T1: Authorized by configured role permission');
 
   console.log('✅ Test 1: Full dispatch flow (caller + quota + auth)');
 }
@@ -132,7 +132,7 @@ const testConfig = {
   console.log('✅ Test 4: Template resolution with validated vars');
 }
 
-// ── Test 5: Non-empty caller roles are preserved (Phase 2a: logs only) ─────
+// ── Test 5: Unknown roles are preserved but denied ─────────────────────────
 {
   const mcpContext = { caller: { token: 'tok-hacker', role: 'superadmin' } };
   const caller = extractCallerIdentity(mcpContext);
@@ -141,12 +141,11 @@ const testConfig = {
   assert.deepStrictEqual(caller.errors, [], 'T5: No validation errors');
   assert.strictEqual(caller.role, 'superadmin', 'T5: Role is preserved for audit logging');
 
-  // Phase 2a authorization remains logging-only.
-  const auth = isAuthorized(caller, 'build', {});
-  assert.strictEqual(auth.authorized, true, 'T5: Phase 2a authorizes caller (logging-only)');
-  assert.strictEqual(auth.reason, 'phase-2a-logging-only', 'T5: Correct reason');
+  const auth = isAuthorized(caller, 'build', testConfig.commandDispatch.auth);
+  assert.strictEqual(auth.authorized, false, 'T5: Unknown role must be denied');
+  assert.strictEqual(auth.reason, 'role-denied', 'T5: Correct denial reason');
 
-  console.log('✅ Test 5: Non-empty role preserved + logged (Phase 2a enforcement deferred)');
+  console.log('✅ Test 5: Unknown role preserved + denied');
 }
 
 // ── Test 6: Template injection in var name rejected ────────────────────────

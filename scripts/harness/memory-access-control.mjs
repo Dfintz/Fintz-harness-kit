@@ -82,6 +82,22 @@ export function loadMemoryAccessPolicy(repoRoot) {
 
   try {
     const parsed = JSON.parse(readFileSync(policyPath, "utf8"));
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed) ||
+      typeof parsed.enabled !== "boolean" ||
+      typeof parsed.defaultAllow !== "boolean" ||
+      !Array.isArray(parsed.zones)
+    ) {
+      return {
+        enabled: true,
+        defaultAllow: false,
+        zones: [],
+        policyPath,
+        source: "invalid",
+      };
+    }
     const zones = Array.isArray(parsed.zones) ? parsed.zones : [];
     const rolloutProfiles = parsed.rolloutProfiles && typeof parsed.rolloutProfiles === "object"
       ? parsed.rolloutProfiles
@@ -109,8 +125,8 @@ export function loadMemoryAccessPolicy(repoRoot) {
     };
   } catch {
     return {
-      enabled: false,
-      defaultAllow: true,
+      enabled: true,
+      defaultAllow: false,
       zones: [],
       policyPath,
       source: "invalid",

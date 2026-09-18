@@ -283,6 +283,21 @@ Security evidence checklist note:
 - The differential report includes a `checklist` block with machine-readable items (`diff-report-generated`, `scanner-command-recorded`, `base-and-head-scans-recorded`, `drift-summary-captured`).
 - Include these checklist rows in review evidence so scanner behavior stays optional while evidence quality remains auditable.
 
+Enforce the security evidence and review verdict together after producing both JSON artifacts:
+
+```bash
+npm run harness:security:review-gate -- \
+  --security-report .github/harness/runs/lurkr-diff-report.json \
+  --review-report .github/harness/runs/security-review.json \
+  --json
+```
+
+The gate fails closed unless the security report has status `ok`, a non-empty evidence checklist
+with no `fail` items, and the review report has `terminalState: "converged"` plus
+`finalVerdict: "APPROVED"`. It validates artifacts only; it never runs a scanner or model command.
+The opt-in example workflow expects `.github/harness/runs/security-review.json` to be produced by
+the preceding plan-review stage; it intentionally fails when that review artifact is absent.
+
 Interpretation note:
 - A report can still show non-zero scanner exit codes for both base and head in some environments.
 - If the run no longer emits DEP0190 warnings, the shell-deprecation hardening path is still considered effective even when scanner findings or runtime checks fail.

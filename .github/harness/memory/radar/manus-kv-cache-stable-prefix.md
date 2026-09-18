@@ -1,6 +1,6 @@
 ---
 summary: KV-cache-friendly agent design — keep the prompt prefix byte-stable, make context append-only, and mask rather than remove tools, to avoid silently invalidating prefix caching
-status: candidate
+status: parked
 source: https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus
 author_project: Manus AI (Yichao 'Peak' Ji)
 captured: 2026-08-18
@@ -40,13 +40,13 @@ alone guarantees a stable prefix.
     reorder or vary the stable prefix in ways that defeat caching
 - **Risks/constraints:** this is a verification/hardening pass on an already-adopted technique, not a
   new capability; avoid conflating it with unrelated tool-set changes.
-- **Next step:** audit current prompt/context assembly for the three specific failure modes (unstable
-  serialization, timestamp-in-prefix, dynamic tool lists) as a follow-up to the T1 prompt-prefix-
-  caching work, before spending effort on new caching infrastructure.
+- **Next step:** keep as a parked hardening check; revisit only if tool-calling or prompt mutation is
+  added to the provider layer or a specific cache miss appears in production. No active implementation
+  is warranted now because the current assembly paths are already stable.
 
 ## Decision Log
 
 | Date | Status | Decision | By |
 |---|---|---|---|
 | 2026-08-18 | candidate | Initial capture from Manus context-engineering post; identified as a hardening follow-up to the already-adopted prompt-prefix-caching entry. | radar-pass |
-| 2026-08-18 | candidate | Audited per the "Next step": `llm-provider.mjs` (`buildLmstudioBody`, `buildOllamaBody`), `run-experiment.mjs` (`composeImprovementPrompt`), and `plan-review.mjs` (`composeReviewerPrompt`). All three of the named failure modes are verified absent — deterministic array/object-literal construction (stable JSON key order), no timestamp interpolated into any model-facing `system`/`prompt` value, and no dynamic tool-list mid-loop (this adapter has no tool-calling schema today). No code changes made in this pass; see `.github/harness/memory/briefs/radar-batch-governance-gate-and-token-hardening-2026-08-18.md`. Stays `candidate` as a standing hardening check to re-run if tool-calling is ever added to `llm-provider.mjs`. | radar-batch-2026-08-18 |
+| 2026-08-18 | parked | Audited per the follow-up path: `llm-provider.mjs` (`buildLmstudioBody`, `buildOllamaBody`), `run-experiment.mjs` (`composeImprovementPrompt`), and `plan-review.mjs` (`composeReviewerPrompt`). All three failure modes are verified absent — deterministic object construction (stable JSON key order), no timestamp interpolated into model-facing `system`/`prompt` text, and no dynamic tool-list mid-loop. This remains a useful guardrail for future tool-calling work, but it is not a current repo problem and does not justify a new implementation task today. | radar-batch-2026-08-18 |

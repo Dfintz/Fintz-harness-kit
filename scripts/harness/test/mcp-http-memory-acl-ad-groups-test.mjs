@@ -93,6 +93,68 @@ async function run() {
   try {
     await waitForHealth();
 
+    // T0: HTTP command dispatch uses trusted caller headers for authorization.
+    {
+      const response = await fetch(`${BASE_URL}/tools/harness-command-dispatch`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-harness-api-key': API_KEY,
+          'x-harness-caller-role': 'restricted',
+          'x-harness-caller-id': 'restricted-user',
+        },
+        body: JSON.stringify({ command: 'build', context: { caller: { role: 'executor' } } }),
+      });
+      const json = await response.json();
+
+      assert.strictEqual(response.status, 403, 'T0: Restricted caller must be denied build');
+      assert.strictEqual(json?.code, 'AUTHORIZATION_DENIED', 'T0: Denial must be explicit');
+      console.log('PASS T0: HTTP command authorization rejects denied role and body spoof');
+    }
+
+    // T0b: An authorized HTTP caller remains authorized when an async task executes later.
+    {
+      const kickoff = await fetch(`${BASE_URL}/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-harness-api-key': API_KEY,
+          'mcp-method': 'tools/call',
+          'mcp-name': 'harness-command-dispatch',
+          'x-harness-caller-role': 'executor',
+          'x-harness-caller-id': 'async-executor',
+        },
+        body: JSON.stringify({
+          id: 2,
+          jsonrpc: '2.0',
+          method: 'tools/call',
+          params: {
+            name: 'harness-command-dispatch',
+            arguments: { command: 'lint', __task: { mode: 'async', delayMs: 10 } },
+          },
+        }),
+      });
+      const kickoffJson = await kickoff.json();
+      const taskId = kickoffJson?.result?.taskId;
+      assert.strictEqual(kickoff.status, 200, 'T0b: authorized kickoff should succeed');
+      assert.ok(taskId, 'T0b: authorized kickoff should return taskId');
+
+      await delay(100);
+      const poll = await fetch(`${BASE_URL}/mcp`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-harness-api-key': API_KEY,
+          'mcp-method': 'tasks/get',
+        },
+        body: JSON.stringify({ id: 3, jsonrpc: '2.0', method: 'tasks/get', params: { taskId } }),
+      });
+      const pollJson = await poll.json();
+      assert.strictEqual(poll.status, 200, 'T0b: task poll should succeed');
+      assert.notStrictEqual(pollJson?.result?.status, 'failed', 'T0b: authorized task should not fail authorization');
+      console.log('PASS T0b: authorized HTTP async task retains caller authorization');
+    }
+
     // T1: HR caller (via x-ms-groups) can read HR-tagged memory entry.
     {
       const response = await fetch(`${BASE_URL}/tools/memory-read`, {

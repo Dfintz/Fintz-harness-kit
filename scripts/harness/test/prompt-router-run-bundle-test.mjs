@@ -27,6 +27,7 @@ function run(args) {
     cwd: repoRoot,
     shell: false,
     encoding: "utf8",
+    env: { ...process.env, HARNESS_PROJECT_ROOT: repoRoot },
     stdio: ["ignore", "pipe", "pipe"],
   });
 }

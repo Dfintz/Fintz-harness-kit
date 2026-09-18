@@ -78,30 +78,41 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 7: Null context handled gracefully');
 }
 
-// Test 8: Authorization check - Phase 2a always returns true (logging-only)
+// Test 8: Authorization check - configured role permission allows the command
 {
   const caller = extractCallerIdentity({ caller: { token: 'token', role: 'auditor' } });
-  const auth = isAuthorized(caller, 'some-command', {});
-  assert.strictEqual(auth.authorized, true, 'Test 8: Phase 2a should always authorize');
-  assert.strictEqual(auth.reason, 'phase-2a-logging-only', 'Test 8: Reason should indicate Phase 2a');
-  console.log('✅ Test 8: Authorization check (Phase 2a logging-only) passed');
+  const auth = isAuthorized(caller, 'inspect', { rolePermissions: { auditor: ['inspect'] } });
+  assert.strictEqual(auth.authorized, true, 'Test 8: configured permission should authorize');
+  assert.strictEqual(auth.reason, 'role-permission', 'Test 8: Reason should identify role permission');
+  console.log('✅ Test 8: Configured role permission passed');
 }
 
-// Test 9: Caller audit info - safely hashes token
+// Test 9: Authorization denies unknown roles, commands, and missing policy
+{
+  const caller = extractCallerIdentity({ caller: { token: 'token', role: 'restricted' } });
+  assert.strictEqual(isAuthorized(caller, 'inspect', { rolePermissions: { auditor: ['inspect'] } }).authorized, false);
+  assert.strictEqual(isAuthorized(caller, 'inspect', { rolePermissions: { restricted: ['lint'] } }).authorized, false);
+  assert.strictEqual(isAuthorized(caller, 'inspect', {}).authorized, false);
+  console.log('✅ Test 9: Missing and insufficient permissions denied');
+}
+
+// Test 10: Caller audit info - safely hashes token
 {
   const caller = extractCallerIdentity({
     caller: { token: 'secret-jwt-token-xyz', role: 'restricted' },
   });
-  const auditInfo = getCallerAuditInfo(caller, 'command-name', {});
+  const auditInfo = getCallerAuditInfo(caller, 'lint', {
+    rolePermissions: { restricted: ['lint'] },
+  });
 
-  assert.strictEqual(auditInfo.role, 'restricted', 'Test 9: Role included');
-  assert(auditInfo.tokenHash.includes('...'), 'Test 9: Token should be hashed');
-  assert(!auditInfo.tokenHash.includes('secret'), 'Test 9: Token should not reveal secret');
-  assert.strictEqual(auditInfo.authorized, true, 'Test 9: Phase 2a authorizes');
-  console.log('✅ Test 9: Caller audit info passed');
+  assert.strictEqual(auditInfo.role, 'restricted', 'Test 10: Role included');
+  assert(auditInfo.tokenHash.includes('...'), 'Test 10: Token should be hashed');
+  assert(!auditInfo.tokenHash.includes('secret'), 'Test 10: Token should not reveal secret');
+  assert.strictEqual(auditInfo.authorized, true, 'Test 10: Configured permission authorizes');
+  console.log('✅ Test 10: Caller audit info passed');
 }
 
-// Test 10: Caller ID generation from token
+// Test 11: Caller ID generation from token
 {
   const context = { caller: { token: 'my-token-1234567890abcdef', role: 'executor' } };
   const caller = extractCallerIdentity(context);
@@ -111,7 +122,7 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 10: Caller ID generation passed');
 }
 
-// Test 11: Representative non-empty roles accepted
+// Test 12: Representative non-empty roles accepted
 {
   const validRoles = ['executor', 'auditor', 'restricted', 'admin', 'security', 'engineering'];
   for (const role of validRoles) {
@@ -124,7 +135,7 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 11: Representative roles accepted');
 }
 
-// Test 12: Empty role is invalid
+// Test 13: Empty role is invalid
 {
   const caller = extractCallerIdentity({
     caller: { token: 'token', role: '   ' },
@@ -134,7 +145,7 @@ console.log('[auth-validator-test] Starting test suite...');
   console.log('✅ Test 12: Empty role rejected');
 }
 
-// Test 13: Teams extraction supports array and CSV team formats
+// Test 14: Teams extraction supports array and CSV team formats
 {
   const fromArray = extractCallerIdentity({
     caller: { role: 'auditor', teams: ['hr', 'security'] },
