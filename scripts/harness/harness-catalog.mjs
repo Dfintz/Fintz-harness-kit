@@ -59,6 +59,7 @@ export function buildCatalog() {
   const routing = config.routing ?? {};
   const domainSpecialists = config.modelPolicy?.domainSpecialists ?? {};
   const selectionWizard = config.modelPolicy?.modelSelectionWizard ?? {};
+  const localOpenModels = config.modelPolicy?.localOpenModels ?? {};
   const intentProfiles = routing.intentProfiles ?? {};
   const profiles = routing.profiles ?? {};
   const version = readPackageVersion();
@@ -111,6 +112,16 @@ export function buildCatalog() {
       context: typeof details?.context === "string" ? details.context : null,
     })),
   );
+  const localWorkflowLanes = Array.isArray(localOpenModels.workflowLanes)
+    ? localOpenModels.workflowLanes.map((lane) => ({
+        lane: lane?.lane ?? "unknown",
+        allowedStages: Array.isArray(lane?.allowedStages) ? lane.allowedStages : [],
+        allowedLoops: Array.isArray(lane?.allowedLoops) ? lane.allowedLoops : [],
+        forbiddenStages: Array.isArray(lane?.forbiddenStages) ? lane.forbiddenStages : [],
+        requiredProofs: Array.isArray(lane?.requiredProofs) ? lane.requiredProofs : [],
+        escalateTo: typeof lane?.escalateTo === "string" ? lane.escalateTo : null,
+      }))
+    : [];
 
   return {
     meta: {
@@ -144,6 +155,19 @@ export function buildCatalog() {
           supportedModelCount: Array.isArray(selectionWizard.supportedCopilotModels)
             ? selectionWizard.supportedCopilotModels.length
             : 0,
+        },
+        localOpenModels: {
+          advisoryOnly: localOpenModels.advisoryOnly === true,
+          evidenceSource: localOpenModels.evidenceSource ?? null,
+          evidenceClasses: Array.isArray(localOpenModels.evidenceClasses) ? localOpenModels.evidenceClasses : [],
+          executableDefaultRequires: Array.isArray(localOpenModels.executableDefaultRequires)
+            ? localOpenModels.executableDefaultRequires
+            : [],
+          fitStatuses: Array.isArray(localOpenModels.fitStatuses) ? localOpenModels.fitStatuses : [],
+          signalCount: Array.isArray(localOpenModels.signals) ? localOpenModels.signals.length : 0,
+          candidateCount: Array.isArray(localOpenModels.candidates) ? localOpenModels.candidates.length : 0,
+          hardwareProfiles: Object.keys(localOpenModels.hardwareFit ?? {}),
+          workflowLanes: localWorkflowLanes,
         },
       },
       mcp: {
@@ -199,6 +223,22 @@ export function renderLlmsTxt(catalog) {
       (entry) =>
         `- ${entry.mode}/${entry.level}: cloud=${entry.cloud.join(", ")}; local=${entry.local ?? "none"}; context=${entry.context ?? "not configured"}`,
     ),
+    "",
+    "## Local open model policy",
+    `- Advisory only: ${catalog.capabilities.modelPolicy.localOpenModels.advisoryOnly}`,
+    `- Evidence source: ${catalog.capabilities.modelPolicy.localOpenModels.evidenceSource ?? "not configured"}`,
+    `- Evidence classes: ${catalog.capabilities.modelPolicy.localOpenModels.evidenceClasses.join(", ")}`,
+    `- Executable default requires: ${catalog.capabilities.modelPolicy.localOpenModels.executableDefaultRequires.join(", ")}`,
+    `- Fit statuses: ${catalog.capabilities.modelPolicy.localOpenModels.fitStatuses.join(", ")}`,
+    `- Signals: ${catalog.capabilities.modelPolicy.localOpenModels.signalCount}; candidates: ${catalog.capabilities.modelPolicy.localOpenModels.candidateCount}`,
+    `- Hardware profiles: ${catalog.capabilities.modelPolicy.localOpenModels.hardwareProfiles.join(", ")}`,
+    "### Deterministic local workflow lanes",
+    ...(catalog.capabilities.modelPolicy.localOpenModels.workflowLanes.length > 0
+      ? catalog.capabilities.modelPolicy.localOpenModels.workflowLanes.map(
+          (entry) =>
+            `- ${entry.lane}: allowedStages=${entry.allowedStages.join(", ")}; allowedLoops=${entry.allowedLoops.join(", ")}; forbiddenStages=${entry.forbiddenStages.join(", ")}; requiredProofs=${entry.requiredProofs.join(", ")}; escalateTo=${entry.escalateTo ?? "not configured"}`,
+        )
+      : ["- none"]),
     "",
     "## MCP tool discovery",
     `- Tool count: ${catalog.capabilities.mcp.toolCount}`,

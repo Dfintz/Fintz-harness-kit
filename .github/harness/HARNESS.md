@@ -47,17 +47,37 @@ When non-trivial route or handoff preflight is degraded, treat `--allow-degraded
 
 ### Model Roles In The Shipped Environment Policy
 
-The harness applies a **three-tier capability model**. Copilot Auto is the recommended default for
-all tiers when using GitHub Copilot — it selects an appropriate model dynamically. The tier labels
-govern _what kind_ of capability a stage requires. Pinned examples show which models map well to
-each tier today, but treat them as examples, not requirements: any model in the same capability
-class works.
+The harness applies a **five-tier capability model**. Copilot Auto remains a safe general default
+when no skill-specific override applies, but the shipped harness routes the 20 core skills through
+`harness.config.json` `skillModelMapping.mappings`. The tier labels govern _what kind_ of capability
+a stage requires. Pinned examples show which Copilot-supported models map well to each tier today,
+but treat them as examples, not requirements: any model in the same capability class works when it is
+enabled for the operator's plan, policy, and client. Current hosted evidence is recorded in
+`.github/harness/phase5/validation-results/model-routing-benchmark-refresh-2026-09-23.md`.
 
 | Tier | Stages | Copilot default | Pinned examples | Rationale |
 | --- | --- | --- | --- | --- |
-| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Auto | `claude-opus-4-8`, `gemini-2.5-pro` | Sustained multi-hop reasoning over large contexts; architectural judgment; cross-cutting concern detection. Both models score strongly on GPQA Diamond, MMLU-Pro, and long-context SWE-bench. |
-| **balanced-coding** | Implement, `build-fix`, `test-fix` | Auto | `gpt-5.3-codex`, `claude-sonnet-4.5` | The Architecture Brief already constrains the problem; what matters is code-generation speed and accuracy |
-| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, triage | — (local only) | `qwen2.5-coder:14b`, `llama3.2:3b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation |
+| **ultra-reasoning** | Architect, Feedback | Auto | `gpt-6-astra`, `claude-opus-5-5`, `gpt-6-sol` | Long-horizon architecture, conflict adjudication, and final synthesis. Reserve the highest-cost models for work that needs the reasoning ceiling. |
+| **high-reasoning** | Understand, Review Breadth, Review Depth, PR, validation, memory, analysis skills | Auto | `claude-opus-5-5`, `gpt-6-sol`, `claude-opus-5`, `gpt-5.6-sol` | Sustained multi-hop reasoning, graph impact analysis, structural review, and proof selection. |
+| **balanced-coding** | Implement, Prototype, Run Loop, `build-fix`, `test-fix` | Auto | `gpt-5.6-terra`, `claude-sonnet-5`, `gpt-5.4`, `gpt-5.3-codex` | The Architecture Brief already constrains the problem; what matters is code-generation speed, accuracy, and repair quality. |
+| **fast-execution** | Budget-aware execution, triage, lightweight packages | Auto | `gpt-6-luna`, `gemini-3.8-flash`, `mai-code-1.1-flash`, `claude-haiku-4-5` | Cheap, quick responses for small tasks, summaries, and bounded maintenance loops. |
+| **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, local/offline triage | — (local only) | `qwen2.5-coder:14b`, `qwen2.5:latest`, `devstral:24b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation. |
+
+### Local open model workflow
+
+`harness.config.json` `modelPolicy.localOpenModels` records Jev-style open/agentic model signals,
+hardware-profile fit, and deterministic local workflow lanes. This metadata is advisory and is not
+consumed by `prompt-router.mjs`. A local model can become an executable default only when the config
+records `artifact-available`, `profile-fit`, and `locally-measured` evidence for the named hardware
+profile.
+
+Use local open models for assistant triage, prototype/implementation drafts, bounded repair loops,
+and offline fallback. Do not use local-only output as final authority for architecture, review-depth,
+feedback adjudication, security review, destructive operations, secrets, permission changes, or
+production deployment decisions. Those paths must escalate to the high-reasoning staged workflow and
+retain deterministic proof: graph freshness when code impact is claimed, a Brief for non-trivial
+work, loop terminal states for loop repairs, focused validation for touched scopes, and docs/route
+checks when config or workflow surfaces change.
 
 **Cross-model review:** for an active route containing `implement`, its effective implementation
 model must differ from every active review-stage model (`review-breadth`, `review-depth`, and

@@ -85,6 +85,10 @@ const LEGACY_BENCHMARKS = new Map([
 ]);
 
 export const SYNTHETIC_MODEL_PROFILES = {
+  "gpt-6-astra": { role: "long-horizon", qualityBonus: 0.12, latencyMs: 5200, costPerOutputToken: 0.000050 },
+  "claude-opus-5-5": { role: "deep-reasoning", qualityBonus: 0.11, latencyMs: 3600, costPerOutputToken: 0.000020 },
+  "gpt-6-sol": { role: "deep-reasoning", qualityBonus: 0.10, latencyMs: 3900, costPerOutputToken: 0.000010 },
+  "gpt-6-luna": { role: "cheap-fast", qualityBonus: 0.02, latencyMs: 1300, costPerOutputToken: 0.0000005 },
   "gpt-5.6-sol": { role: "deep-reasoning", qualityBonus: 0.09, latencyMs: 4300, costPerOutputToken: 0.000030 },
   "claude-opus-5": { role: "deep-reasoning", qualityBonus: 0.07, latencyMs: 3500, costPerOutputToken: 0.000025 },
   "gpt-5.5": { role: "deep-reasoning", qualityBonus: 0.06, latencyMs: 2800, costPerOutputToken: 0.000030 },
@@ -96,7 +100,9 @@ export const SYNTHETIC_MODEL_PROFILES = {
   "gpt-5.6-luna": { role: "cheap-fast", qualityBonus: 0.01, latencyMs: 1600, costPerOutputToken: 0.0000012 },
   "gpt-5.4-mini": { role: "cheap-fast", qualityBonus: 0.0, latencyMs: 1500, costPerOutputToken: 0.0000045 },
   "gpt-5-mini": { role: "cheap-fast", qualityBonus: -0.01, latencyMs: 1400, costPerOutputToken: 0.000002 },
-  "mai-code-1-flash": { role: "cheap-fast", qualityBonus: 0.0, latencyMs: 1500, costPerOutputToken: 0.0000045 },
+  "mai-code-1.1-flash": { role: "cheap-fast", qualityBonus: 0.0, latencyMs: 1500, costPerOutputToken: 0.0000012 },
+  "mai-code-1-flash": { role: "cheap-fast", qualityBonus: -0.01, latencyMs: 1500, costPerOutputToken: 0.0000045 },
+  "gemini-3.8-flash": { role: "fast-execution", qualityBonus: 0.0, latencyMs: 1450, costPerOutputToken: 0.00000375 },
   "gemini-3.6-flash": { role: "fast-execution", qualityBonus: -0.02, latencyMs: 2000, costPerOutputToken: 0.0000075 },
   "gemini-3.5-flash": { role: "fast-execution", qualityBonus: -0.03, latencyMs: 1500, costPerOutputToken: 0.000009 },
   "claude-haiku-4-5": { role: "cheap-fast", qualityBonus: -0.04, latencyMs: 1200, costPerOutputToken: 0.000005 },

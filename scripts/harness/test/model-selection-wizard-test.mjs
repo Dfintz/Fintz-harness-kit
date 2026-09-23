@@ -36,11 +36,11 @@ function main() {
   assert.equal(frontendBalanced.qualityRank, 2);
 
   const infrastructureHigh = recommendModel({ domain: "infrastructure", level: "high" });
-  assert.equal(infrastructureHigh.selected.id, "gpt-5.5");
+  assert.equal(infrastructureHigh.selected.id, "gpt-6-sol");
   assert.equal(infrastructureHigh.level, "high");
 
   const devHigh = recommendModePackage({ mode: "dev", level: "high" });
-  assert.equal(devHigh.selected.id, "gpt-5.6-sol");
+  assert.equal(devHigh.selected.id, "gpt-6-sol");
   assert.equal(devHigh.localModel, "devstral:24b");
   assert.match(devHigh.context, /131K/);
 
