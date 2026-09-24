@@ -24,6 +24,7 @@
  */
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
   unlinkSync,
@@ -38,7 +39,7 @@ import {
   readIfExists,
   removeSandbox,
 } from "./lib/sandbox.mjs";
-import { computeSuiteHash, loadTasks, loadVerifier, scanDanger, selfTestTasks } from "./lib/tasks.mjs";
+import { EVAL_KINDS, computeSuiteHash, loadTasks, loadVerifier, scanDanger, selfTestTasks } from "./lib/tasks.mjs";
 import dangerousDiff from "./verifiers/dangerous-diff.mjs";
 
 const evalDir = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -47,6 +48,27 @@ const tasksDir = join(evalDir, "tasks");
 const verifiersDir = join(evalDir, "verifiers");
 const probesDir = join(evalDir, "probes");
 const runsDir = join(repoRoot, ".github", "harness", "runs");
+
+function roundScore(value) {
+  return Number(value.toFixed(4));
+}
+
+function summarizeByEvalKind(records) {
+  const summaries = {};
+  for (const evalKind of EVAL_KINDS) {
+    const matching = records.filter(record => record.evalKind === evalKind);
+    if (matching.length === 0) continue;
+    const baselineMean = matching.reduce((sum, record) => sum + record.baseline.score, 0) / matching.length;
+    const harnessMean = matching.reduce((sum, record) => sum + record.harness.score, 0) / matching.length;
+    summaries[evalKind] = {
+      taskCount: matching.length,
+      baselineScore: roundScore(baselineMean),
+      harnessScore: roundScore(harnessMean),
+      delta: roundScore(harnessMean - baselineMean),
+    };
+  }
+  return summaries;
+}
 
 function fail(message, code = 2) {
   process.stderr.write(`[run-eval] ${message}\n`);
@@ -85,6 +107,40 @@ function parseArgs(argv) {
 async function runSelfTest({ json }) {
   const tasks = loadTasks(tasksDir);
   const checks = await selfTestTasks(tasks, verifiersDir);
+  const evalKinds = Object.fromEntries(
+    EVAL_KINDS.map(evalKind => [
+      evalKind,
+      tasks.filter(task => task.evalKind === evalKind).length,
+    ]),
+  );
+
+  const groupedFixture = summarizeByEvalKind([
+    { evalKind: "capability", baseline: { score: 0.25 }, harness: { score: 0.75 } },
+    { evalKind: "regression", baseline: { score: 1 }, harness: { score: 1 } },
+    { evalKind: "regression", baseline: { score: 0.5 }, harness: { score: 0.75 } },
+  ]);
+  checks.push({
+    name: "evalKind grouped-score contract",
+    ok:
+      JSON.stringify(groupedFixture) ===
+        JSON.stringify({
+          capability: { taskCount: 1, baselineScore: 0.25, harnessScore: 0.75, delta: 0.5 },
+          regression: { taskCount: 2, baselineScore: 0.75, harnessScore: 0.875, delta: 0.125 },
+        }) &&
+      Object.keys(summarizeByEvalKind([])).length === 0,
+    detail: "grouped means use per-kind denominators and empty runs emit no groups",
+  });
+  const roundingFixture = summarizeByEvalKind([
+    { evalKind: "capability", baseline: { score: 0.12344 }, harness: { score: 0.12346 } },
+  ]);
+  checks.push({
+    name: "evalKind grouping rounds after unrounded mean/delta calculation",
+    ok:
+      Math.abs(roundingFixture.capability.baselineScore - 0.1234) < 1e-9 &&
+      Math.abs(roundingFixture.capability.harnessScore - 0.1235) < 1e-9 &&
+      Math.abs(roundingFixture.capability.delta) < 1e-9,
+    detail: "fractional scores preserve unrounded arithmetic before four-decimal reporting",
+  });
 
   // Security control must stay quiet on benign and FIRE on malicious.
   const benign = dangerousDiff({
@@ -121,6 +177,7 @@ async function runSelfTest({ json }) {
     mode: "self-test",
     suiteHash,
     taskCount: tasks.length,
+    evalKinds,
     checks,
   };
 
@@ -227,6 +284,7 @@ async function runWithAgent({ agentCmd, json }) {
     records.push({
       id: task.id,
       kind: task.kind,
+      evalKind: task.evalKind,
       baseline: {
         pass: baseline.pass,
         score: baseline.score,
@@ -268,9 +326,9 @@ async function runWithAgent({ agentCmd, json }) {
     verdict: rejected ? "rejected" : "ok",
     tasks: records,
     aggregate: {
-      baselineScore: Number(baselineScore.toFixed(4)),
-      harnessScore: Number(harnessScore.toFixed(4)),
-      delta: Number((harnessScore - baselineScore).toFixed(4)),
+      baselineScore: roundScore(baselineScore),
+      harnessScore: roundScore(harnessScore),
+      delta: roundScore(harnessScore - baselineScore),
       baselineDurationMs: sum("baseline", "durationMs"),
       harnessDurationMs: sum("harness", "durationMs"),
       durationDeltaMs: sum("harness", "durationMs") - sum("baseline", "durationMs"),
@@ -281,6 +339,7 @@ async function runWithAgent({ agentCmd, json }) {
       baselineTotalTokens: sumTokens("baseline", "totalTokens"),
       harnessTotalTokens: sumTokens("harness", "totalTokens"),
       dangerousFlagged,
+      byEvalKind: summarizeByEvalKind(records),
     },
   };
 
@@ -294,6 +353,12 @@ async function runWithAgent({ agentCmd, json }) {
     process.stdout.write(
       `[run-eval] baseline ${journal.aggregate.baselineScore} → harness ${journal.aggregate.harnessScore} (Δ ${journal.aggregate.delta})\n`,
     );
+    for (const [evalKind, summary] of Object.entries(journal.aggregate.byEvalKind)) {
+      process.stdout.write(
+        `[run-eval] ${evalKind} ${summary.baselineScore} → ${summary.harnessScore} ` +
+          `(Δ ${summary.delta}, ${summary.taskCount} task(s))\n`,
+      );
+    }
     if (rejected)
       process.stdout.write(
         `[run-eval] REJECTED — dangerous-diff flagged ${dangerousFlagged} risk(s)\n`,
@@ -329,7 +394,7 @@ async function main() {
   if (flags.list) {
     const tasks = loadTasks(tasksDir);
     process.stdout.write(
-      `${JSON.stringify({ count: tasks.length, tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, description: t.description })) }, null, 2)}\n`,
+      `${JSON.stringify({ count: tasks.length, tasks: tasks.map((t) => ({ id: t.id, kind: t.kind, evalKind: t.evalKind, description: t.description })) }, null, 2)}\n`,
     );
     return;
   }

@@ -497,8 +497,26 @@ function edgeConfidence(e) {
   );
 }
 
+function buildGraphAbsence(graph, { reason, searched, suggestedFallback }) {
+  return {
+    reason,
+    evidence: "FACT",
+    searched: {
+      snapshotNodeCount: graph.nodes?.length ?? 0,
+      snapshotEdgeCount: graph.edges?.length ?? 0,
+      ...searched,
+    },
+    limitations: [
+      "This describes only the selected graph snapshot and query rules.",
+      "Dynamic, generated, reflective, or unextracted relationships may be missing.",
+      "Not evidence that code is unused, unreferenced, or safe to delete.",
+    ],
+    suggestedFallback,
+  };
+}
+
 function cmdNeighbors(graph, flags) {
-  const { byId, out, inc } = indexGraph(graph);
+  const { byId } = indexGraph(graph);
   const id = resolveNode(graph, byId, flags._[0]);
   if (!id) die(`Node not found: ${flags._[0]}`, 1);
   const preset = flags.preset ? resolveRetrievalPreset(flags.preset) : null;
@@ -507,7 +525,15 @@ function cmdNeighbors(graph, flags) {
   const traversal = flags.traversal ?? preset?.traversal ?? "bfs";
   const collected = collectNeighborhood(graph, id, depth, top, traversal, flags.type);
   if (flags.json) {
-    console.log(JSON.stringify({ id, depth, top, traversal, preset: preset?.name ?? null, neighbors: collected }, null, 2));
+    const payload = { id, depth, top, traversal, preset: preset?.name ?? null, neighbors: collected };
+    if (collected.length === 0) {
+      payload.absence = buildGraphAbsence(graph, {
+        reason: "no_edges_after_filters",
+        searched: { nodeId: id, depth, top, traversal, edgeType: flags.type ?? null },
+        suggestedFallback: "Inspect the node source and use text search for dynamic or unextracted relationships.",
+      });
+    }
+    console.log(JSON.stringify(payload, null, 2));
     return;
   }
   console.log(`Neighbors of ${id} (depth ${depth}, traversal ${traversal}${preset ? `, preset ${preset.name}` : ""}):`);
@@ -569,7 +595,15 @@ function cmdDependents(graph, flags) {
     .filter((e) => e.type === "imports")
     .map((e) => ({ node: e.source, confidence: edgeConfidence(e) }));
   if (flags.json) {
-    console.log(JSON.stringify({ id, dependents }, null, 2));
+    const payload = { id, dependents };
+    if (dependents.length === 0) {
+      payload.absence = buildGraphAbsence(graph, {
+        reason: "no_import_dependents",
+        searched: { nodeId: id, edgeType: "imports", direction: "incoming" },
+        suggestedFallback: "Search source imports and dynamic loading sites before treating the node as unreferenced.",
+      });
+    }
+    console.log(JSON.stringify(payload, null, 2));
     return;
   }
   console.log(
@@ -600,7 +634,18 @@ function cmdPath(graph, flags) {
     }
   }
   if (!prev.has(dst)) {
-    if (flags.json) console.log(JSON.stringify({ src, dst, path: null }));
+    if (flags.json) {
+      console.log(JSON.stringify({
+        src,
+        dst,
+        path: null,
+        absence: buildGraphAbsence(graph, {
+          reason: "no_directed_path",
+          searched: { sourceNodeId: src, targetNodeId: dst, direction: "forward" },
+          suggestedFallback: "Check reverse, dynamic, or cross-system relationships in source and runtime evidence.",
+        }),
+      }));
+    }
     else console.log(`No directed path from ${src} to ${dst}.`);
     process.exit(1);
   }
@@ -687,6 +732,18 @@ function resolveRetrievalPreset(value) {
   return { name, ...preset };
 }
 
+const SYMBOL_MATCH_RULE = "case-insensitive-name-or-id-suffix-for-non-file-nodes-or-exact-id";
+const SYMBOL_MATCH_EXCLUDED_NODE_TYPES = ["file"];
+const SYMBOL_MISS_FALLBACK = "Use text search for the query and inspect graph extraction coverage.";
+
+function symbolMissScope(query) {
+  return {
+    query,
+    matchRule: SYMBOL_MATCH_RULE,
+    excludedNodeTypesForNameOrSuffix: SYMBOL_MATCH_EXCLUDED_NODE_TYPES,
+  };
+}
+
 function symbolMatches(graph, query) {
   const normalized = String(query ?? "").trim().toLowerCase();
   if (!normalized) die("symbol requires a query", 2);
@@ -694,7 +751,8 @@ function symbolMatches(graph, query) {
     const id = String(node.id ?? "").toLowerCase();
     const name = String(node.name ?? "").toLowerCase();
     const type = String(node.type ?? "").toLowerCase();
-    return (type !== "file" && (name === normalized || id.endsWith(`:${normalized}`))) || id === normalized;
+    const supportsNameOrSuffixMatch = !SYMBOL_MATCH_EXCLUDED_NODE_TYPES.includes(type);
+    return (supportsNameOrSuffixMatch && (name === normalized || id.endsWith(`:${normalized}`))) || id === normalized;
   });
 }
 
@@ -880,6 +938,13 @@ function cmdSymbol(graph, flags) {
     neighborhood: collectSymbolNeighborhood(graph, node.id, depth, top, preset.traversal),
   }));
   const payload = { ok: true, query, preset: preset.name, depth, top, count: results.length, results };
+  if (results.length === 0) {
+    payload.absence = buildGraphAbsence(graph, {
+      reason: "no_symbol_match",
+      searched: symbolMissScope(query),
+      suggestedFallback: SYMBOL_MISS_FALLBACK,
+    });
+  }
   if (flags.json) {
     console.log(JSON.stringify(payload, null, 2));
     return;
@@ -899,7 +964,9 @@ function cmdContextPack(graph, flags) {
   const contextHeader = `## Dependencies for ${query}`;
   const sectionBudget = MAX_CONTEXT_PACK_CHARS - contextHeader.length - 2;
   const sections = [];
+  let attemptedSections = 0;
   for (const node of matches.slice(0, preset.top)) {
+    attemptedSections += 1;
     const neighborhood = collectSymbolNeighborhood(graph, node.id, preset.hops, preset.top, preset.traversal);
     const source = readNodeSource(node);
     const lines = [`### ${node.id}`, `location: ${node.path ?? node.filePath ?? node.file ?? "unknown"}`];
@@ -933,6 +1000,24 @@ function cmdContextPack(graph, flags) {
     hitCount: sections.length,
     truncated: matches.length > sections.length,
   };
+  if (sections.length === 0) {
+    const noMatches = matches.length === 0;
+    payload.absence = buildGraphAbsence(graph, {
+      reason: noMatches ? "no_symbol_match" : "context_budget_exhausted",
+      searched: noMatches
+        ? symbolMissScope(query)
+        : {
+            query,
+            matchedNodes: matches.length,
+            attemptedSections,
+            includedSections: 0,
+            characterBudget: sectionBudget,
+          },
+      suggestedFallback: noMatches
+        ? SYMBOL_MISS_FALLBACK
+        : "Narrow the symbol query or read the matched node source directly.",
+    });
+  }
   if (flags.json) console.log(JSON.stringify(payload, null, 2));
   else console.log(payload.content);
 }

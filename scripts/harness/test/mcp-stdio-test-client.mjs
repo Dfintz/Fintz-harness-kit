@@ -23,9 +23,9 @@ export async function connectMcpStdioTestClient(options = {}) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ["scripts/harness/mcp-server.mjs"],
-    cwd: process.cwd(),
+    cwd: options.cwd || process.cwd(),
     stderr: "pipe",
-    env: { ...process.env },
+    env: { ...process.env, ...(options.env || {}) },
   });
 
   const stderrChunks = [];

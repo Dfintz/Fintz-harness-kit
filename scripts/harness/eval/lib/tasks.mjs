@@ -14,6 +14,19 @@ import { pathToFileURL } from "node:url";
 import { applyOverlay, copyInto, listFiles, makeSandbox, readIfExists, removeSandbox } from "./sandbox.mjs";
 import dangerousDiff from "../verifiers/dangerous-diff.mjs";
 
+export const EVAL_KINDS = Object.freeze(["capability", "regression"]);
+const EVAL_KIND_SET = new Set(EVAL_KINDS);
+
+function normalizeEvalKind(task, id) {
+  if (!Object.hasOwn(task, "evalKind")) return "regression";
+  if (typeof task.evalKind !== "string" || !EVAL_KIND_SET.has(task.evalKind)) {
+    throw new Error(
+      `task ${id}: evalKind must be one of ${EVAL_KINDS.join(" | ")}; received ${JSON.stringify(task.evalKind)}`,
+    );
+  }
+  return task.evalKind;
+}
+
 export function loadTasks(tasksDir) {
   if (!existsSync(tasksDir)) return [];
   const tasks = [];
@@ -23,7 +36,10 @@ export function loadTasks(tasksDir) {
     const taskFile = join(dir, "task.json");
     if (!existsSync(taskFile)) continue;
     const task = JSON.parse(readFileSync(taskFile, "utf8"));
-    tasks.push({ ...task, dir });
+    if (!task || typeof task !== "object" || Array.isArray(task)) {
+      throw new Error(`task ${id}: task.json root must be an object`);
+    }
+    tasks.push({ ...task, evalKind: normalizeEvalKind(task, task.id ?? id), dir });
   }
   return tasks.sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
