@@ -81,6 +81,15 @@ Windows because the platform Python Store alias is not a reliable non-interactiv
 Neighborhood edges expose `relationKind` as `definition`, `reference`, or `related`. Context packs
 enforce a 24,000-character aggregate cap.
 
+Empty JSON results from `symbol`, `context-pack`, `neighbors`, `dependents`, and existing-node
+`path` queries include an `absence` object. Branch on `absence.reason`: `no_symbol_match`,
+`context_budget_exhausted`, `no_edges_after_filters`, `no_import_dependents`, or
+`no_directed_path`. A no-path CLI result keeps exit 1; over MCP it keeps `isError: true`, with the
+absence under `structuredContent.data` and the text envelope's `result.data`. Interpret
+`evidence: FACT` only through the attached `searched` scope, check graph freshness separately, and
+follow `suggestedFallback`. Graph absence is not evidence that code is unused, unreferenced, or safe
+to delete.
+
 ### Phase 3: Change Execution
 
 1. Keep edits inside identified ownership boundaries.
