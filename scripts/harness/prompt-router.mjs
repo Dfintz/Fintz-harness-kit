@@ -20,6 +20,11 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createManifestAllowlist } from "./manifest-allowlist.mjs";
+import {
+  buildDecisionAdvisoryIdentity,
+  evaluateDecisionAdvisory,
+  isReusableDecisionReceipt,
+} from "./decision-advisory.mjs";
 
 import { buildGraphStatusCore } from "./graph-provider.mjs";
 import {
@@ -312,6 +317,26 @@ function normalizeText(text) {
     .toLowerCase();
 }
 
+const keywordPatterns = new Map();
+
+// Lookarounds rather than \b: many keywords contain hyphens, where \b behaves unintuitively.
+function keywordPattern(normalizedKeyword) {
+  let pattern = keywordPatterns.get(normalizedKeyword);
+  if (!pattern) {
+    const escaped = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    pattern = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`);
+    keywordPatterns.set(normalizedKeyword, pattern);
+  }
+  return pattern;
+}
+
+function matchesKeyword(text, keyword) {
+  if (typeof keyword !== "string") return false;
+  const normalized = normalizeText(keyword);
+  if (!normalized) return false;
+  return keywordPattern(normalized).test(text);
+}
+
 function ensureSafeSegment(value, label) {
   if (typeof value !== "string" || !/^[A-Za-z0-9._-]+$/.test(value)) {
     fail(`invalid ${label}: ${JSON.stringify(value)}`);
@@ -551,9 +576,7 @@ function scoreIntent(text, intentName, intentConfig) {
     ? intentConfig.keywords
     : [];
   for (const keyword of keywords) {
-    if (typeof keyword === "string" && keyword.trim()) {
-      if (text.includes(normalizeText(keyword))) score += 3;
-    }
+    if (matchesKeyword(text, keyword)) score += 3;
   }
 
   const nameTokens = String(intentName)
@@ -561,7 +584,7 @@ function scoreIntent(text, intentName, intentConfig) {
     .map((token) => normalizeText(token))
     .filter(Boolean);
   for (const token of nameTokens) {
-    if (token.length > 2 && text.includes(token)) score += 1;
+    if (token.length > 2 && matchesKeyword(text, token)) score += 1;
   }
   return score;
 }
@@ -831,6 +854,7 @@ function buildDefaultFeatureRunManifest(route, runId, runDir, taskKey) {
       reviewBreadth: null,
       reviewDepth: null,
       feedback: null,
+      decisionAdvisory: null,
     },
   };
 }
@@ -920,6 +944,47 @@ function writeFeatureRunArtifact(featureRunContext, slot, fileName, contents) {
     }
     manifest.artifacts[slot] = toRepoRelativePath(artifactPath);
   });
+}
+
+function readDecisionAdvisoryArtifact(featureRunContext) {
+  if (!featureRunContext) return null;
+  const filePath = safeJoinUnder(
+    featureRunContext.runDir,
+    "decision-advisory.json",
+    "decision advisory artifact",
+  );
+  try {
+    if (!existsSync(filePath) || !statSync(filePath).isFile()) return null;
+    const relativePath = toFeatureRunRelativePath(filePath, "decision advisory artifact");
+    return JSON.parse(
+      featureRunManifestAllowlist.readUtf8Relative(relativePath, "decision advisory artifact"),
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function maybeAttachDecisionAdvisory(route, config, featureRunContext) {
+  if (config?.modelPolicy?.localDecisionSidecar?.enabled !== true) return;
+  const identity = buildDecisionAdvisoryIdentity({ task: route.task, route, config });
+  const existing = readDecisionAdvisoryArtifact(featureRunContext);
+  let receipt = existing;
+  if (!isReusableDecisionReceipt(existing, identity)) {
+    receipt = await evaluateDecisionAdvisory({ task: route.task, route, config });
+  }
+  if (!receipt) return;
+  try {
+    writeFeatureRunArtifact(
+      featureRunContext,
+      "decisionAdvisory",
+      "decision-advisory.json",
+      `${JSON.stringify(receipt, null, 2)}\n`,
+    );
+    route.decisionAdvisory = receipt;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[prompt-router] warning: decision advisory receipt was not persisted: ${message}\n`);
+  }
 }
 
 function recordPromptPackInFeatureRun(featureRunContext, packDir) {
@@ -1105,10 +1170,7 @@ function matchesTaskClass(text, taskClass) {
   if (keywords.length === 0) {
     return false;
   }
-  return keywords.some((keyword) => {
-    const normalizedKeyword = normalizeText(keyword);
-    return normalizedKeyword && text.includes(normalizedKeyword);
-  });
+  return keywords.some((keyword) => matchesKeyword(text, keyword));
 }
 
 function selectTaskClass(text, routing) {
@@ -1148,9 +1210,9 @@ export function planTask(taskText, config, options = {}) {
   );
   const profileExplicit = Boolean(options.profile);
 
-  const trivialHit = trivialKeywords.find((keyword) => text.includes(keyword));
+  const trivialHit = trivialKeywords.find((keyword) => matchesKeyword(text, keyword));
   const nonTrivialHit = nonTrivialKeywords.find((keyword) =>
-    text.includes(keyword),
+    matchesKeyword(text, keyword),
   );
 
   const taskClassCandidate = !options.profile && !resolveTrivialEligibility(
@@ -1508,7 +1570,10 @@ export function renderCompactRoute(route) {
     `[prompt-router] models: ${Object.entries(route.models)
       .map(([stage, model]) => `${stage}=${model}`)
       .join(", ")}\n` +
-    `[prompt-router] cross-model review: ${route.crossModelReview}\n`
+    `[prompt-router] cross-model review: ${route.crossModelReview}\n` +
+    (route.decisionAdvisory
+      ? `[prompt-router] decision advisory: ${route.decisionAdvisory.status} (${route.decisionAdvisory.fallbackReason ?? route.decisionAdvisory.selected ?? "none"})\n`
+      : "")
   );
 }
 
@@ -1532,6 +1597,15 @@ export function renderHandoffPlan(route) {
   });
 
   lines.push(`[prompt-router] cross-model review: ${route.crossModelReview}`);
+  if (route.decisionAdvisory) {
+    const receiptPath = route.runId
+      ? [".github/harness/runs/feature-runs", route.runId, "decision-advisory.json"].join("/")
+      : "unavailable";
+    lines.push(
+      `[prompt-router] decision advisory: ${route.decisionAdvisory.status} (${route.decisionAdvisory.fallbackReason ?? route.decisionAdvisory.selected ?? "none"})`,
+      `[prompt-router] decision receipt: ${receiptPath}`,
+    );
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -2163,6 +2237,8 @@ async function main() {
   const featureRunContext = createFeatureRunContext(route);
 
   enforceNonTrivialGraphPreflight(route, command, flags);
+
+  await maybeAttachDecisionAdvisory(route, config, featureRunContext);
 
   maybeRecordHandoff(route, command, config);
 
