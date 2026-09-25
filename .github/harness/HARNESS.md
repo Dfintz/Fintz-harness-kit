@@ -79,6 +79,25 @@ retain deterministic proof: graph freshness when code impact is claimed, a Brief
 work, loop terminal states for loop repairs, focused validation for touched scopes, and docs/route
 checks when config or workflow surfaces change.
 
+### Local decision sidecar
+
+`modelPolicy.localDecisionSidecar` configures an optional SemIf-compatible loopback advisor. It is
+disabled by default and runs only in shadow mode. Start the daemon with
+`npm run harness:decision:sidecar`; when enabled, the prompt router asks it to compare the configured
+intent profiles after the deterministic route has been selected.
+
+The sidecar never changes `profile`, `mode`, stages, models, or rationale. It returns `matched`,
+`uncertain`, or `unavailable`; routing continues on every outcome. A privacy-minimized receipt is
+stored at `.github/harness/runs/feature-runs/<run-id>/decision-advisory.json`. Valid `matched` and
+`uncertain` receipts are reused only while task, policy, candidates, requested model, and requested
+revision still match. `unavailable` receipts are retained for diagnostics but retried on the next
+invocation. Receipts omit raw task text and are capped at 16 KiB.
+
+Validate protocol and policy changes with `npm run test:harness:decision-sidecar`. Before any future
+authority change, require a separate Architecture Brief, real SemIf/CUDA latency and memory proof,
+`jevcompat` conformance, held-out workload calibration, explicit human approval, and rollback proof.
+Promotion and demotion calculations in this slice are report-only.
+
 **Cross-model review:** for an active route containing `implement`, its effective implementation
 model must differ from every active review-stage model (`review-breadth`, `review-depth`, and
 `feedback`). The router enforces this after resolving role defaults, `stageModels`, and selected
