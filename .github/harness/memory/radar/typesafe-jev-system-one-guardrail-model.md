@@ -46,9 +46,32 @@ us; this is early-access, single-vendor, and not yet benchmarked independently.
   re-review specifically against `grade-trace.mjs` and any planned guardrail/jailbreak-detection gate
   as a narrow, swappable classification backend — do not adopt as a chat/reasoning replacement.
 
+## 2026-09-28 Source Reassessment
+
+Reviewed [disler/ten-levels-of-jev at 777adaf](https://github.com/disler/ten-levels-of-jev/tree/777adaf47d37ae0553220d35b2f15b3a3a063305),
+including its README and `apps/ten-levels/src/core/{client,types}.ts`. The lab documents
+OpenRouter and direct TypeSafe decision endpoints; the earlier waitlist description is historical,
+not proof of current access restrictions. No authenticated endpoint or live quality benchmark was
+run in this review. The MIT example code does not establish open licensing or availability of the
+underlying model weights.
+
+The transferable design is bounded typed judgments with thresholds and numeric aggregation owned
+by code. Valid options and normalized distributions do not prove factual correctness or calibrated
+confidence. The source's latency and cost comparisons are demo observations, not harness results;
+its offline mock verifies contracts rather than semantic decision quality. Its client also defaults
+to a moving model alias and a 30-second total retry budget, neither suitable as an unexamined local
+advisory default.
+
+Keep this provider **parked**. The [sidecar freeze](../briefs/jev-decision-sidecar-freeze-2026-09-25.md)
+and [workload calibration gate](decision-model-workload-calibration.md) remain controlling. The lab
+does not resolve durable model sourcing, held-out human labels, or authority-change approval. Do not
+add a hosted provider, enable routing, or import the external `hyper-jev` skill during radar triage.
+Any future skill import needs the separate SkillSpector gate; no skill is imported or adopted here.
+
 ## Decision Log
 
 | Date | Status | Decision | By |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 2026-09-23 | candidate | Initial capture from user-provided source; vendor claims unverified, early access only | copilot |
 | 2026-09-23 | parked | Triage pass: no current repo problem needs this today (grade-trace/council-review work fine as-is); single-vendor early-access product with unverified claims. Re-review only if `grade-trace.mjs` or a jailbreak-screening gate is scoped and independent benchmarks exist by then. | technique-triage |
+| 2026-09-28 | parked | Reviewed the revision-pinned ten-levels lab: useful application patterns and documented hosted transports, but no new harness calibration or durable open-model evidence. Preserve the freeze; evaluate individual patterns separately. | GitHub Copilot, manual technique-triage |

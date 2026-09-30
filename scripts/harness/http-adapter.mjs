@@ -49,6 +49,7 @@ import {
 } from './memory-access-control.mjs';
 import {
   buildServerDiscoverPayload,
+  buildMcpInitializeResult,
   buildMrtrInputRequiredResult,
   buildSubscriptionsListenResult,
   createPendingTask,
@@ -672,6 +673,19 @@ async function handleMcpRequest(req, res, config) {
   const route = extractMcpRouting(req, body);
   if (!route.method) {
     json(res, 400, toMcpResponseEnvelope(route.id, buildMcpInvalidParams('Missing MCP method. Provide Mcp-Method header or body.method')));
+    return;
+  }
+
+  if (route.method === 'initialize') {
+    const result = buildMcpInitializeResult({ protocolVersion: body?.params?.protocolVersion });
+    json(res, 200, toMcpResponseEnvelope(route.id, { result }));
+    return;
+  }
+
+  if (route.method.startsWith('notifications/')) {
+    // JSON-RPC notifications (e.g. notifications/initialized) carry no id and get no response body.
+    res.writeHead(202);
+    res.end();
     return;
   }
 

@@ -22,10 +22,13 @@
  */
 import {
   appendFileSync,
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   renameSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -38,6 +41,7 @@ const repoRoot = resolve(harnessDir, '..', '..');
 export const defaultStateDir = join(repoRoot, '.github', 'harness', 'runs');
 const STATE_FILE = 'stage-state.json';
 const APPROVALS_FILE = 'approvals.jsonl';
+const GOAL_PROGRESS_LOCK_FILE = 'stage-state.goal-progress.lock';
 const TMP_SUFFIX = '.tmp';
 
 export const APPROVAL_STATUSES = new Set(['pending', 'approved', 'rejected', 'not-required']);
@@ -152,6 +156,61 @@ export function clearStageState(options) {
     // Write an explicit null state rather than deleting so readers get a clean signal
     writeFileSync(tmp, JSON.stringify({ cleared: true, clearedAt: nowIso() }, null, 2) + '\n', 'utf8');
     renameSync(tmp, file);
+  }
+}
+
+/**
+ * Update the live goal only when it is unclaimed or belongs to the same goal id.
+ * Goal progress is observational metadata; callers remain responsible for loop completion.
+ *
+ * @param {object} goal
+ * @param {string} goal.goalId
+ * @param {object} [options]
+ * @param {string} [options.stateDir]
+ * @returns {object}
+ */
+export function writeGoalProgress(goal, options) {
+  const requestedGoalId = normalizeStringOrNull(goal?.goalId);
+  if (!requestedGoalId) {
+    throw new Error('writeGoalProgress: goalId is required');
+  }
+
+  const stateDir = resolveStateDir(options);
+  ensureDir(stateDir);
+  const lockPath = join(stateDir, GOAL_PROGRESS_LOCK_FILE);
+  let lockDescriptor;
+  try {
+    lockDescriptor = openSync(lockPath, 'wx');
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error('writeGoalProgress: another goal progress update is active');
+    }
+    throw error;
+  }
+
+  try {
+    const existing = readStageState({ stateDir }) || {};
+    const currentGoal = existing.goal || {};
+    if (
+      currentGoal.status === 'active' &&
+      currentGoal.goalId &&
+      currentGoal.goalId !== requestedGoalId
+    ) {
+      throw new Error(`writeGoalProgress: active goal "${currentGoal.goalId}" owns this state`);
+    }
+
+    writeStageState(
+      { goal: { ...currentGoal, ...goal, goalId: requestedGoalId } },
+      { stateDir },
+    );
+    return readStageState({ stateDir });
+  } finally {
+    try {
+      if (lockDescriptor !== undefined) closeSync(lockDescriptor);
+      unlinkSync(lockPath);
+    } catch {
+      // Best-effort lock cleanup; the next writer reports a visible lock conflict if it remains.
+    }
   }
 }
 
@@ -283,6 +342,11 @@ function normalizeStringOrNull(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeStringOrNull).filter(Boolean);
+}
+
 function normalizeGoalField(raw) {
   const g = raw && typeof raw === 'object' ? raw : {};
   const status = GOAL_STATUSES.has(g.status) ? g.status : 'idle';
@@ -297,6 +361,9 @@ function normalizeGoalField(raw) {
     continuationBudget: normalizePositiveIntegerOrNull(g.continuationBudget),
     continuationsUsed: normalizeNonNegativeInteger(g.continuationsUsed),
     lastReason: normalizeStringOrNull(g.lastReason),
+    journalRef: normalizeStringOrNull(g.journalRef),
+    evidenceRefs: normalizeStringList(g.evidenceRefs),
+    progressSyncError: normalizeStringOrNull(g.progressSyncError),
   };
 }
 

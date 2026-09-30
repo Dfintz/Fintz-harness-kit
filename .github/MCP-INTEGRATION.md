@@ -145,6 +145,38 @@ If the server is unreachable, disable it in `harness.config.json` (if implemente
 
 Increase `mcp.timeout` in `harness.config.json` or optimize the tool's response time.
 
+## Connecting Unsloth Desktop
+
+[Unsloth Desktop](https://unsloth.ai/docs/desktop) is an MCP *client* (its
+["Add custom MCP" flow](https://unsloth.ai/docs/basics/mcp) only accepts remote HTTP servers — a
+base URL plus OAuth or a custom header — it cannot spawn a local stdio `command`+`args` server the
+way Claude Desktop's config file can). Connect it to the harness's HTTP adapter, not the stdio
+server:
+
+1. Start the adapter with an API key set:
+   ```bash
+   HARNESS_API_KEY=<your-key> npm run harness:http
+   ```
+   This listens on `http://127.0.0.1:8100` by default (`HARNESS_HTTP_PORT` / `HARNESS_HTTP_HOST` to
+   change).
+2. In Unsloth Desktop, open the MCP panel and click **Add custom MCP**.
+3. Fill in:
+   - **Display name:** `Harness`
+   - **URL:** `http://127.0.0.1:8100/mcp`
+   - Leave OAuth off, click **Add header**, and set:
+     ```
+     Authorization: Bearer <your-key>
+     ```
+4. Click **Test connection**, then **Add server**. Unsloth Desktop performs the standard MCP
+   `initialize` handshake against `/mcp` before calling `tools/list`; both are handled by the
+   adapter (`scripts/harness/http-adapter.mjs`).
+5. Once added, **Refresh** the server to fetch harness tools, then toggle it on alongside the
+   **Use MCP Servers** master toggle.
+
+If **Test connection** fails, confirm the adapter process is running (`curl
+http://127.0.0.1:8100/healthz`) and that the `Authorization` header value matches `HARNESS_API_KEY`
+exactly.
+
 ## References
 
 - [Model Context Protocol spec](https://modelcontextprotocol.io/)

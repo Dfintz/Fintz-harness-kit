@@ -220,6 +220,13 @@ Capture the implementation contract:
 - sequencing / rollout constraints
 - anything implementation must explicitly avoid
 
+**Acceptance-first validation** — when the change is testable and no existing check already covers
+its exit criteria, draft the concrete acceptance checks now, during Architect, rather than leaving
+proof selection to Implement. Use `node scripts/harness/acceptance-gate.mjs scaffold --name <slug>`
+to capture the spec and record it in the Brief's Validation plan; see `deterministic-validation` for
+the scaffold/baseline/verify lifecycle. This should stay advisory — reach for it when it adds real
+signal, not as a mandatory step for every Brief.
+
 ### Step 5 - Record risks and assumptions
 
 Use an explicit register.
@@ -290,6 +297,8 @@ Produce an **Architecture Brief** with exactly these sections:
 
 ### Validation plan
 - Checks, tests, previews, dry-runs, or approvals required
+- For testable changes with no existing check, prefer stating the acceptance-gate spec here
+  (drafted during Architect) rather than deferring proof selection to Implement
 
 ### Do NOT
 - Explicit anti-patterns or forbidden shortcuts

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { evaluateMaintenanceApproval, readStageState, writeApproval, writeStageState } from '../stage-state.mjs';
+import { evaluateMaintenanceApproval, readStageState, writeApproval, writeGoalProgress, writeStageState } from '../stage-state.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const tempDir = mkdtempSync(join(tmpdir(), 'harness-stage-state-test-'));
@@ -93,6 +93,8 @@ try {
         continuationBudget: 4,
         continuationsUsed: 1.8,
         lastReason: 'Continuing after docs check',
+        journalRef: '.github/harness/runs/release.json',
+        evidenceRefs: ['.github/harness/runs/release.json#/iterations/0/checks/0', '', 7],
       },
       continuation: {
         status: 'eligible',
@@ -122,6 +124,8 @@ try {
   assert.equal(continuity.goal.status, 'active');
   assert.equal(continuity.goal.tokensUsed, 125);
   assert.equal(continuity.goal.continuationsUsed, 1);
+  assert.equal(continuity.goal.journalRef, '.github/harness/runs/release.json');
+  assert.deepEqual(continuity.goal.evidenceRefs, ['.github/harness/runs/release.json#/iterations/0/checks/0']);
   assert.equal(continuity.continuation.status, 'eligible');
   assert.equal(continuity.continuation.checkpointRef, '.github/harness/runs/release.json');
   assert.equal(continuity.refinement.status, 'proposed');
@@ -141,12 +145,34 @@ try {
   assert.equal(normalized.goal.status, 'idle');
   assert.equal(normalized.goal.tokenBudget, null);
   assert.equal(normalized.goal.tokensUsed, 0);
+  assert.equal(normalized.goal.journalRef, null);
+  assert.deepEqual(normalized.goal.evidenceRefs, []);
   assert.equal(normalized.continuation.status, 'idle');
   assert.equal(normalized.continuation.continuationBudget, null);
   assert.equal(normalized.continuation.elapsedSeconds, 0);
   assert.equal(normalized.refinement.status, 'none');
   assert.equal(normalized.refinement.scope, null);
   assert.equal(normalized.refinement.appliedEdits, 0);
+
+  const goalProgress = writeGoalProgress(
+    {
+      goalId: 'release-goal',
+      objective: 'Ship the release after checks pass',
+      status: 'complete',
+      journalRef: '.github/harness/runs/release.json',
+      evidenceRefs: ['.github/harness/runs/release.json#/iterations/0/checks/0'],
+    },
+    { stateDir },
+  );
+  assert.equal(goalProgress.goal.status, 'complete');
+  assert.equal(goalProgress.goal.goalId, 'release-goal');
+
+  writeStageState({ goal: { goalId: 'active-goal', status: 'active' } }, { stateDir });
+  assert.throws(
+    () => writeGoalProgress({ goalId: 'other-goal', status: 'active' }, { stateDir }),
+    /active goal "active-goal" owns this state/,
+  );
+  assert.equal(readStageState({ stateDir }).goal.goalId, 'active-goal');
 
   console.log('PASS stage-state maintenance approval test');
 } finally {

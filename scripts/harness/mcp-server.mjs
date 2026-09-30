@@ -54,6 +54,7 @@ const RESOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
 const RESOURCE_CACHE_SCOPE = "private";
 const SERVER_NAME = "sc-fleet-harness-mcp";
 const SERVER_VERSION = "1.0.0";
+const MCP_PROTOCOL_VERSION = "2026-07-28";
 const MRTR_PENDING_REQUESTS = new Map();
 const TASK_STORE = new Map();
 const TASK_MODE_ASYNC = "async";
@@ -808,6 +809,26 @@ export function buildServerDiscoverPayload(options = {}) {
       name: spec.name,
       description: spec.description,
     })),
+  };
+}
+
+// Standard MCP `initialize` handshake result. The stdio transport gets this for free from the
+// SDK's Server class; hand-rolled transports (e.g. http-adapter.mjs) call this directly.
+export function buildMcpInitializeResult(options = {}) {
+  const protocolVersion = typeof options.protocolVersion === "string" && options.protocolVersion.trim()
+    ? options.protocolVersion.trim()
+    : MCP_PROTOCOL_VERSION;
+
+  return {
+    protocolVersion,
+    capabilities: {
+      tools: {},
+      resources: {},
+    },
+    serverInfo: {
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+    },
   };
 }
 

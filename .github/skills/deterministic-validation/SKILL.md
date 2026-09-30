@@ -109,6 +109,8 @@ Examples of valid proof:
 - A build or lint command exits `0`
 - A required file or report exists at the expected path
 - When none of the above exists yet, an acceptance-gate spec created with `npm run harness:acceptance -- scaffold ...` and baseline-checked with `npm run harness:acceptance -- baseline --file <spec>`
+  — prefer drafting this spec during Architect (see `03-ARCHITECT.md` Step 4) so it functions as
+  the executable contract Implement follows, not a check invented after the fact
 
 ### Step 2 — Run the phase with scoped checks
 

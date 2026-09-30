@@ -128,6 +128,27 @@ Budget exhaustion is `budget-limited`, not success. Refinement entries are revie
 trusted writes. Any transition that would weaken guardrails, write promoted memory, or widen tools
 still goes through the normal Architecture Brief, approval, quarantine, and review stages.
 
+#### Evidence-Backed Convergence Goals
+
+A convergence loop can opt into an evidence-backed live goal with an all-or-nothing identifier and
+objective pair:
+
+```bash
+node scripts/harness/run-loop.mjs <loop-name> \
+   --goal-id <stable-id> \
+   --goal-objective "<verifiable objective>"
+```
+
+The runner writes the same `goalId` to the run journal and live state. After a journal write
+succeeds, live state contains `journalRef` plus JSON Pointers in `evidenceRefs` to that journal's
+recorded check results. Pointers are observational: only the loop checks and terminal state decide
+completion. A resumed goal run retains the original `journalRef`; conflicting goal flags fail
+before checks run.
+
+The single live state rejects a different active goal under a lock. Run concurrent goal-enabled
+loops with separate `HARNESS_STATE_DIR` values. Journal-write failures publish no live evidence;
+live-state failures are recorded in the journal and do not create a live completion claim.
+
 ### Wave Boundaries (workflow loops only)
 
 A workflow loop may define optional `waveBoundary` to inject synthetic checkpoints and context injection at iteration boundaries, preventing [context rot](https://en.wikipedia.org/wiki/Context_rot) in long-running loops:

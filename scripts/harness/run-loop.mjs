@@ -5,6 +5,7 @@
  * Usage:
  *   node scripts/harness/run-loop.mjs <loop-name> [--check-only] [--max-iterations N]
  *                                     [--agent "<cmd>"] [--resume <latest|journal-path>]
+ *                                     [--goal-id <id> --goal-objective "<objective>"]
  *   node scripts/harness/run-loop.mjs --list
  *
  * Protocol: .github/harness/LOOPS.md. Workflow-kind loops are agent-native and refused here.
@@ -21,7 +22,7 @@ import {
   unlinkSync,
     writeFileSync,
 } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeCliCommand } from "./command-validation.mjs";
 import { resolveTokens } from "./config.mjs";
@@ -40,10 +41,13 @@ import {
   releaseLease,
 } from "./lease-envelope.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
+import { writeGoalProgress } from "./stage-state.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const loopsDir = join(repoRoot, ".github", "harness", "loops");
-const runsDir = join(repoRoot, ".github", "harness", "runs");
+const defaultLoopsDir = join(repoRoot, ".github", "harness", "loops");
+const defaultRunsDir = join(repoRoot, ".github", "harness", "runs");
+let loopsDir = defaultLoopsDir;
+let runsDir = defaultRunsDir;
 const graphCliPath = join(repoRoot, "scripts", "harness", "graph.mjs");
 const HEAD_CHARS = 2000;
 const TAIL_CHARS = 6000;
@@ -76,6 +80,9 @@ function parseArgs(argv) {
     resume: undefined,
     symbol: undefined,
     preset: undefined,
+    goalId: undefined,
+    goalObjective: undefined,
+    testFixtureRoot: undefined,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -86,11 +93,35 @@ function parseArgs(argv) {
     else if (a === "--resume") args.resume = argv[++i];
     else if (a === "--symbol") args.symbol = argv[++i];
     else if (a === "--preset") args.preset = argv[++i];
+    else if (a === "--goal-id") args.goalId = argv[++i];
+    else if (a === "--goal-objective") args.goalObjective = argv[++i];
+    else if (a === "--test-fixture-root") args.testFixtureRoot = argv[++i];
     else if (a.startsWith("--")) fail(`Unknown option: ${a}`);
     else if (!args.name) args.name = a;
     else fail(`Unexpected argument: ${a}`);
   }
   return args;
+}
+
+function configureTestFixture(args) {
+  if (!args.testFixtureRoot) return;
+  if (process.env.NODE_ENV !== "test") {
+    fail("--test-fixture-root is available only when NODE_ENV=test");
+  }
+  const fixtureRoot = resolve(args.testFixtureRoot);
+  const fixturesParent = join(repoRoot, ".github", "harness", "runs");
+  const relativeFixture = relative(fixturesParent, fixtureRoot);
+  if (!relativeFixture || relativeFixture === ".." || relativeFixture.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+    fail("--test-fixture-root must be a temporary directory under .github/harness/runs");
+  }
+  loopsDir = join(fixtureRoot, "loops");
+  runsDir = join(fixtureRoot, "runs");
+}
+
+function validateGoalArgs(args) {
+  if (Boolean(args.goalId) !== Boolean(args.goalObjective)) {
+    fail("--goal-id and --goal-objective must be provided together");
+  }
 }
 
 function listLoops() {
@@ -372,6 +403,103 @@ function writeJournal(journalFile, record, { suppressWarning = false } = {}) {
   }
 }
 
+function workspaceJournalRef(journalFile) {
+  const journalRef = relative(repoRoot, journalFile).replaceAll("\\", "/");
+  if (!journalRef || journalRef === ".." || journalRef.startsWith("../")) {
+    fail(`goal journal must stay under the workspace: ${journalFile}`);
+  }
+  return journalRef;
+}
+
+function requestedGoal(args) {
+  return {
+    goalId: typeof args.goalId === "string" ? args.goalId.trim() : "",
+    objective: typeof args.goalObjective === "string" ? args.goalObjective.trim() : "",
+  };
+}
+
+function validateResumedGoal(existingGoal, requested) {
+  if (!existingGoal.goalId || !existingGoal.objective || !existingGoal.journalRef) {
+    fail("resumed goal journal is missing required goal metadata");
+  }
+  if (requested.goalId && requested.goalId !== existingGoal.goalId) {
+    fail("--goal-id does not match the resumed journal goal");
+  }
+  if (requested.objective && requested.objective !== existingGoal.objective) {
+    fail("--goal-objective does not match the resumed journal goal");
+  }
+}
+
+function establishGoalMetadata(args, record, journalFile) {
+  const requested = requestedGoal(args);
+  const existingGoal = record.goal && typeof record.goal === "object" ? record.goal : null;
+  if (!existingGoal && !requested.goalId) return null;
+  if (existingGoal) {
+    validateResumedGoal(existingGoal, requested);
+    return {
+      ...existingGoal,
+      evidenceRefs: Array.isArray(existingGoal.evidenceRefs) ? existingGoal.evidenceRefs : [],
+      progressSyncError: null,
+    };
+  }
+  return {
+    goalId: requested.goalId,
+    objective: requested.objective,
+    journalRef: workspaceJournalRef(journalFile),
+    evidenceRefs: [],
+    progressSyncError: null,
+  };
+}
+
+function goalEvidenceRefs(record) {
+  if (!record.goal) return [];
+  return record.iterations.flatMap((iteration, iterationIndex) =>
+    iteration.checks.flatMap((check, checkIndex) =>
+      check.pass
+        ? [`${record.goal.journalRef}#/iterations/${iterationIndex}/checks/${checkIndex}`]
+        : [],
+    ),
+  );
+}
+
+function goalStatusForTerminal(terminalState, reason) {
+  if (reason?.includes("write-failed")) return "error";
+  if (reason === "lease-expired" || reason === "owner-drift") return "error";
+  if (terminalState === "converged") return "complete";
+  if (terminalState === "exhausted") return "budget-limited";
+  if (terminalState === "blocked") return "paused";
+  return "error";
+}
+
+function syncGoalProgress(status, reason = null) {
+  if (!record.goal) return null;
+  if (!record.goal.goalId || !record.goal.objective || !record.goal.journalRef) {
+    const error = new Error("goal metadata is incomplete");
+    record.goal.progressSyncError = error.message;
+    writeJournal(journalFile, record, { suppressWarning: true });
+    return error;
+  }
+  try {
+    writeGoalProgress({
+      goalId: record.goal.goalId,
+      objective: record.goal.objective,
+      status,
+      journalRef: record.goal.journalRef,
+      evidenceRefs: record.goal.evidenceRefs,
+      progressSyncError: null,
+      lastReason: reason,
+    });
+    return null;
+  } catch (error) {
+    record.goal.progressSyncError = error instanceof Error ? error.message : String(error);
+    const retryError = writeJournal(journalFile, record, { suppressWarning: true });
+    if (retryError) {
+      console.warn(`[run-loop] could not record goal state sync failure: ${retryError.message}`);
+    }
+    return error;
+  }
+}
+
 function withJournalLock(journalFile, operation) {
   const lockPath = `${journalFile}.lock`;
   let fd = null;
@@ -502,6 +630,8 @@ function loadResumableRecord(loopName, resumeValue) {
 }
 
 const args = parseArgs(process.argv.slice(2));
+validateGoalArgs(args);
+configureTestFixture(args);
 if (args.list) {
   listLoops();
   process.exit(0);
@@ -578,6 +708,8 @@ const record =
     leaseHistory: [],
     iterations: [],
   };
+record.goal = establishGoalMetadata(args, record, journalFile);
+if (!record.goal) delete record.goal;
 if (!record.recovery || typeof record.recovery !== "object") {
   record.recovery = {
     tier: "resumable",
@@ -732,7 +864,15 @@ function finish(terminalState, exitCode, message, reason = null) {
       note: null,
     };
   }
-  writeJournal(journalFile, record);
+  if (record.goal) {
+    record.goal.evidenceRefs = goalEvidenceRefs(record);
+  }
+  const terminalWriteError = writeJournal(journalFile, record);
+  if (!terminalWriteError) {
+    syncGoalProgress(goalStatusForTerminal(resolvedState, resolvedReason), message);
+  } else if (record.goal) {
+    syncGoalProgress("error", `terminal journal write failed: ${terminalWriteError.message}`);
+  }
   const log = exitCode === 0 ? console.log : console.error;
   log(`[run-loop] ${message}`);
   log(`[run-loop] journal: ${journalFile}`);
@@ -772,7 +912,21 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
     failureSignature: signature,
   });
   record.recovery.lastCheckpointAt = new Date().toISOString();
-  writeJournal(journalFile, record);
+  if (record.goal) {
+    record.goal.evidenceRefs = goalEvidenceRefs(record);
+  }
+  const checkpointWriteError = writeJournal(journalFile, record);
+  if (checkpointWriteError && record.goal) {
+    finish(
+      "blocked",
+      1,
+      `blocked after iteration ${iteration}: journal write failed (${checkpointWriteError.message}).`,
+      "goal-journal-write-failed",
+    );
+  }
+  if (!checkpointWriteError) {
+    syncGoalProgress("active", `Validation recorded for iteration ${iteration}`);
+  }
 
   if (!heartbeatCheckpoint(`iteration-${iteration}-post-checks`)) {
     break;
