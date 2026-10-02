@@ -279,6 +279,39 @@ function getByPath(object, dottedKey) {
     );
 }
 
+function longestPrefixFamily(families, model) {
+  let familyId = null;
+  let bestLength = -1;
+  for (const [id, family] of Object.entries(families)) {
+    const prefixes = Array.isArray(family?.match) ? family.match : [];
+    for (const prefix of prefixes) {
+      if (typeof prefix === "string" && prefix.length > bestLength && model.startsWith(prefix)) {
+        familyId = id;
+        bestLength = prefix.length;
+      }
+    }
+  }
+  return familyId;
+}
+
+/**
+ * Resolve a model id to its skill-adapter family from skillModelMapping.modelFamilies.
+ * Longest matching prefix wins across all families; local `name:tag` ids use localFamily.
+ */
+export function resolveModelFamily(config, model) {
+  const none = { family: null, adapter: null };
+  const spec = config?.skillModelMapping?.modelFamilies;
+  const families = spec?.families;
+  if (!families || typeof families !== "object" || typeof model !== "string" || !model.trim()) {
+    return none;
+  }
+  const matched = model.includes(":") ? spec.localFamily : longestPrefixFamily(families, model);
+  const familyId = matched ?? spec.default ?? null;
+  const family = familyId ? families[familyId] : null;
+  if (!family) return none;
+  return { family: familyId, adapter: typeof family.adapter === "string" ? family.adapter : null };
+}
+
 /**
  * Replace `{{ dotted.path }}` tokens in a string using the loaded config.
  * Non-string input is returned unchanged. Unmatched tokens are preserved and warned about.

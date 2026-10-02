@@ -2,7 +2,7 @@
 /**
  * Phase 5c Real Measurement — validates model routing against real inference.
  *
- * Supports BOTH cloud models (Copilot-available) and local Ollama models.
+ * Supports BOTH cloud models (vendor APIs) and local Ollama models.
  * Phase 5c optimization claims +3.4% quality improvement. This script gates the GA marker
  * by running one representative task per skill tier through the best-fit model
  * and comparing against the Phase 5b synthetic baseline.
@@ -14,7 +14,7 @@
  *   ultra-reasoning    → gpt-5.6-sol         (deep reasoning: architect, feedback)
  *   high-reasoning     → claude-opus-5       (multi-hop reasoning: 13 high-reasoning skills)
  *   balanced-coding    → gpt-5.4             (code + reasoning balance: implement, prototype)
- *   fast-execution     → gemini-3.5-flash    (speed optimized: budget-aware-execution)
+ *   fast-execution     → gemini-3.8-flash    (speed optimized: budget-aware-execution)
  *   universal-fallback → claude-haiku-4-5    (guaranteed availability)
  *
  * LOCAL MODELS (Ollama):
@@ -45,12 +45,16 @@
  *   node scripts/harness/measure-phase5c-real.mjs --dry-run
  *   node scripts/harness/measure-phase5c-real.mjs --list-models
  *
- * Environment variables:
- *   ANTHROPIC_API_KEY=sk-...          (Claude models for cloud)
- *   AZURE_OPENAI_KEY=...              (GPT models via Azure)
- *   AZURE_OPENAI_ENDPOINT=https://... (Azure OpenAI endpoint)
- *   GOOGLE_API_KEY=...                (Gemini models for cloud)
+ * Environment variables (cloud calls reuse hosted-agent.mjs request rules and trusted hosts):
+ *   OPENAI_API_KEY=...                (GPT models via api.openai.com)
+ *   AZURE_OPENAI_KEY=...              (GPT models via Azure; takes precedence when the endpoint is set)
+ *   AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1 (OpenAI v1-compatible base)
+ *   ANTHROPIC_API_KEY=sk-...          (Claude models)
+ *   GEMINI_API_KEY or GOOGLE_API_KEY  (Gemini models)
  *   OLLAMA_API_URL=http://localhost:11434 (local Ollama)
+ *
+ * `--provider copilot` is retired: GitHub Models shut down on 2026-07-30 and Copilot has no
+ * scriptable inference API.
  *
  * Output:
  *   .github/harness/phase5/validation-results/phase5c-real-{provider}-TIMESTAMP.json
@@ -65,6 +69,8 @@ import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { buildRequest, extractText, inferProvider, resolveEndpoint, validateModelId } from './hosted-agent.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const resultsDir = join(repoRoot, '.github', 'harness', 'phase5', 'validation-results');
 const configPath = join(repoRoot, 'harness.config.json');
@@ -78,17 +84,8 @@ const CLOUD_TIER_MODEL_MAP = {
   'ultra-reasoning':    'gpt-5.6-sol',         // Deep reasoning
   'high-reasoning':     'claude-opus-5',       // Multi-hop reasoning
   'balanced-coding':    'gpt-5.4',             // Code + reasoning balance
-  'fast-execution':     'gemini-3.5-flash',    // Speed optimized
+  'fast-execution':     'gemini-3.8-flash',    // Speed optimized
   'universal-fallback': 'claude-haiku-4-5',    // Safety net
-};
-
-// GitHub Copilot model tier mapping (optimized for reasoning + code)
-const COPILOT_TIER_MODEL_MAP = {
-  'ultra-reasoning':    'gpt-5.6-sol',             // Deep reasoning over large codebases
-  'high-reasoning':     'claude-sonnet-5',         // Excellent reasoning + code understanding
-  'balanced-coding':    'gpt-5.6-terra',           // Balanced everyday agentic coding
-  'fast-execution':     'gpt-5.6-luna',            // Fast and cheap
-  'universal-fallback': 'gpt-5.4',                 // Fallback safety net
 };
 
 // Local Ollama tier mapping
@@ -100,32 +97,22 @@ const LOCAL_TIER_MODEL_MAP = {
   'universal-fallback': 'qwen2.5-coder:14b',
 };
 
-
-// Cloud provider configuration
-const CLOUD_PROVIDERS = {
-  anthropic: {
-    label: 'Anthropic Claude',
-    apiKey: process.env.ANTHROPIC_API_KEY || '',
-    models: ['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
-  },
-  'azure-openai': {
-    label: 'Azure OpenAI (GPT)',
-    apiKey: process.env.AZURE_OPENAI_KEY || '',
-    endpoint: process.env.AZURE_OPENAI_ENDPOINT || '',
-    models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex'],
-  },
-  google: {
-    label: 'Google Gemini',
-    apiKey: process.env.GOOGLE_API_KEY || '',
-    models: ['gemini-3.5-flash', 'gemini-3.6-flash'],
-  },
-  'github-copilot': {
-    label: 'GitHub Copilot',
-    apiKey: process.env.GITHUB_TOKEN || process.env.COPILOT_API_KEY || '',
-    endpoint: 'https://models.inference.ai.github.com/v1',
-    models: ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.4', 'claude-opus-5', 'claude-sonnet-5'],
-  },
+const CLOUD_KEY_ENV = {
+  openai: ['OPENAI_API_KEY'],
+  'azure-openai': ['AZURE_OPENAI_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY'],
+  gemini: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
 };
+
+function cloudProviderFor(model) {
+  const inferred = inferProvider(model);
+  return inferred === 'openai' && process.env.AZURE_OPENAI_ENDPOINT ? 'azure-openai' : inferred;
+}
+
+function cloudKey(provider) {
+  const name = CLOUD_KEY_ENV[provider].find((candidate) => process.env[candidate]);
+  return name ? process.env[name] : '';
+}
 
 // Representative task prompts for each tier
 const TIER_TASKS = [
@@ -210,106 +197,25 @@ function getTierTasksForProvider(provider) {
 
 // Cloud LLM invocation via fetch (minimal dependencies)
 async function callCloudLLM(model, prompt) {
-  let provider = null;
-  for (const [name, cfg] of Object.entries(CLOUD_PROVIDERS)) {
-    if (cfg.models.includes(model)) {
-      provider = cfg;
-      break;
-    }
+  const provider = cloudProviderFor(model);
+  validateModelId(provider, model);
+  const key = cloudKey(provider);
+  if (!key) {
+    throw new Error(`Missing API key for ${provider}: set ${CLOUD_KEY_ENV[provider].join(' or ')}`);
   }
-  if (!provider) {
-    throw new Error(`No provider configured for model: ${model}`);
+  const base = resolveEndpoint(provider, undefined, []);
+  const request = buildRequest({ provider, base, model, key, prompt, maxTokens: 512 });
+  const response = await fetch(request.url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...request.headers },
+    body: JSON.stringify(request.body),
+    redirect: 'error',
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`${provider} API error: ${response.status}`);
   }
-
-  if (!provider.apiKey) {
-    throw new Error(`Missing API key for model: ${model}`);
-  }
-
-  // Anthropic (Claude) API
-  if (provider === CLOUD_PROVIDERS.anthropic) {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': provider.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 512,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.content?.[0]?.text || '';
-  }
-
-  // Azure OpenAI (GPT) API
-  if (provider === CLOUD_PROVIDERS['azure-openai']) {
-    const endpoint = provider.endpoint.replace(/\/$/, '');
-    const response = await fetch(`${endpoint}/deployments/${model}/chat/completions?api-version=2024-08-01-preview`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': provider.apiKey,
-      },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 512,
-        temperature: 0,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Azure OpenAI API error: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
-  }
-
-  // Google Gemini API
-  if (provider === CLOUD_PROVIDERS.google) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${provider.apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: 512, temperature: 0 },
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  }
-
-  // GitHub Copilot API (OpenAI-compatible)
-  if (provider === CLOUD_PROVIDERS['github-copilot']) {
-    const endpoint = provider.endpoint.replace(/\/$/, '');
-    const response = await fetch(`${endpoint}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${provider.apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 512,
-        temperature: 0,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`GitHub Copilot API error: ${response.status} ${response.statusText}`);
-    }
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
-  }
-
-  throw new Error(`Unsupported provider for model: ${model}`);
+  return extractText(provider, await response.json());
 }
 
 // Local Ollama invocation
@@ -342,8 +248,9 @@ async function autoDetectProvider() {
   } catch {}
 
   if (process.env.ANTHROPIC_API_KEY) return 'cloud';
+  if (process.env.OPENAI_API_KEY) return 'cloud';
   if (process.env.AZURE_OPENAI_KEY && process.env.AZURE_OPENAI_ENDPOINT) return 'cloud';
-  if (process.env.GOOGLE_API_KEY) return 'cloud';
+  if (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) return 'cloud';
 
   throw new Error('No provider available. Ensure Ollama is running or cloud API keys are set.');
 }
@@ -361,13 +268,7 @@ async function listAvailableModels(provider) {
   }
 
   if (provider === 'cloud') {
-    const available = [];
-    for (const [name, cfg] of Object.entries(CLOUD_PROVIDERS)) {
-      if (cfg.apiKey) {
-        available.push(...cfg.models);
-      }
-    }
-    return new Set(available);
+    return new Set(Object.values(CLOUD_TIER_MODEL_MAP).filter((model) => cloudKey(cloudProviderFor(model))));
   }
 
   return new Set();
@@ -405,7 +306,7 @@ async function measureTask(task, model, provider, dryRun) {
     }
     try {
       let response;
-      if (provider === 'cloud' || provider === 'copilot') {
+      if (provider === 'cloud') {
         response = await callCloudLLM(model, task.prompt);
       } else {
         response = await callLocalLLM(model, task.prompt);
@@ -450,13 +351,16 @@ async function main() {
     }
   }
 
-  // Select tier mapping based on provider
-  let tierMap = LOCAL_TIER_MODEL_MAP;
-  if (provider === 'cloud') {
-    tierMap = CLOUD_TIER_MODEL_MAP;
-  } else if (provider === 'copilot') {
-    tierMap = COPILOT_TIER_MODEL_MAP;
+  if (provider === 'copilot') {
+    console.error('[phase5c-real-measure] --provider copilot is retired: GitHub Models shut down on 2026-07-30. Use --provider cloud with vendor API keys.');
+    process.exit(2);
   }
+  if (provider !== 'cloud' && provider !== 'local') {
+    console.error(`[phase5c-real-measure] unknown provider: ${provider} (use cloud or local)`);
+    process.exit(2);
+  }
+
+  const tierMap = provider === 'cloud' ? CLOUD_TIER_MODEL_MAP : LOCAL_TIER_MODEL_MAP;
   const tierTasks = getTierTasksForProvider(provider);
 
   if (listModels) {
@@ -480,7 +384,7 @@ async function main() {
   if (!dryRun) {
     const fallbackModel = tierMap['universal-fallback'];
     try {
-      if (provider === 'cloud' || provider === 'copilot') {
+      if (provider === 'cloud') {
         await callCloudLLM(fallbackModel, 'OK');
       } else {
         await callLocalLLM(fallbackModel, 'OK');
@@ -490,8 +394,6 @@ async function main() {
       console.error(`[phase5c-real-measure] Health check FAILED: ${err.message}`);
       if (provider === 'local') {
         console.error('  Is Ollama running? Try: ollama serve');
-      } else if (provider === 'copilot') {
-        console.error('  Set GITHUB_TOKEN or COPILOT_API_KEY environment variable.');
       } else {
         console.error('  Check API keys and credentials for cloud provider.');
       }

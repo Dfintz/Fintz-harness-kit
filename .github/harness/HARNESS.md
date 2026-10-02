@@ -63,6 +63,31 @@ enabled for the operator's plan, policy, and client. Current hosted evidence is 
 | **fast-execution** | Budget-aware execution, triage, lightweight packages | Auto | `gpt-6-luna`, `gemini-3.8-flash`, `mai-code-1.1-flash`, `claude-haiku-4-5` | Cheap, quick responses for small tasks, summaries, and bounded maintenance loops. |
 | **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, local/offline triage | — (local only) | `qwen2.5-coder:14b`, `qwen2.5:latest`, `devstral:24b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation. |
 
+### Model-family skill adapters
+
+Skills stay model-neutral; per-model tuning lives in thin adapters under
+`.github/harness/skill-adapters/` (Claude frontier/balanced/compact, OpenAI reasoning/coding/fast,
+Gemini, generic-open). `skillModelMapping.modelFamilies` maps model ids to a family by longest
+prefix. For every stage, `route --json` and `handoff` emit `skillRouting`: the skill path plus the
+adapter for the resolved stage model, each mapping fallback, and the universal fallback. Load the
+skill, then the adapter for the model actually executing. Adapters tune execution style only; stage
+contracts and approval gates always win. Do not name models inside SKILL.md bodies;
+`harness:docs:check` fails on it.
+
+Measure adapters before tuning them: `npm run harness:skill-adapters:eval -- --agent "<cmd>"
+--family <id> --model <id>=<model>` runs each scenario in
+`.github/harness/eval/skill-adapter-cases.json` with and without the family adapter and writes a
+diagnostic journal to `.github/harness/runs/skill-adapter-eval-*.json`. The agent command reads the
+prompt on stdin. Local families use `node scripts/harness/ollama-agent.mjs --model <name:tag>`
+(`ollama run` is rejected because it wraps piped output). Hosted families use
+`node scripts/harness/hosted-agent.mjs` (OpenAI, Azure OpenAI / AI Foundry, Anthropic, Gemini; the
+model comes from `--model <family>=<id>`) and need the provider key forwarded with `--pass-env`, for
+example `--pass-env OPENAI_API_KEY`. Keys are sent only to the provider's own hosts unless you pass
+`--allow-host`. GitHub Models was retired on 2026-07-30, and Copilot has no scriptable inference
+API, so Copilot-only models need a vendor key. Results are paired and labeled `adapter-better`,
+`baseline-better`, or `inconclusive` (always inconclusive for undeclared or family-mismatched
+models and failed calls), not significance-tested.
+
 ### Local open model workflow
 
 `harness.config.json` `modelPolicy.localOpenModels` records Jev-style open/agentic model signals,

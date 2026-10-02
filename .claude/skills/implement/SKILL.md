@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Run the Implement stage. Use when a task has an Architecture Brief and needs working deliverables plus proof and self-review artifacts.
+description: Runs the harness Implement stage, delivering the change an Architecture Brief describes with proof and self-review artifacts. Use when a Brief is settled, or for hotfixes and narrow bug fixes via the surgical variant.
 ---
 
 # /implement
@@ -40,15 +40,10 @@ change where blast radius matters more than cleanup.
 
 ---
 
-## Recommended Models (Phase 5)
+## Model routing
 
-**Tier:** Balanced-Coding  
-**Primary:** `gpt-5.4` (Superior Reasoning + Code Balance)  
-**Fallback 1:** `gpt-5.3-codex` (Pure Code Generation)  
-**Fallback 2:** `claude-sonnet-5` (Balanced Alternative)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Phase 5 shift: GPT-5.4 provides superior reasoning + code balance vs. Codex's pure specialization. Better for architectural implementation guidance with Phase 4 baseline (+130%). Fallback: Codex if pure code generation needed. Phase 5 validation: +16.6% improvement over Phase 4.
+After this skill, load the adapter for the model executing it: `skillRouting.implement` in
+`npm run harness:route -- --task "<task>" --json`. Adapters live in `.github/harness/skill-adapters/`.
 
 ---
 

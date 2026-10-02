@@ -200,6 +200,12 @@ frontend, UI/UX, database, infrastructure, and backend tasks while keeping execu
 owned by `skillModelMapping.mappings`. Treat those domain entries as model-selection guidance inside
 the current stage, not as checked-in specialist skills or automatic router dispatch.
 
+Skills stay model-neutral. Each model (and every model in its fallback chain) is routed to a thin
+per-family adapter in `.github/harness/skill-adapters/` — Claude frontier/balanced/compact, OpenAI
+reasoning/coding/fast, Gemini, and generic-open for MAI, Grok, Kimi, and local models. The mapping
+lives in `skillModelMapping.modelFamilies`; `harness:route -- --json` and `harness:handoff:feature`
+print the skill plus adapter chain for each stage.
+
 Use the model-selection wizard to pick from the supported Copilot model snapshot and compare three
 cost/quality levels:
 

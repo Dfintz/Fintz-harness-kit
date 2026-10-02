@@ -39,18 +39,6 @@ retrieval.
 
 ---
 
-## Recommended Models (Phase 5)
-
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Stable Comparative Reasoning)  
-**Fallback 1:** `gpt-5.5` (Evaluation Framework Design)  
-**Fallback 2:** `gemini-3.6-flash` (Fast Retrieval Analysis)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** A/B evaluation orchestration (vector-only vs. contextual+BM25+rerank) requires stable comparative reasoning. Opus 4.8 proven for evaluation workflows. Maintained +110.5% improvement. Phase 5 validation: all comparison methodologies validated.
-
----
-
 ## Variant Comparison
 
 ### Baseline: Vector-Only Retrieval

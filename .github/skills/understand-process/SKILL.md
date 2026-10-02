@@ -8,9 +8,8 @@ description: Graph-first impact analysis and dependency discovery for any non-tr
 > **Use when:** Planning, implementing, reviewing, or risk-assessing any non-trivial change in this
 > repository.
 
-> **Model tier:** high-reasoning — this skill is used at the Understand stage, which requires
-> sustained multi-hop reasoning across the component graph. Any capable frontier model works; the
-> harness default is Copilot Auto or `claude-opus-4-8` for the reviewer role.
+> **Model routing:** the router assigns the model and fallback chain for this stage; load the
+> adapter listed in `skillRouting.understand` from `npm run harness:route -- --task "<task>" --json`.
 
 ---
 
@@ -21,15 +20,6 @@ Use the local Understand graph as a first-class input to coding decisions so age
 - Locate the right ownership/layer faster
 - Detect dependency blast radius before and after edits
 - Explain risks with evidence from connected components
-
----
-
-## Recommended Models
-
-**Primary:** `claude-opus-4-8` (High-Reasoning)  
-**Fallback:** `gpt-5.3-codex` (Code-Dependency Analysis)
-
-**Why?** Graph-first dependency discovery requires multi-hop reasoning and blast-radius estimation. Deep understanding of cross-cutting dependencies is essential. Phase 4 benchmark: +199.5%.
 
 ---
 
@@ -105,18 +95,6 @@ to delete.
    - Changed components
    - Affected components
    - Affected layers
-
----
-
-## Recommended Models (Phase 5)
-
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Graph-Aware Analysis)  
-**Fallback 1:** `claude-opus-5` (Frontier Reasoning)  
-**Fallback 2:** `gpt-5.5` (Multi-hop Traversal)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Impact analysis and blast-radius mapping require multi-hop dependency reasoning over complex graphs. Claude Opus 4.8 has demonstrated strong performance on dependency chain analysis; Opus 5 provides frontier-level handling of novel graph structures. Phase 4 baseline quality: 0.778. Phase 5 assignment: retained at High-Reasoning tier.
    - Risk level and mitigation steps
 
 ### Phase 5: Knowledge Transfer (optional)

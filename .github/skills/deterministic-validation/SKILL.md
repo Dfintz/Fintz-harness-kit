@@ -19,18 +19,6 @@ but completion is earned by evidence from the environment.
 
 ---
 
-## Recommended Models (Phase 5)
-
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Rigorous Logical Consistency)  
-**Fallback 1:** `gpt-5.5` (Deterministic Reasoning)  
-**Fallback 2:** `claude-opus-5` (Extended Proof Depth)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Proof selection and objective exit criteria require rigorous logical consistency and deterministic reasoning. Opus 4.8 excels at validation patterns (CLAIM→EXTRACT→DOUBT→RECONCILE→STOP). Maintained +111.8% improvement. Phase 5 validation: all proofs passed consistency checks.
-
----
-
 ## Verification Gate Function
 
 Adapted from [obra/superpowers `verification-before-completion`](https://github.com/obra/superpowers/blob/main/skills/verification-before-completion/SKILL.md).

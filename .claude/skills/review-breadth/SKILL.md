@@ -1,6 +1,6 @@
 ---
 name: review-breadth
-description: Run the Review Breadth stage. Use when the changed scope needs a wide pass for correctness, standards, safety, completeness, and proof quality.
+description: Runs the harness Review Breadth stage, producing a severity-ordered findings ledger for correctness, standards, safety, completeness, and proof quality. Use after Implement on any non-trivial change.
 ---
 
 # /review-breadth
@@ -33,15 +33,10 @@ The canonical contract lives in [`05-REVIEW-BREADTH.md`](../../../.github/instru
 
 ---
 
-## Recommended Models (Phase 5)
+## Model routing
 
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Multi-Dimensional Analysis)  
-**Fallback 1:** `claude-opus-5` (Ultra-Complex Cross-Cutting)  
-**Fallback 2:** `gpt-5.5` (Fast Breadth Coverage)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Wide-pass review across correctness, standards, safety, completeness requires comprehensive multi-dimensional reasoning. Opus 4.8 proven strength. Alternative: Opus 5 for ultra-complex cross-cutting changes. Maintained +113.2% improvement. Phase 5 validation: consistent breadth coverage.
+After this skill, load the adapter for the model executing it: `skillRouting["review-breadth"]` in
+`npm run harness:route -- --task "<task>" --json`. Adapters live in `.github/harness/skill-adapters/`.
 
 ---
 

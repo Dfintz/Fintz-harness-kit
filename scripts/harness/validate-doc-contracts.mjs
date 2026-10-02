@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, relative } from "node:path";
 
-import { loadConfig, repoRoot } from "./config.mjs";
+import { loadConfig, repoRoot, resolveModelFamily } from "./config.mjs";
 import { loadRegistry } from "./registry.mjs";
 
 const packageJsonPath = join(repoRoot, "package.json");
@@ -266,6 +266,107 @@ function validateSkillEntries(registry, findings) {
       if (!frontmatter.description) {
         addError(findings, "missing-skill-description", entry.path, "Frontmatter must declare description.");
       }
+      validateSkillAuthoring(entry.path, text, frontmatter, findings);
+    }
+  }
+}
+
+// Limits from https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices
+const SKILL_NAME_MAX = 64;
+const SKILL_DESCRIPTION_MAX = 1024;
+const SKILL_BODY_MAX_LINES = 500;
+
+function validateSkillAuthoring(path, text, frontmatter, findings) {
+  const name = frontmatter.name ?? "";
+  if (name && (name.length > SKILL_NAME_MAX || !/^[a-z0-9-]+$/.test(name))) {
+    addError(findings, "invalid-skill-name", path, `name must be <= ${SKILL_NAME_MAX} chars of lowercase letters, digits, and hyphens.`);
+  }
+  if (/anthropic|claude/.test(name)) {
+    addError(findings, "reserved-skill-name", path, "name must not contain the reserved words anthropic or claude.");
+  }
+  const description = frontmatter.description ?? "";
+  const isBlockScalar = /^[>|][-+]?$/.test(description);
+  if (!isBlockScalar && description.length > SKILL_DESCRIPTION_MAX) {
+    addError(findings, "skill-description-too-long", path, `description must be <= ${SKILL_DESCRIPTION_MAX} chars.`);
+  }
+  if (/<\/?[a-z][\w-]*>/i.test(`${name} ${description}`)) {
+    addError(findings, "skill-frontmatter-xml", path, "name and description must not contain XML tags.");
+  }
+  const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+  if (body.split(/\r?\n/).length > SKILL_BODY_MAX_LINES) {
+    addWarning(findings, "skill-body-too-long", path, `SKILL.md body exceeds ${SKILL_BODY_MAX_LINES} lines; move detail into one-level-deep reference files.`);
+  }
+  if (/^## Recommended Models/m.test(body)) {
+    addError(findings, "skill-hardcoded-models", path, "Skill bodies must not name models; routing lives in harness.config.json skillModelMapping and model adapters.");
+  }
+}
+
+function collectExecutableModelReferences(config) {
+  const references = new Set();
+  const add = (model) => {
+    if (typeof model === "string" && model.trim()) references.add(model);
+  };
+  for (const role of Object.values(config?.models ?? {})) add(role?.model);
+  for (const set of Object.values(config?.routing?.stageModelSets ?? {})) {
+    for (const entry of Object.values(set ?? {})) add(typeof entry === "string" ? entry : entry?.model);
+  }
+  for (const mapping of Object.values(config?.skillModelMapping?.mappings ?? {})) {
+    add(mapping?.primary);
+    (Array.isArray(mapping?.fallback) ? mapping.fallback : []).forEach(add);
+  }
+  add(config?.skillModelMapping?.universal_fallback);
+  return references;
+}
+
+function collectWizardModelReferences(config) {
+  const wizard = config?.modelPolicy?.modelSelectionWizard ?? {};
+  const references = new Set();
+  for (const level of Object.values(wizard.levels ?? {})) (level?.defaultModels ?? []).forEach((m) => references.add(m));
+  for (const mode of Object.values(wizard.modePackages ?? {})) {
+    for (const pkg of Object.values(mode ?? {})) (pkg?.cloud ?? []).forEach((m) => references.add(m));
+  }
+  for (const domain of Object.values(wizard.domainLevelDefaults ?? {})) {
+    for (const list of Object.values(domain ?? {})) (list ?? []).forEach((m) => references.add(m));
+  }
+  return references;
+}
+
+function validateNoRetiredModels(config, findings, today = new Date().toISOString().slice(0, 10)) {
+  const supported = config?.modelPolicy?.modelSelectionWizard?.supportedCopilotModels ?? [];
+  const retired = new Map(
+    supported
+      .filter((model) => typeof model?.retirementDate === "string" && model.retirementDate <= today)
+      .map((model) => [model.id, model]),
+  );
+  const describe = (model) => `retired ${model.retirementDate}; use ${model.suggestedAlternative ?? "a supported model"}.`;
+  for (const id of collectExecutableModelReferences(config)) {
+    if (retired.has(id)) addError(findings, "retired-model-routed", id, describe(retired.get(id)));
+  }
+  const executable = collectExecutableModelReferences(config);
+  for (const id of collectWizardModelReferences(config)) {
+    if (retired.has(id) && !executable.has(id)) addWarning(findings, "retired-model-preset", id, describe(retired.get(id)));
+  }
+}
+
+function validateModelFamilyAdapters(config, findings) {
+  const spec = config?.skillModelMapping?.modelFamilies;
+  if (!spec) return;
+  const families = spec.families ?? {};
+  for (const [id, family] of Object.entries(families)) {
+    if (typeof family?.adapter !== "string" || !family.adapter) {
+      addError(findings, "missing-model-adapter", `modelFamilies.${id}`, "adapter path is required.");
+      continue;
+    }
+    validateRegistryPath(findings, "missing-model-adapter", `modelFamilies.${id}.adapter`, family.adapter);
+  }
+  for (const key of ["default", "localFamily"]) {
+    if (spec[key] && !families[spec[key]]) {
+      addError(findings, "unknown-model-family", `modelFamilies.${key}`, `${spec[key]} is not a declared family.`);
+    }
+  }
+  for (const model of collectExecutableModelReferences(config)) {
+    if (!resolveModelFamily(config, model).adapter) {
+      addError(findings, "unrouted-model-family", model, "executable model does not resolve to a declared family with an adapter.");
     }
   }
 }
@@ -864,6 +965,8 @@ function main() {
     validateLoopReferences(registry, findings);
     validateRegistryTooling(registry, findings);
     validateSkillEntries(registry, findings);
+    validateModelFamilyAdapters(loadConfig(), findings);
+    validateNoRetiredModels(loadConfig(), findings);
     validateCitedScripts(findings);
     validateNoExactDuplicateScriptBodies(findings);
     validateImmutabilityMarkers(findings, {

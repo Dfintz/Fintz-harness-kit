@@ -30,19 +30,6 @@ release process where feature correctness is proven before human eyes and merge 
 
 ---
 
-## Recommended Models (Phase 5)
-
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Structured Workflow Logic)  
-**Fallback 1:** `claude-opus-5` (Complex Multi-PR Workflows)  
-**Fallback 2:** `gpt-5.5` (Procedural Specialization)  
-**Fallback 3:** `gpt-5.3-codex` (Code Review Focus)  
-**Fallback 4:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Highest Phase 4 performer (+252.3%). PR creation requires comprehensive decision logic with consistent reasoning. Claude Opus 4.8 remains optimal for this unique keyword signature. Alternative: Claude Opus 5 for complex multi-PR workflows. Extended fallback chain ensures availability. Phase 5 validation: maintained at +252.3%.
-
----
-
 ## Preconditions
 
 - You are on a feature branch, not `master`/`main`.

@@ -1,6 +1,6 @@
 ---
 name: run-loop
-description: Execute a harness loop natively, following the loop JSON contract, bounds, rubric, and guardrails.
+description: Executes a harness loop natively, following the loop JSON contract, bounds, rubric, and guardrails. Use when asked to run a convergence, workflow, or experiment loop, or to iterate until checks pass.
 ---
 
 # /run-loop
@@ -30,15 +30,10 @@ The canonical contracts live in:
 
 ---
 
-## Recommended Models (Phase 5)
+## Model routing
 
-**Tier:** Balanced-Coding  
-**Primary:** `claude-sonnet-5` (Clear Loop Structures)  
-**Fallback 1:** `claude-opus-4-8` (Complex Orchestration)  
-**Fallback 2:** `gpt-5.3-codex` (Code-Loop Analysis)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Phase 5 shift: Loop orchestration requires code clarity + execution logic balance. Claude Sonnet 5 balances both for clear loop structures vs. Opus 4.8's general reasoning. Maintains Phase 4 improvement (+99.5%) with better code orientation. Phase 5 validation: +16.6% improvement.
+After this skill, load the adapter for the model executing it: the longest matching prefix in
+`harness.config.json` → `skillModelMapping.modelFamilies`. Adapters live in `.github/harness/skill-adapters/`.
 
 ---
 

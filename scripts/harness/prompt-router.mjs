@@ -27,9 +27,11 @@ import {
 } from "./decision-advisory.mjs";
 
 import { buildGraphStatusCore } from "./graph-provider.mjs";
+import { harnessRuntimeRoot, resolveModelFamily } from "./config.mjs";
 import {
   getStageContractMetadata,
   getStagePromptPackMetadata,
+  getStageRecord,
 } from "./registry.mjs";
 
 function resolveRepoRootArgument(argv) {
@@ -436,6 +438,59 @@ function getStageSkillName(stage) {
     default:
       return null;
   }
+}
+
+// Kept separate from getStageSkillName so skill-doc routing never changes stage model resolution.
+function getStageSkillDocName(stage) {
+  return getStageSkillName(stage) ?? (stage === "architect-challenge" ? "architect-challenge" : null);
+}
+
+function resolveStageSkillPath(stage, skillName) {
+  const record = getStageRecord(stage);
+  if (typeof record?.skill === "string") return record.skill;
+  if (typeof record?.claudeSkill === "string") return record.claudeSkill;
+  if (!skillName) return null;
+  const candidate = `.github/skills/${skillName}/SKILL.md`;
+  return [repoRoot, harnessRuntimeRoot].some((root) => existsSync(join(root, candidate)))
+    ? candidate
+    : null;
+}
+
+function chainRole(index, model, universal) {
+  if (index === 0) return "primary";
+  return model === universal ? "universal-fallback" : "fallback";
+}
+
+export function buildStageSkillRouting(config, stages, stageModels) {
+  const universal = config?.skillModelMapping?.universal_fallback ?? null;
+  return Object.fromEntries(
+    stages.map((stage) => {
+      const skill = getStageSkillDocName(stage);
+      const entry = skill ? getSkillModelEntry(config, skill) : null;
+      const fallbacks = Array.isArray(entry?.fallback) ? entry.fallback : [];
+      const chainModels = [
+        ...new Set(
+          [stageModels[stage], ...fallbacks, universal].filter(
+            (model) => typeof model === "string" && model.trim(),
+          ),
+        ),
+      ];
+      const chain = chainModels.map((model, index) => ({
+        role: chainRole(index, model, universal),
+        model,
+        ...resolveModelFamily(config, model),
+      }));
+      return [
+        stage,
+        {
+          skill,
+          skillPath: resolveStageSkillPath(stage, skill),
+          instruction: getStageRecord(stage)?.instruction ?? null,
+          chain,
+        },
+      ];
+    }),
+  );
 }
 
 function getStageModel(config, stage, roleModels, stageModelSet = null) {
@@ -1277,6 +1332,7 @@ export function planTask(taskText, config, options = {}) {
     rationale,
     stages,
     models: stageModels,
+    skillRouting: buildStageSkillRouting(config, stages, stageModels),
     crossModelReview: summarizeCrossModelReview(
       stages,
       stageModels,
@@ -1315,6 +1371,7 @@ function buildPromptPack(route, outDir) {
       stage,
       index: index + 1,
       model: route.models[stage] ?? "unspecified",
+      skillRouting: route.skillRouting?.[stage] ?? null,
       promptFile: `${String(index + 1).padStart(2, "0")}-${stage}.md`,
       outputFile: meta.outputFile,
       title: meta.title,
@@ -1424,8 +1481,22 @@ function renderStagePrompt(pack, stageFile) {
   const approvalBlock = approvalRequirements.length
     ? `\nApproval triggers:\n${approvalItems}\n`
     : "";
+  const skillBlock = renderSkillRoutingBlock(stageFile.skillRouting);
 
-  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
+  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n${skillBlock}\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
+}
+
+function renderSkillRoutingBlock(routing) {
+  if (!routing) return "";
+  const lines = [];
+  if (routing.skillPath) lines.push(`- Skill: ${routing.skillPath}`);
+  if (routing.instruction) lines.push(`- Stage instruction: ${routing.instruction}`);
+  for (const link of routing.chain ?? []) {
+    const familySuffix = link.family ? ` (${link.family})` : "";
+    lines.push(`- ${link.role} ${link.model}: adapter ${link.adapter ?? "none"}${familySuffix}`);
+  }
+  if (lines.length === 0) return "";
+  return `\nSkill routing (load the skill, then the adapter for the model actually executing this stage):\n${lines.join("\n")}\n`;
 }
 
 function renderNextStepsTemplate(pack) {
@@ -1483,6 +1554,7 @@ function writePromptPack(route, outDir) {
         promptFile: stage.promptFile,
         outputFile: stage.outputFile,
         model: stage.model,
+        skillRouting: stage.skillRouting,
         requiredArtifacts: stage.requiredArtifacts ?? [],
         outputArtifact: stage.outputArtifact,
         approval: stage.approval ?? { humanRequired: false, requiredFor: [] },
@@ -1594,6 +1666,16 @@ export function renderHandoffPlan(route) {
     lines.push(
       `[prompt-router] ${index + 1}. ${stage} -> ${route.models[stage]}`,
     );
+    const routing = route.skillRouting?.[stage];
+    if (routing?.skillPath) {
+      lines.push(`[prompt-router]    skill: ${routing.skillPath}`);
+    }
+    if (Array.isArray(routing?.chain) && routing.chain.length > 0) {
+      const chainText = routing.chain
+        .map((link) => `${link.model}=${link.family ?? "none"}`)
+        .join(" > ");
+      lines.push(`[prompt-router]    adapters: ${chainText}`);
+    }
   });
 
   lines.push(`[prompt-router] cross-model review: ${route.crossModelReview}`);

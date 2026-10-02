@@ -1,6 +1,6 @@
 ---
 name: review-depth
-description: Run the Review Depth stage. Use when the implemented change needs structural review for ownership, boundaries, reuse, and Brief conformance.
+description: Runs the harness Review Depth stage, re-running architectural gates and checking ownership, boundaries, reuse, and Architecture Brief conformance. Use after Review Breadth on an implemented change.
 ---
 
 # /review-depth
@@ -34,15 +34,10 @@ The canonical contract lives in [`06-REVIEW-DEPTH.md`](../../../.github/instruct
 
 ---
 
-## Recommended Models (Phase 5)
+## Model routing
 
-**Tier:** High-Reasoning  
-**Primary:** `claude-opus-4-8` (Structural Consistency)  
-**Fallback 1:** `claude-opus-5` (Ultra-Complex Structures)  
-**Fallback 2:** `gpt-5.5` (Pattern Recognition)  
-**Fallback 3:** `claude-haiku-4-5` (Universal Safety Net)
-
-**Why?** Structural review (ownership, boundaries, reuse, Brief conformance) requires consistent deep analysis. Opus 4.8 excels at structural consistency. Note: Phase 4 lowest performer (+83.2%) but still strong improvement. Opus 5 for ultra-complex structures. Phase 5 validation: all structural patterns validated.
+After this skill, load the adapter for the model executing it: `skillRouting["review-depth"]` in
+`npm run harness:route -- --task "<task>" --json`. Adapters live in `.github/harness/skill-adapters/`.
 
 ---
 
