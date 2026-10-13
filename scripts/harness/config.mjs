@@ -220,14 +220,19 @@ export function validateConfigObject(config, schema = readSchema()) {
 }
 
 /** Load harness.config.json once. Returns {} when absent or invalid. */
-export function loadConfig() {
-  if (cached) return cached;
+export function loadConfig({ fresh = false } = {}) {
+  if (cached && !fresh) return cached;
+  const snapshot = readConfigSnapshot();
+  if (!fresh) cached = snapshot;
+  return snapshot;
+}
+
+function readConfigSnapshot() {
   if (!existsSync(CONFIG_PATH)) {
     process.stderr.write(
       `[harness-config] config file not found at ${CONFIG_PATH}; using empty config {}\n`,
     );
-    cached = {};
-    return cached;
+    return {};
   }
 
   const strictMode = strictConfigModeEnabled();
@@ -243,11 +248,9 @@ export function loadConfig() {
         if (strictMode) {
           throw new Error("schema validation failed");
         }
-        cached = {};
-        return cached;
+        return {};
       }
-      cached = parsed;
-      return cached;
+      return parsed;
     } catch (validationError) {
       process.stderr.write(
         `[harness-config] validator error: ${validationError instanceof Error ? validationError.message : String(validationError)}\n`,
@@ -255,8 +258,7 @@ export function loadConfig() {
       if (strictMode) {
         throw validationError;
       }
-      cached = {};
-      return cached;
+      return {};
     }
   } catch (error) {
     process.stderr.write(
@@ -265,9 +267,8 @@ export function loadConfig() {
     if (strictMode) {
       throw error;
     }
-    cached = {};
   }
-  return cached;
+  return {};
 }
 
 function getByPath(object, dottedKey) {

@@ -119,6 +119,60 @@ MCP tools are subject to:
 3. **Output sanitization** — tool responses are defanged before feeding to agents (see `scripts/harness/untrusted.mjs`)
 4. **Audit logging** — all MCP tool invocations are recorded in `.github/harness/runs/` journals
 
+## Stdio Provenance And Retained Output
+
+Application-level stdio tool results, including continuations and errors, carry
+`_meta.provenance: {untrusted_content: true, source: "harness-tool-result"}`. This is a
+conservative data label, not sanitization, authentication, or authorization. JSON-RPC framing
+failures are not tool results. Keep the existing prompt-as-data boundary for retrieved content.
+
+The stdio server offers a default-off command-output pilot for one trusted client per server
+process. It does not apply to the HTTP adapter, async tasks, or standalone CLI output. To opt in,
+an operator can add this to the existing configuration without changing command permissions:
+
+```json
+{
+  "commandDispatch": {
+    "retainedOutput": { "enabled": true, "responseBytes": 32768 }
+  }
+}
+```
+
+`responseBytes` accepts integers from 8192 to 65536 and bounds the serialized dispatch result,
+including duplicated text/structured content and metadata. Missing/invalid settings disable the
+pilot. Capture is capped at 128 KiB per stream, wrapper transfer at 2 MiB, retained output pairs at
+256 KiB, aggregate retained data/metadata at 1 MiB, and entries at 16. Capacity exhaustion returns
+an explicit retention state without changing the command's exit status.
+
+Supply retention bookkeeping on tool calls and output resource reads through the SDK-supported
+`params._meta["harness/caller"]`, with the existing context shape:
+
+```json
+{ "harness/caller": { "caller": { "id": "local-operator", "role": "executor" } } }
+```
+
+These self-asserted values are not credentials or a multi-user authentication guarantee. They
+never grant execution authority; existing dispatch admission still applies. Missing bookkeeping
+does not capture full output. Retained replies include `retainedOutput.stdoutUri` and `stderrUri`.
+Read the exact URI with `resources/read`, carrying the same bookkeeping. Follow
+`_meta.coverage.nextUri` for subsequent 1024-code-unit, Unicode-safe pages. Reads recheck full
+identity and current command authorization without consuming execution quota or rerunning commands.
+Output references are not listed or broadcast, cannot name filesystem paths, and are unavailable
+to another server instance. Missing, expired and denied reads use the same unavailable error.
+
+Output is redacted for known token/private-key patterns and secret-like environment values before
+pilot delivery/storage. Arbitrary or encoded secrets are not guaranteed detectable; use the pilot
+only for approved commands and keep the trusted client/process isolated. Partial capture drops a
+trailing incomplete line; `capture.complete: false` is not proof of full command output.
+
+Retention is memory-only, lasts at most five minutes for reads, and expires lazily on access/admission.
+Server closure clears it; restart loses it. Disabling the pilot clears it on the next dispatch/read.
+Existing audit-file behavior is separate and not claimed to be memory-only; retained tails and
+references are not added to audits. Disk-backed durable artifacts remain outside this first slice.
+
+Validate with `node scripts/harness/test/mcp-result-delivery-test.mjs` and
+`npm run test:mcp:stdio:mrtr`.
+
 ## Troubleshooting
 
 ### Tool not found

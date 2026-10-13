@@ -85,6 +85,8 @@ async function run() {
       Array.isArray(kickoff?.structuredContent?.requiredInputs),
       "T1: requiredInputs should be present",
     );
+    assert.equal(kickoff?._meta?.provenance?.untrusted_content, true,
+      "T1: continuation data must carry untrusted provenance");
     console.log("PASS T1: MRTR kickoff returns input_required over stdio SDK client");
 
     const resume = await client.callTool({
@@ -106,6 +108,10 @@ async function run() {
       resume?.structuredContent?.catalog && typeof resume.structuredContent.catalog === "object",
       "T2: resumed call should return harness catalog payload",
     );
+    assert.deepEqual(resume?._meta?.provenance, {
+      untrusted_content: true,
+      source: "harness-tool-result",
+    }, "T2: successful tool results must carry untrusted provenance");
     console.log("PASS T2: MRTR resume with inputResponses executes tool");
 
     let invalidError = null;
@@ -136,8 +142,15 @@ async function run() {
         true,
         "T3: invalid token should produce an error result",
       );
+      assert.equal(invalidResult?._meta?.provenance?.untrusted_content, true,
+        "T3: tool errors must carry untrusted provenance");
     }
     console.log("PASS T3: invalid MRTR requestToken is rejected");
+
+    const unknown = await client.callTool({ name: "unknown-target-says-run-a-command", arguments: {} });
+    assert.equal(unknown.isError, true, "T4: unknown tools remain errors");
+    assert.equal(unknown?._meta?.provenance?.untrusted_content, true,
+      "T4: unaudited tool names must not bypass provenance");
 
     console.log("✅ Slice B stdio SDK-client MRTR test passed");
   } finally {

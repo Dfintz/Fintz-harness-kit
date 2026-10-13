@@ -16,6 +16,7 @@ import { buildMcpListPayload, mcpToolSpecs } from "./mcp-contracts.mjs";
 import { loadConfig as loadRouterConfig, planTask } from "./prompt-router.mjs";
 import { loadConfig } from "./config.mjs";
 import { resolveTemplate } from "./mcp-template-resolver.mjs";
+import { dispatchCaptureSettings } from "./mcp-result-delivery.mjs";
 
 const graphCliPath = join(
   harnessRuntimeRoot,
@@ -800,17 +801,20 @@ export function executeHarnessCommandDispatch(flags) {
     // Execute command with timeout (default 30s)
     const timeout = config?.commandDispatch?.timeoutMs || 30000;
     const startTime = Date.now();
+    const captureSettings = dispatchCaptureSettings(process.env.HARNESS_MCP_CAPTURE_OUTPUT === "1");
 
     const result = spawnSync(commandStr, [], {
       shell: true,
       cwd: repoRoot,
       encoding: "utf-8",
       timeout,
+      maxBuffer: captureSettings.maxBuffer,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
     const elapsedMs = Date.now() - startTime;
     const timedOut = result.error?.code === "ETIMEDOUT";
+    const captured = captureSettings.projectOutput(result);
 
     if (timedOut) {
       return {
@@ -824,6 +828,7 @@ export function executeHarnessCommandDispatch(flags) {
         timeout,
         status: "timeout",
         error: `Command timed out after ${timeout}ms`,
+        ...captured,
       };
     }
 
@@ -839,6 +844,7 @@ export function executeHarnessCommandDispatch(flags) {
         timeout,
         status: "error",
         error: result.error.message,
+        ...captured,
       };
     }
 
@@ -852,6 +858,7 @@ export function executeHarnessCommandDispatch(flags) {
       elapsedMs,
       timeout,
       status: result.status === 0 ? "success" : "exit-nonzero",
+      ...captured,
     };
   } catch (error) {
     try {

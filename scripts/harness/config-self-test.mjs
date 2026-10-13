@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-function runLoaderWithConfig(configPath) {
-  const script = [
+function runLoaderWithConfig(configPath, scriptOverride) {
+  const script = scriptOverride ?? [
     "import { loadConfig } from './scripts/harness/config.mjs';",
     "const config = loadConfig();",
     "process.stdout.write(JSON.stringify(config));",
@@ -68,6 +68,20 @@ function main() {
       "valid config should load as object",
       failures,
     );
+
+    const snapshotResult = runLoaderWithConfig(validPath, [
+      "import assert from 'node:assert/strict';",
+      "import { writeFileSync } from 'node:fs';",
+      "import { loadConfig } from './scripts/harness/config.mjs';",
+      "const original = loadConfig();",
+      "writeFileSync(process.env.HARNESS_CONFIG_PATH, JSON.stringify({project: {name: 'updated'}, commands: {smoke: 'node -v'}}));",
+      "assert.equal(loadConfig({fresh:true}).project.name, 'updated');",
+      "assert.equal(loadConfig(), original);",
+      "writeFileSync(process.env.HARNESS_CONFIG_PATH, JSON.stringify({project: 'invalid'}));",
+      "assert.deepEqual(loadConfig({fresh:true}), {});",
+      "assert.equal(loadConfig(), original);",
+    ].join(" "));
+    assert(snapshotResult.status === 0, "fresh snapshots must not replace the default cache: " + snapshotResult.stderr, failures);
 
     const invalidResult = runLoaderWithConfig(invalidSchemaPath);
     assert(invalidResult.status === 0, "schema-invalid config should not crash", failures);
