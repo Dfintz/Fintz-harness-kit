@@ -6,7 +6,8 @@ applyTo: '**'
 
 # Review Depth Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — depth
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; pin a fixed model — the router rejects Copilot
+> Auto and ensemble targets for review stages) — depth
 > review requires reasoning about multi-hop ownership boundaries and multi-tenant isolation that
 > weaker models consistently miss.
 > **Purpose:** Challenge the structure of the implemented change: ownership, boundaries, reuse,

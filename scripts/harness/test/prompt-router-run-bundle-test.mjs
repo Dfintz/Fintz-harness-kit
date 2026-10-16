@@ -79,6 +79,15 @@ try {
     "first route",
   );
   assert.ok(routeA1.runId, "first route should include runId");
+  assert.equal(
+    routeA1.modelAssurance?.runtimeIdentity,
+    "not-observable-by-router",
+    "route JSON should distinguish configured targets from runtime identity",
+  );
+  assert.equal(
+    routeA1.modelAssurance?.routingDeterminism,
+    "deterministic-configured-targets",
+  );
 
   const routeA2 = parseJsonStdout(
     run(["route", "--task", taskAWhitespaceVariant, "--json", "--allow-degraded-preflight"]),
@@ -89,12 +98,36 @@ try {
   const handoff = run(["handoff", "--task", taskA, "--allow-degraded-preflight"]);
   assert.equal(handoff.status, 0, `handoff should succeed: ${handoff.stderr || handoff.stdout}`);
   assert.match(handoff.stdout, /run-id:\s+/i, "handoff output should include run-id line");
+  assert.match(handoff.stdout, /model assurance:.*runtime identity not-observable-by-router/i);
 
   const promptPack = parseJsonStdout(
     run(["prompt-pack", "--task", taskA, "--json", "--allow-degraded-preflight"]),
     "prompt-pack",
   );
   assert.equal(promptPack.runId, routeA1.runId, "prompt-pack should carry the same runId");
+  assert.equal(
+    promptPack.modelAssurance?.runtimeIdentity,
+    "not-observable-by-router",
+    "prompt-pack JSON should include model assurance",
+  );
+  const promptPackManifest = JSON.parse(
+    readFileSync(join(promptPack.output, "manifest.json"), "utf8"),
+  );
+  assert.equal(
+    promptPackManifest.modelAssurance?.runtimeIdentity,
+    "not-observable-by-router",
+    "prompt-pack manifest should include model assurance",
+  );
+  const implementPrompt = promptPackManifest.files.stagePrompts.find(
+    (stage) => stage.stage === "implement",
+  );
+  assert.ok(implementPrompt, "prompt-pack manifest should include the implement prompt");
+  const implementPromptText = readFileSync(
+    join(promptPack.output, implementPrompt.promptFile),
+    "utf8",
+  );
+  assert.match(implementPromptText, /configured model target; verify runtime identity independently/);
+  assert.match(implementPromptText, /not proof of the model that actually executed/);
 
   const routeB = parseJsonStdout(
     run(["route", "--task", taskB, "--json", "--allow-degraded-preflight"]),
@@ -125,6 +158,22 @@ try {
   assert.match(manifestA.artifacts?.route ?? "", /route\.json$/i, "manifest should record route artifact");
   assert.match(manifestA.artifacts?.handoff ?? "", /handoff\.txt$/i, "manifest should record handoff artifact");
   assert.ok(manifestA.artifacts?.promptPackDir, "manifest should record prompt pack directory");
+  assert.equal(
+    manifestA.modelAssurance?.runtimeIdentity,
+    "not-observable-by-router",
+    "feature-run manifest should include model assurance",
+  );
+
+  const handoffRows = readFileSync(join(runsDir, "handoffs.jsonl"), "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const handoffRow = handoffRows.findLast((row) => row.task === taskA);
+  assert.equal(
+    handoffRow?.modelAssurance?.runtimeIdentity,
+    "not-observable-by-router",
+    "handoff telemetry should include model assurance",
+  );
 
   const runDirB = join(featureRunsDir, routeB.runId);
   const manifestPathB = join(runDirB, "manifest.json");

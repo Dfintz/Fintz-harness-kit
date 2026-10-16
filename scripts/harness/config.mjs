@@ -280,10 +280,11 @@ function getByPath(object, dottedKey) {
     );
 }
 
-function longestPrefixFamily(families, model) {
+function longestPrefixFamily(families, model, accept = () => true) {
   let familyId = null;
   let bestLength = -1;
   for (const [id, family] of Object.entries(families)) {
+    if (!accept(family)) continue;
     const prefixes = Array.isArray(family?.match) ? family.match : [];
     for (const prefix of prefixes) {
       if (typeof prefix === "string" && prefix.length > bestLength && model.startsWith(prefix)) {
@@ -295,9 +296,15 @@ function longestPrefixFamily(families, model) {
   return familyId;
 }
 
+function isNonFixedFamily(family) {
+  return typeof family?.executionMode === "string" && family.executionMode !== "fixed";
+}
+
 /**
  * Resolve a model id to its skill-adapter family from skillModelMapping.modelFamilies.
  * Longest matching prefix wins across all families; local `name:tag` ids use localFamily.
+ * Ensemble and dynamic-selection families also match `name:tag` ids, so a tag suffix cannot
+ * hide a non-fixed execution target from the review-stage guardrails.
  */
 export function resolveModelFamily(config, model) {
   const none = { family: null, adapter: null };
@@ -306,11 +313,18 @@ export function resolveModelFamily(config, model) {
   if (!families || typeof families !== "object" || typeof model !== "string" || !model.trim()) {
     return none;
   }
-  const matched = model.includes(":") ? spec.localFamily : longestPrefixFamily(families, model);
+  const matched = model.includes(":")
+    ? (longestPrefixFamily(families, model, isNonFixedFamily) ?? spec.localFamily)
+    : longestPrefixFamily(families, model);
   const familyId = matched ?? spec.default ?? null;
   const family = familyId ? families[familyId] : null;
   if (!family) return none;
-  return { family: familyId, adapter: typeof family.adapter === "string" ? family.adapter : null };
+  return {
+    family: familyId,
+    adapter: typeof family.adapter === "string" ? family.adapter : null,
+    ...(typeof family.executionMode === "string" ? { executionMode: family.executionMode } : {}),
+    ...(Array.isArray(family.members) ? { members: [...family.members] } : {}),
+  };
 }
 
 /**

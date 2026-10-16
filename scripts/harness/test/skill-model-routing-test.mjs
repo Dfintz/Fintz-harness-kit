@@ -27,12 +27,43 @@ test("longest prefix wins regardless of family order", () => {
     "claude-haiku-4-5": "claude-compact",
     "gemini-3.8-flash": "gemini",
     "mai-code-1.1-flash": "generic-open",
+    hydrafusion: "ensemble",
+    "hydrafusion:latest": "ensemble",
+    "ensemble-v2": "ensemble",
+    auto: "dynamic-selection",
+    "copilot-auto": "dynamic-selection",
     "qwen2.5-coder:14b": "generic-open",
     "unknown-model": "generic-open",
   };
   for (const [model, family] of Object.entries(expected)) {
     assert.equal(resolveModelFamily(config, model).family, family, model);
   }
+  assert.equal(resolveModelFamily(config, "hydrafusion").executionMode, "ensemble");
+  assert.equal(resolveModelFamily(config, "hydrafusion:latest").executionMode, "ensemble");
+  assert.equal(resolveModelFamily(config, "auto").executionMode, "dynamic");
+});
+
+test("local name:tag ids keep localFamily unless a non-fixed family matches", () => {
+  const spec = {
+    default: "fallback",
+    localFamily: "local",
+    families: {
+      cloud: { match: ["gpt-"], adapter: "cloud.md" },
+      local: { match: [], adapter: "local.md" },
+      fallback: { match: [], adapter: "fallback.md" },
+      ensemble: { match: ["hydrafusion"], adapter: "local.md", executionMode: "ensemble" },
+      pinned: { match: ["pinned-"], adapter: "cloud.md", executionMode: "fixed" },
+    },
+  };
+  const synthetic = { skillModelMapping: { modelFamilies: spec } };
+  assert.equal(resolveModelFamily(synthetic, "gpt-oss:20b").family, "local");
+  assert.equal(resolveModelFamily(synthetic, "pinned-model:1").family, "local");
+  assert.equal(resolveModelFamily(synthetic, "gpt-5.4").family, "cloud");
+  assert.equal(resolveModelFamily(synthetic, "hydrafusion:latest").family, "ensemble");
+
+  const withoutLocal = { skillModelMapping: { modelFamilies: { ...spec, localFamily: undefined } } };
+  assert.equal(resolveModelFamily(withoutLocal, "unknown:tag").family, "fallback");
+  assert.equal(resolveModelFamily(withoutLocal, "hydrafusion:latest").family, "ensemble");
 });
 
 test("family resolution degrades to null without modelFamilies", () => {

@@ -8,7 +8,8 @@ immutability: mutable
 
 # Review Breadth Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — breadth
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; pin a fixed model — the router rejects Copilot
+> Auto and ensemble targets for review stages) — breadth
 > review requires sustained coverage across many categories without losing track of prior findings.
 > **Purpose:** Find concrete, actionable issues across the changed scope: correctness, completeness,
 > standards compliance, safety, and proof quality.

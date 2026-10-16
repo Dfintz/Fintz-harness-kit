@@ -581,6 +581,7 @@ function buildHandoffTelemetry(route, command, config) {
     },
     stages: route.stages,
     models: route.models,
+    modelAssurance: route.modelAssurance,
     stageModelDetails: Object.fromEntries(
       route.stages.map((stage) => [
         stage,
@@ -724,11 +725,26 @@ function buildModelRouting(config, modelSetName = null) {
   };
 }
 
-function validateResolvedModelSeparation(stages, models) {
+const REVIEW_STAGES = ["review-breadth", "review-depth", "feedback"];
+
+function modelExecutionMode(config, model) {
+  return resolveModelFamily(config, model).executionMode ?? "fixed";
+}
+
+function validateResolvedModelSeparation(stages, models, config) {
+  const ensembleReviewStages = REVIEW_STAGES.filter(
+    (stage) => stages.includes(stage) && modelExecutionMode(config, models[stage]) !== "fixed",
+  );
+  if (ensembleReviewStages.length > 0) {
+    fail(
+      `active review stages must use a fixed model identity; ${ensembleReviewStages.map((stage) => `${stage}=${models[stage]}`).join(", ")} is configured for ${ensembleReviewStages.map((stage) => modelExecutionMode(config, models[stage])).join(", ")} execution.`,
+    );
+  }
+
   if (!stages.includes("implement")) return;
 
   const implementModel = models.implement;
-  const collidingStages = ["review-breadth", "review-depth", "feedback"].filter(
+  const collidingStages = REVIEW_STAGES.filter(
     (stage) => stages.includes(stage) && models[stage] === implementModel,
   );
   if (collidingStages.length > 0) {
@@ -736,22 +752,85 @@ function validateResolvedModelSeparation(stages, models) {
       `effective implementation model ${implementModel} must differ from active review stages: ${collidingStages.join(", ")}. Update harness.config.json.`,
     );
   }
+
+  if (modelExecutionMode(config, implementModel) !== "ensemble") return;
+  const implementFamily = resolveModelFamily(config, implementModel);
+  const declaredMembers = Array.isArray(implementFamily.members)
+    ? implementFamily.members.filter((member) => typeof member === "string")
+    : [];
+  const memberCollisions = REVIEW_STAGES.filter(
+    (stage) =>
+      stages.includes(stage) &&
+      declaredMembers.some((member) => member.toLowerCase() === models[stage]?.toLowerCase()),
+  );
+  if (memberCollisions.length > 0) {
+    fail(
+      `ensemble implementation model ${implementModel} declares an active reviewer as an ensemble member: ${memberCollisions.map((stage) => `${stage}=${models[stage]}`).join(", ")}. Choose a reviewer outside the declared ensemble.`,
+    );
+  }
 }
 
-function summarizeCrossModelReview(stages, models) {
-  const implementModel = models.implement ?? models["build-fix"] ?? models["test-fix"] ?? "unspecified";
-  const reviewStages = stages.filter((stage) =>
-    stage === "review-breadth" || stage === "review-depth" || stage === "feedback",
+function buildModelAssurance(config, stages, models) {
+  const implementModel = models.implement ?? models["build-fix"] ?? models["test-fix"] ?? null;
+  const implementationMode = implementModel ? modelExecutionMode(config, implementModel) : null;
+  const reviewModels = REVIEW_STAGES
+    .filter((stage) => stages.includes(stage))
+    .map((stage) => ({ stage, model: models[stage], executionMode: modelExecutionMode(config, models[stage]) }));
+  const declaredMembers = implementModel && implementationMode === "ensemble"
+    ? resolveModelFamily(config, implementModel).members ?? []
+    : [];
+  const declaredOverlap = reviewModels.some(({ model }) =>
+    declaredMembers.some((member) => typeof member === "string" && member.toLowerCase() === model?.toLowerCase()),
   );
+
+  let reviewIndependence = "not-applicable";
+  if (reviewModels.length > 0 && implementModel) {
+    if (implementationMode === "ensemble") {
+      reviewIndependence = declaredOverlap
+        ? "declared-member-overlap"
+        : declaredMembers.length > 0
+          ? "declared-members-disjoint-runtime-unverified"
+          : "ensemble-membership-unverified";
+    } else if (implementationMode === "dynamic") {
+      reviewIndependence = "dynamic-execution-identity-unverified";
+    } else {
+      // The router only rejects equal ids when Implement is active, so check the receipt's own pair.
+      reviewIndependence = reviewModels.some(({ model }) => model === implementModel)
+        ? "configured-model-id-overlap"
+        : "configured-model-ids-distinct-runtime-unverified";
+    }
+  }
+
+  return {
+    implementationModel: implementModel,
+    implementationMode,
+    reviewModels,
+    routingDeterminism: "deterministic-configured-targets",
+    reviewIndependence,
+    runtimeIdentity: "not-observable-by-router",
+    note: "These are configured model targets. The router cannot attest which model or ensemble members actually executed.",
+  };
+}
+
+function summarizeCrossModelReview(stages, models, assurance) {
+  const implementModel = models.implement ?? models["build-fix"] ?? models["test-fix"] ?? "unspecified";
+  const reviewStages = stages.filter((stage) => REVIEW_STAGES.includes(stage));
   const distinctReviewModels = [...new Set(reviewStages.map((stage) => models[stage]).filter(Boolean))];
 
+  const qualifier = assurance?.implementationMode === "ensemble"
+    ? assurance.reviewIndependence === "declared-members-disjoint-runtime-unverified"
+      ? " (declared members disjoint; runtime identity unverified)"
+      : " (ensemble membership and runtime identity unverified)"
+    : assurance?.implementationMode === "dynamic"
+      ? " (dynamic selection; runtime identity unverified)"
+      : "";
   if (distinctReviewModels.length === 0) {
-    return models["cross-model-review"] ?? `${implementModel} -> review`;
+    return `${models["cross-model-review"] ?? `${implementModel} -> review`}${qualifier}`;
   }
   if (distinctReviewModels.length === 1) {
-    return `${implementModel} -> ${distinctReviewModels[0]}`;
+    return `${implementModel} -> ${distinctReviewModels[0]}${qualifier}`;
   }
-  return `${implementModel} -> [${distinctReviewModels.join(", ")}]`;
+  return `${implementModel} -> [${distinctReviewModels.join(", ")}]${qualifier}`;
 }
 
 function normalizeTaskKey(taskText) {
@@ -894,6 +973,7 @@ function buildDefaultFeatureRunManifest(route, runId, runDir, taskKey) {
     why: route.why,
     stages: route.stages,
     models: route.models,
+    modelAssurance: route.modelAssurance,
     crossModelReview: route.crossModelReview,
     runDir: toRepoRelativePath(runDir),
     artifacts: {
@@ -947,6 +1027,7 @@ function createOrReuseFeatureRun(route) {
   manifest.why = route.why;
   manifest.stages = route.stages;
   manifest.models = route.models;
+  manifest.modelAssurance = route.modelAssurance;
   manifest.crossModelReview = route.crossModelReview;
   manifest.runDir = toRepoRelativePath(runDir);
   manifest.updatedAt = new Date().toISOString();
@@ -1317,7 +1398,8 @@ export function planTask(taskText, config, options = {}) {
     trivialEligible: trivial,
   });
   const stageModels = buildStageModels(stages, modelRouting);
-  validateResolvedModelSeparation(stages, stageModels);
+  validateResolvedModelSeparation(stages, stageModels, config);
+  const modelAssurance = buildModelAssurance(config, stages, stageModels);
 
   return {
     task: String(taskText ?? "").trim(),
@@ -1332,11 +1414,9 @@ export function planTask(taskText, config, options = {}) {
     rationale,
     stages,
     models: stageModels,
+    modelAssurance,
     skillRouting: buildStageSkillRouting(config, stages, stageModels),
-    crossModelReview: summarizeCrossModelReview(
-      stages,
-      stageModels,
-    ),
+    crossModelReview: summarizeCrossModelReview(stages, stageModels, modelAssurance),
   };
 }
 
@@ -1483,7 +1563,7 @@ function renderStagePrompt(pack, stageFile) {
     : "";
   const skillBlock = renderSkillRoutingBlock(stageFile.skillRouting);
 
-  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n${skillBlock}\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
+  return `# Stage ${stageFile.index}: ${stageFile.title}\n\nTask: ${pack.route.task}\nModel owner: ${stageFile.model}\nRoute profile: ${pack.route.profile ?? pack.route.mode}\n${skillBlock}\nRequired inputs:\n${requiredInputsBlock}\n\nRequired output:\n- ${stageFile.outputFile}\n\nDeliverable:\n${stageFile.deliverable}\n\nInstructions:\n${instructionBlock}\n${approvalBlock}\nGuardrails:\n- Follow the repository harness stage contract for ${stageFile.stage}.\n- Keep output grounded in real files and repository state.\n- Treat the routed model as a configured target, not proof of the model that actually executed.\n- Do not perform the next stage in the same session; stop after writing ${stageFile.outputFile}.\n`;
 }
 
 function renderSkillRoutingBlock(routing) {
@@ -1496,7 +1576,7 @@ function renderSkillRoutingBlock(routing) {
     lines.push(`- ${link.role} ${link.model}: adapter ${link.adapter ?? "none"}${familySuffix}`);
   }
   if (lines.length === 0) return "";
-  return `\nSkill routing (load the skill, then the adapter for the model actually executing this stage):\n${lines.join("\n")}\n`;
+  return `\nSkill routing (load the skill, then the adapter for the configured model target; verify runtime identity independently):\n${lines.join("\n")}\n`;
 }
 
 function renderNextStepsTemplate(pack) {
@@ -1534,6 +1614,7 @@ function writePromptPack(route, outDir) {
     rationale: pack.route.why,
     stages: pack.route.stages,
     models: pack.route.models,
+    modelAssurance: pack.route.modelAssurance,
     crossModelReview: pack.route.crossModelReview,
     generatedAt: new Date().toISOString(),
     packDir: pack.packDir,
@@ -1603,6 +1684,11 @@ function writePromptPack(route, outDir) {
   return pack;
 }
 
+function renderModelAssuranceLine(assurance) {
+  if (!assurance) return "[prompt-router] model assurance: unavailable";
+  return `[prompt-router] model assurance: ${assurance.reviewIndependence}; runtime identity ${assurance.runtimeIdentity}`;
+}
+
 function renderPromptPackSummary(pack) {
   const lines = [
     `[prompt-router] prompt pack created`,
@@ -1610,6 +1696,7 @@ function renderPromptPackSummary(pack) {
     `[prompt-router] task: ${pack.route.task || "<stdin>"}`,
     `[prompt-router] output: ${pack.packDir}`,
     `[prompt-router] stages: ${pack.route.stages.join(" -> ")}`,
+    renderModelAssuranceLine(pack.route.modelAssurance),
   ];
 
   for (const stageFile of pack.stageFiles) {
@@ -1643,6 +1730,7 @@ export function renderCompactRoute(route) {
       .map(([stage, model]) => `${stage}=${model}`)
       .join(", ")}\n` +
     `[prompt-router] cross-model review: ${route.crossModelReview}\n` +
+    `${renderModelAssuranceLine(route.modelAssurance)}\n` +
     (route.decisionAdvisory
       ? `[prompt-router] decision advisory: ${route.decisionAdvisory.status} (${route.decisionAdvisory.fallbackReason ?? route.decisionAdvisory.selected ?? "none"})\n`
       : "")
@@ -1679,6 +1767,7 @@ export function renderHandoffPlan(route) {
   });
 
   lines.push(`[prompt-router] cross-model review: ${route.crossModelReview}`);
+  lines.push(renderModelAssuranceLine(route.modelAssurance));
   if (route.decisionAdvisory) {
     const receiptPath = route.runId
       ? [".github/harness/runs/feature-runs", route.runId, "decision-advisory.json"].join("/")
@@ -2103,6 +2192,8 @@ function printPromptPack(route, flags) {
           task: pack.route.task,
           profile: pack.route.profile ?? null,
           output: pack.packDir,
+          modelAssurance: pack.route.modelAssurance,
+          crossModelReview: pack.route.crossModelReview,
           stages: pack.stageFiles.map((stage) => ({
             stage: stage.stage,
             model: stage.model,
@@ -2350,4 +2441,3 @@ if (
     fail(error instanceof Error ? error.message : String(error), 1);
   }
 }
-

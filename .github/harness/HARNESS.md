@@ -48,7 +48,9 @@ When non-trivial route or handoff preflight is degraded, treat `--allow-degraded
 ### Model Roles In The Shipped Environment Policy
 
 The harness applies a **five-tier capability model**. Copilot Auto remains a safe general default
-when no skill-specific override applies, but the shipped harness routes the 20 core skills through
+for non-review stages when no skill-specific override applies; Review Breadth, Review Depth, and
+Feedback need a pinned fixed model because the router rejects dynamic-selection and ensemble targets
+there. The shipped harness routes the 20 core skills through
 `harness.config.json` `skillModelMapping.mappings`. The tier labels govern _what kind_ of capability
 a stage requires. Pinned examples show which Copilot-supported models map well to each tier today,
 but treat them as examples, not requirements: any model in the same capability class works when it is
@@ -57,8 +59,8 @@ enabled for the operator's plan, policy, and client. Current hosted evidence is 
 
 | Tier | Stages | Copilot default | Pinned examples | Rationale |
 | --- | --- | --- | --- | --- |
-| **ultra-reasoning** | Architect, Feedback | Auto | `gpt-6-astra`, `claude-opus-5-5`, `gpt-6-sol` | Long-horizon architecture, conflict adjudication, and final synthesis. Reserve the highest-cost models for work that needs the reasoning ceiling. |
-| **high-reasoning** | Understand, Review Breadth, Review Depth, PR, validation, memory, analysis skills | Auto | `claude-opus-5-5`, `gpt-6-sol`, `claude-opus-5`, `gpt-5.6-sol` | Sustained multi-hop reasoning, graph impact analysis, structural review, and proof selection. |
+| **ultra-reasoning** | Architect, Feedback | Auto (Feedback: pinned) | `gpt-6-astra`, `claude-opus-5-5`, `gpt-6-sol` | Long-horizon architecture, conflict adjudication, and final synthesis. Reserve the highest-cost models for work that needs the reasoning ceiling. |
+| **high-reasoning** | Understand, Review Breadth, Review Depth, PR, validation, memory, analysis skills | Auto (reviews: pinned) | `claude-opus-5-5`, `gpt-6-sol`, `claude-opus-5`, `gpt-5.6-sol` | Sustained multi-hop reasoning, graph impact analysis, structural review, and proof selection. |
 | **balanced-coding** | Implement, Prototype, Run Loop, `build-fix`, `test-fix` | Auto | `gpt-5.6-terra`, `claude-sonnet-5`, `gpt-5.4`, `gpt-5.3-codex` | The Architecture Brief already constrains the problem; what matters is code-generation speed, accuracy, and repair quality. |
 | **fast-execution** | Budget-aware execution, triage, lightweight packages | Auto | `gpt-6-luna`, `gemini-3.8-flash`, `mai-code-1.1-flash`, `claude-haiku-4-5` | Cheap, quick responses for small tasks, summaries, and bounded maintenance loops. |
 | **fast-cheap-local** | Experiment loops, lint-debt, background enrichment, local/offline triage | — (local only) | `qwen2.5-coder:14b`, `qwen2.5:latest`, `devstral:24b` | Cheap, offline, high-volume; not suitable for architecture gates, security review, or multi-tenant isolation. |
@@ -70,8 +72,13 @@ Skills stay model-neutral; per-model tuning lives in thin adapters under
 Gemini, generic-open). `skillModelMapping.modelFamilies` maps model ids to a family by longest
 prefix. For every stage, `route --json` and `handoff` emit `skillRouting`: the skill path plus the
 adapter for the resolved stage model, each mapping fallback, and the universal fallback. Load the
-skill, then the adapter for the model actually executing. Adapters tune execution style only; stage
-contracts and approval gates always win. Do not name models inside SKILL.md bodies;
+skill, then the adapter for the configured model target. Adapters tune execution style only; stage
+contracts and approval gates always win. Ensemble and dynamic-selection families are not valid
+review models: the router rejects them for active review stages. If an ensemble or dynamic target is
+used for implementation, route output labels review independence unverified; for a configured
+ensemble member list, declared overlap with a reviewer is rejected. Route output also states that
+the router cannot attest which model or ensemble members actually executed; a distinct configured
+model id is not proof of runtime independence. Do not name models inside SKILL.md bodies;
 `harness:docs:check` fails on it.
 
 Measure adapters before tuning them: `npm run harness:skill-adapters:eval -- --agent "<cmd>"
@@ -126,8 +133,9 @@ Promotion and demotion calculations in this slice are report-only.
 **Cross-model review:** for an active route containing `implement`, its effective implementation
 model must differ from every active review-stage model (`review-breadth`, `review-depth`, and
 `feedback`). The router enforces this after resolving role defaults, `stageModels`, and selected
-`stageModelSets`; it cannot be disabled by configuration. If both are on Copilot Auto, explicitly
-select distinct models for the `review-fix` pass to break single-model echo chambers. The cross-model pass runs the
+`stageModelSets`; it cannot be disabled by configuration. Review stages cannot be configured as
+Copilot Auto or an ensemble target. If Implement runs on Copilot Auto, explicitly pin distinct fixed
+models for the review stages and the `review-fix` pass to break single-model echo chambers. The cross-model pass runs the
 balanced-coding model first (implement), then the high-reasoning model as the independent
 challenger.
 

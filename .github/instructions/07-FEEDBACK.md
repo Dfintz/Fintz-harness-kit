@@ -6,7 +6,8 @@ applyTo: '**'
 
 # Feedback Stage
 
-> **Model:** high-reasoning (e.g., `claude-opus-4-8`; Copilot Auto is a safe default) — feedback
+> **Model:** high-reasoning (e.g., `claude-opus-4-8`; pin a fixed model — the router rejects Copilot
+> Auto and ensemble targets for review stages) — feedback
 > evaluation requires fresh-eyes judgment on architectural challenges without anchoring on prior
 > decisions.
 > **Purpose:** Resolve challenged decisions after implementation and review. Decide which findings or

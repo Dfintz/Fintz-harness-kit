@@ -8,7 +8,7 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
-Latest release notes: [`RELEASE_NOTES_v3.10.0.md`](RELEASE_NOTES_v3.10.0.md).
+Latest release notes: [`RELEASE_NOTES_v3.11.0.md`](RELEASE_NOTES_v3.11.0.md).
 
 ## Install
 
@@ -186,12 +186,14 @@ By default the shipped environment policy separates execution and judgment using
 
 | Tier | Stages | Default | Pinned example |
 |---|---|---|---|
-| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto | `claude-opus-4-8` |
+| **high-reasoning** | Understand, Architect, Review Breadth, Review Depth, Feedback | Copilot Auto (reviews: pinned) | `claude-opus-4-8` |
 | **balanced-coding** | Implement, `build-fix`, `test-fix` | Copilot Auto | `gpt-5.3-codex` or `claude-sonnet-4.x` |
 | **fast-cheap-local** | Experiment loops, lint-debt, enrichment, triage | — | `qwen2.5-coder:14b` via Ollama/LM Studio |
 
-Copilot Auto is a safe default for the hosted tiers. Pin a specific model in `harness.config.json`
-only when you need consistent identity for reproducible evals or cross-model review. The router
+Copilot Auto is a safe default for the hosted non-review stages. Review Breadth, Review Depth, and
+Feedback must be pinned to fixed models: the router rejects dynamic-selection (Auto) and ensemble
+targets such as HydraFusion there, because the model that actually reviews cannot be identified.
+Pin a specific model elsewhere when you need consistent identity for reproducible evals. The router
 enforces that `models.implementer ≠ models.reviewer` to prevent single-model echo chambers.
 
 For domain-heavy work, `harness.config.json` also exposes advisory
