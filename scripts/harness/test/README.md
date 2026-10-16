@@ -74,7 +74,7 @@ Expected failure codes asserted by this test:
 ## Trace Contract Coverage
 
 - `trace-contract-route-test.mjs` checks non-trivial route stage order and rationale shape.
-- `trace-contract-prompt-pack-test.mjs` checks the generated registry prompt-pack manifest, exact stage order, artifact handoffs, and stable Understand/context markers. It uses a unique temporary slug and restores feature-run state.
+- `trace-contract-prompt-pack-test.mjs` checks the generated registry prompt-pack manifest, exact stage order, artifact handoffs, and stable Understand/context markers. It runs `prompt-pack --repo-root` against isolated temporary fixture repos, so it needs no local knowledge graph, `UNDERSTAND_PLUGIN_ROOT`, or `HARNESS_PROJECT_ROOT`, and writes nothing under the kit's `.github/harness/runs/`. A second fixture with no graph refresh prerequisites asserts that the non-trivial graph preflight still blocks the prompt pack.
 
 Strict command:
 

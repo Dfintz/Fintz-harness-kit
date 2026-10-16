@@ -2,15 +2,8 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -19,28 +12,40 @@ import {
   assertPromptContains,
 } from "../trace-contract.mjs";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const router = join(repoRoot, "scripts", "harness", "prompt-router.mjs");
-const runsDir = join(repoRoot, ".github", "harness", "runs");
-const promptPacksDir = join(runsDir, "prompt-packs");
-const featureRunsDir = join(runsDir, "feature-runs");
-const featureRunIndexPath = join(featureRunsDir, "index.json");
-const preflightOverrideLogPath = join(runsDir, "preflight-overrides.jsonl");
+const harnessRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+const router = join(harnessRoot, "scripts", "harness", "prompt-router.mjs");
+const baseConfig = JSON.parse(readFileSync(join(harnessRoot, "harness.config.json"), "utf8"));
+const kitPromptPacksDir = join(harnessRoot, ".github", "harness", "runs", "prompt-packs");
+const tempRoot = mkdtempSync(join(tmpdir(), "harness-trace-contract-pack-"));
 
-function snapshotDirectories(root) {
-  if (!existsSync(root)) return new Set();
-  return new Set(
-    readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name),
-  );
+// Isolated target repos keep this test independent of the kit's local knowledge graph, the
+// caller's UNDERSTAND_PLUGIN_ROOT / HARNESS_PROJECT_ROOT, and the kit's own run artifacts.
+// The registry and stage contracts still come from the kit via HARNESS_REPO_ROOT.
+function writeFixture(name, { refreshReady }) {
+  const root = join(tempRoot, name);
+  mkdirSync(root, { recursive: true });
+  const config = structuredClone(baseConfig);
+  config.graph = { ...config.graph, pluginRoot: refreshReady ? join(root, "graph-plugin") : "" };
+  writeFileSync(join(root, "harness.config.json"), JSON.stringify(config, null, 2));
+  return root;
 }
 
-function runPromptPack(task, outSlug) {
+function fixturePromptPacksDir(root) {
+  return join(root, ".github", "harness", "runs", "prompt-packs");
+}
+
+function childEnv() {
+  const env = { ...process.env, HARNESS_REPO_ROOT: harnessRoot };
+  delete env.HARNESS_PROJECT_ROOT;
+  delete env.UNDERSTAND_PLUGIN_ROOT;
+  return env;
+}
+
+function runPromptPack(root, task, outSlug) {
   return spawnSync(
     process.execPath,
-    [router, "prompt-pack", "--task", task, "--out", outSlug, "--json"],
-    { cwd: repoRoot, encoding: "utf8", shell: false },
+    [router, "prompt-pack", "--task", task, "--out", outSlug, "--json", "--repo-root", root],
+    { cwd: harnessRoot, encoding: "utf8", shell: false, env: childEnv() },
   );
 }
 
@@ -63,22 +68,14 @@ const expectedStages = [
   "review-depth",
   "feedback",
 ];
+const task = "trace contract prompt-pack behavior";
 const slug = `trace-contract-pack-${Date.now()}-${randomUUID().slice(0, 8)}`;
-const packDir = join(promptPacksDir, slug);
-const baselineFeatureDirs = snapshotDirectories(featureRunsDir);
-const originalIndexExists = existsSync(featureRunIndexPath);
-const originalIndexText = originalIndexExists
-  ? readFileSync(featureRunIndexPath, "utf8")
-  : null;
-const originalOverrideLogExists = existsSync(preflightOverrideLogPath);
-const originalOverrideLogText = originalOverrideLogExists
-  ? readFileSync(preflightOverrideLogPath, "utf8")
-  : null;
-
-mkdirSync(featureRunsDir, { recursive: true });
 
 try {
-  const result = runPromptPack("trace contract prompt-pack behavior", slug);
+  const readyRoot = writeFixture("refresh-ready", { refreshReady: true });
+  const promptPacksDir = fixturePromptPacksDir(readyRoot);
+  const packDir = join(promptPacksDir, slug);
+  const result = runPromptPack(readyRoot, task, slug);
   assert.equal(result.status, 0, `${result.stderr}\n${result.stdout}`);
   const payload = JSON.parse(result.stdout);
   assert.equal(containedPath(promptPacksDir, payload.output, "prompt pack output"), resolve(packDir), "prompt pack must use the unique slug under the supported root");
@@ -99,14 +96,15 @@ try {
     assertPromptContains(prompt, ["Required inputs:", `Required output:\n- ${stage.outputFile}`], `${stage.stage} prompt`);
   }
 
+  const degradedRoot = writeFixture("refresh-degraded", { refreshReady: false });
+  const blocked = runPromptPack(degradedRoot, task, slug);
+  assert.equal(blocked.status, 1, `degraded graph readiness must block prompt-pack\n${blocked.stderr}\n${blocked.stdout}`);
+  assert.match(blocked.stderr, /prompt-pack blocked: non-trivial routes require graph refresh readiness/);
+  assert.equal(existsSync(join(fixturePromptPacksDir(degradedRoot), slug)), false, "a blocked prompt-pack must not write a pack");
+
+  assert.equal(existsSync(join(kitPromptPacksDir, slug)), false, "fixture prompt-packs must not write into the kit");
+
   console.log("PASS trace contract prompt-pack test suite");
 } finally {
-  rmSync(packDir, { recursive: true, force: true });
-  if (originalIndexExists) writeFileSync(featureRunIndexPath, originalIndexText, "utf8");
-  else if (existsSync(featureRunIndexPath)) unlinkSync(featureRunIndexPath);
-  if (originalOverrideLogExists) writeFileSync(preflightOverrideLogPath, originalOverrideLogText, "utf8");
-  else if (existsSync(preflightOverrideLogPath)) unlinkSync(preflightOverrideLogPath);
-  for (const name of snapshotDirectories(featureRunsDir)) {
-    if (!baselineFeatureDirs.has(name)) rmSync(join(featureRunsDir, name), { recursive: true, force: true });
-  }
+  rmSync(tempRoot, { recursive: true, force: true });
 }
