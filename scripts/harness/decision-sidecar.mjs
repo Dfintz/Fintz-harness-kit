@@ -225,7 +225,7 @@ export class SemifWorkerClient {
     if (this.process?.exitCode === null) this.process.kill();
   }
 
-  score(row, maxTokens = 4096) {
+  score(row, { maxTokens = 4096 } = {}) {
     if (!this.ready()) return Promise.reject(this.failed ?? new Error("worker is not ready"));
     const id = randomUUID();
     return new Promise((resolve, reject) => {
@@ -432,6 +432,12 @@ function errorResponse(error) {
       body: error.detail ? { detail: error.detail } : { detail: { error_type: error.code, message: error.message } },
     };
   }
+  if (error && typeof error.code === "string" && (error.code === "upstream_timeout" || error.code === "aborted")) {
+    return {
+      status: error.code === "aborted" ? 499 : 504,
+      body: { detail: { error_type: error.code, message: "hosted scorer request failed" } },
+    };
+  }
   return { status: 500, body: { detail: { error_type: "internal_error", message: "internal sidecar error" } } };
 }
 
@@ -442,11 +448,13 @@ export function createDecisionSidecar({
   maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
   maxQueued = DEFAULT_MAX_QUEUED,
   queueWaitMs = DEFAULT_QUEUE_WAIT_MS,
+  requestDeadlineMs = null,
 } = {}) {
   if (!scorer || typeof scorer.score !== "function") throw new TypeError("a scorer is required");
   if (!/^127\.0\.0\.1$|^::1$/.test(host)) throw new Error("decision sidecar must bind to loopback");
   const queue = new WorkQueue(maxQueued, queueWaitMs);
   const server = createServer(async (req, res) => {
+    let deadlineTimer = null;
     try {
       const path = new URL(req.url ?? "/", `http://${host}`).pathname;
       if (req.method === "GET" && path === "/health") return json(res, 200, { status: "ok" });
@@ -460,13 +468,24 @@ export function createDecisionSidecar({
       if (req.method !== "POST" || path !== "/v1/systemone") {
         return json(res, 404, { detail: { error_type: "not_found", message: "route not found" } });
       }
-      if (scorer.ready?.() === false) throw new SidecarError(503, "not_ready", "scorer is not ready");
       const abort = new AbortController();
+      let deadlineExceeded = false;
+      deadlineTimer = Number.isFinite(requestDeadlineMs) && requestDeadlineMs >= 0
+        ? setTimeout(() => {
+          deadlineExceeded = true;
+          abort.abort();
+          if (!res.headersSent) {
+            json(res, 504, { detail: { error_type: "deadline_exceeded", message: "request deadline exceeded" } });
+          }
+        }, requestDeadlineMs)
+        : null;
+      if (scorer.ready?.() === false) throw new SidecarError(503, "not_ready", "scorer is not ready");
       req.once("aborted", () => abort.abort());
       res.once("close", () => {
         if (!res.writableEnded) abort.abort();
       });
       const payload = await readJsonBody(req, maxBodyBytes);
+      if (deadlineExceeded) return;
       const questions = rowsFromSystemOneRequest(payload);
       const started = performance.now();
       const body = await queue.submit(async () => {
@@ -475,7 +494,7 @@ export function createDecisionSidecar({
         const answers = {};
         let inputTokens = 0;
         for (const question of questions) {
-          const result = await scorer.score(question.row);
+          const result = await scorer.score(question.row, { signal: abort.signal });
           const normalized = normalizeWorkerResult(result, question.row.options.map((option) => option.id), model);
           inputTokens += normalized.inputTokens;
           answers[question.id] = answerFrom(
@@ -491,13 +510,16 @@ export function createDecisionSidecar({
           usage: { input_tokens: inputTokens, output_tokens: 0 },
         };
       }, abort.signal);
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted || deadlineExceeded || res.writableEnded) return;
       res.setHeader("x-semif-total-ms", String(Math.max(0, performance.now() - started)));
       return json(res, 200, body);
     } catch (error) {
+      if (res.writableEnded) return;
       const response = errorResponse(error);
       if (!res.headersSent) return json(res, response.status === 499 ? 499 : response.status, response.body);
       res.destroy();
+    } finally {
+      if (deadlineTimer) clearTimeout(deadlineTimer);
     }
   });
 
@@ -538,6 +560,8 @@ function parseCliArgs(argv) {
     maxQueued: Number(process.env.HARNESS_DECISION_MAX_QUEUED ?? DEFAULT_MAX_QUEUED),
     queueWaitMs: Number(process.env.HARNESS_DECISION_QUEUE_WAIT_MS ?? DEFAULT_QUEUE_WAIT_MS),
     requestTimeoutMs: Number(process.env.HARNESS_DECISION_TIMEOUT_MS ?? 10000),
+    requestDeadlineMs: process.env.HARNESS_DECISION_DEADLINE_MS === undefined
+      ? null : Number(process.env.HARNESS_DECISION_DEADLINE_MS),
   };
   for (let index = 0; index < argv.length; index += 1) {
     const name = argv[index];
@@ -561,10 +585,15 @@ function parseCliArgs(argv) {
     else if (name === "--max-queued") values.maxQueued = Number(next());
     else if (name === "--queue-wait-ms") values.queueWaitMs = Number(next());
     else if (name === "--request-timeout-ms") values.requestTimeoutMs = Number(next());
+    else if (name === "--request-deadline-ms") values.requestDeadlineMs = Number(next());
     else throw new Error(`unknown option: ${name}`);
   }
-  if (values.backend !== "semif" && values.backend !== "openai") {
-    throw new Error(`unknown backend: ${values.backend} (expected semif or openai)`);
+  if (values.backend !== "semif" && values.backend !== "openai" && values.backend !== "systemone") {
+    throw new Error(`unknown backend: ${values.backend} (expected semif, openai, or systemone)`);
+  }
+  if (values.backend === "systemone") {
+    if (process.env.HARNESS_DECISION_TIMEOUT_MS === undefined) values.requestTimeoutMs = 1200;
+    if (values.requestDeadlineMs === null) values.requestDeadlineMs = 1400;
   }
   return values;
 }
@@ -580,6 +609,14 @@ async function createScorer(options) {
       warmup: options.warmup,
       promptStyle: options.promptStyle,
     });
+  }
+  if (options.backend === "systemone") {
+    const { HostedSystemOneScorer, resolveHostedDecisionProvider } = await import("./decision-backend-systemone.mjs");
+    const provider = resolveHostedDecisionProvider(process.env);
+    if (!provider) {
+      throw new Error("systemone backend requires TYPESAFE_API_KEY or HARNESS_DECISION_FOUNDRY_ENDPOINT (or HARNESS_DECISION_HOSTED_PROVIDER)");
+    }
+    return new HostedSystemOneScorer({ ...provider, requestTimeoutMs: options.requestTimeoutMs });
   }
   const workerPath = join(dirname(fileURLToPath(import.meta.url)), "semif-worker.py");
   return new SemifWorkerClient({
@@ -606,6 +643,7 @@ async function main() {
     port: options.port,
     maxQueued: options.maxQueued,
     queueWaitMs: options.queueWaitMs,
+    requestDeadlineMs: options.requestDeadlineMs,
   });
   const address = await sidecar.listen();
   const identity = scorer.metadata();

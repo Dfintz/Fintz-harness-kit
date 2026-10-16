@@ -189,7 +189,7 @@ test("persistent worker accepts a ready frame and correlates responses", async (
       const frame = JSON.parse(line);
       console.log(JSON.stringify({ version: 1, id: frame.id, ok: true, result: {
         option_ids: frame.row.options.map(option => option.id), probabilities: [0.25, 0.75],
-        input_tokens: 9, model,
+        input_tokens: Number.isInteger(frame.maxTokens) ? frame.maxTokens : -1, model,
       }}));
     });
   `);
@@ -199,8 +199,10 @@ test("persistent worker accepts a ready frame and correlates responses", async (
   assert.equal((await worker.start()).revision, "fixture-revision");
   const result = await worker.score({ id: "q", state: "x", question: "?", options: [
     { id: "false", description: "No" }, { id: "true", description: "Yes" },
-  ] });
+  ] }, { signal: new AbortController().signal });
   assert.deepEqual(result.probabilities, [0.25, 0.75]);
+  // The sidecar passes { signal } as the second argument; maxTokens must stay a positive integer.
+  assert.equal(result.input_tokens, 4096);
 });
 
 test("late worker responses after timeout are discarded without losing readiness", async (t) => {
