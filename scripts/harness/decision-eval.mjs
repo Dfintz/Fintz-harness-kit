@@ -756,7 +756,7 @@ function runOfflineMode(root, options) {
   return null;
 }
 
-async function evaluateLiveReport(root, options) {
+export async function evaluateLiveReport(root, options) {
   const paths = pathsFor(root, options);
   const config = evaluationConfig(options, loadConfig(root));
   const fixture = loadValidatedCases(paths.cases, root, config);

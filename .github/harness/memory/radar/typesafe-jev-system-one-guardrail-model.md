@@ -1,5 +1,5 @@
 ---
-summary: TypeSafe AI's "Jev" is a non-autoregressive "System One Model" that outputs calibrated, type-safe structured decisions (not free-text) in ~70-500ms, pitched for scoring/judging/guardrailing/jailbreak-detection inside existing LLM/agent pipelines.
+summary: TypeSafe Jev remains a typed-decision model, not a prose/research model; Jev 1.14 adds experimental composable image inputs and normalized Box localization, still marked dreamer-ready rather than production-ready.
 status: parked
 source: https://typesafe.ai/blog/introducing-system-one-models-and-jev
 author_project: Diogo Almeida / TypeSafe AI
@@ -67,6 +67,12 @@ and [workload calibration gate](decision-model-workload-calibration.md) remain c
 does not resolve durable model sourcing, held-out human labels, or authority-change approval. Do not
 add a hosted provider, enable routing, or import the external `hyper-jev` skill during radar triage.
 Any future skill import needs the separate SkillSpector gate; no skill is imported or adopted here.
+
+## 2026-10-15 Source Reassessment
+
+Reviewed [Jev 1.14](https://typesafe.ai/blog/jev-1-14), the [image guide](https://docs.typesafe.ai/images), and [Box](https://docs.typesafe.ai/primitives/box). Images are composable references usable in `state`, question `instructions`, and `criteria`; requests containing images or Box questions require `TypeSafe-Danger-Zone-Images: true`. Box returns normalized `top`, `bottom`, `left`, and `right` coordinates plus confidence, but has no not-found answer, so pair it with a separate presence judgment. Jev 1.14 is required for Box; Jev 1.13 can accept images.
+
+These features are explicitly labeled dreamer-ready and are not recommended for production automation yet. Preserve the parked status and existing hosted-provider/authority freeze. Jev's typed output is useful for application decisions, but it cannot directly produce the requested free-form synopsis or browse documentation; research and prose synthesis remain the agent's responsibility.
 
 ## Decision Log
 

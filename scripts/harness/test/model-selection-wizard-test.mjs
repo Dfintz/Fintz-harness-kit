@@ -10,6 +10,7 @@ import {
   recommendModePackage,
   recommendModel,
 } from "../model-selection-wizard.mjs";
+import { loadConfig } from "../config.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 const wizardPath = join(repoRoot, "scripts", "harness", "model-selection-wizard.mjs");
@@ -27,6 +28,11 @@ function main() {
   const availability = checkConfiguredModels();
   assert.equal(availability.ok, true, "all configured wizard models should exist in the supported Copilot snapshot");
   assert.ok(availability.checkedModels.length >= 10, "wizard should check domain, level, and fallback model references");
+  assert.equal(availability.checkedModels.some((model) => model.id.startsWith("gemini-")), false);
+  const catalog = loadConfig().modelPolicy.modelSelectionWizard.supportedCopilotModels;
+  const supportedById = new Map(catalog.map((model) => [model.id, model]));
+  const retiredGemini = getModelAvailability({ supportedById }, "gemini-3.5-flash");
+  assert.equal(retiredGemini.suggestedAlternative, "gpt-6-luna");
 
   const frontendBalanced = recommendModel({ domain: "frontend", level: "balanced" });
   assert.equal(frontendBalanced.selected.id, "gpt-5.6-terra");
@@ -38,6 +44,19 @@ function main() {
   const infrastructureHigh = recommendModel({ domain: "infrastructure", level: "high" });
   assert.equal(infrastructureHigh.selected.id, "gpt-6-sol");
   assert.equal(infrastructureHigh.level, "high");
+
+  const uiUxHigh = recommendModel({ domain: "ui-ux", level: "high" });
+  assert.equal(uiUxHigh.selected.id, "gpt-5.6-sol");
+  assert.ok(uiUxHigh.candidates.some((candidate) => candidate.id === "gpt-6.1-sol" && candidate.supported));
+  assert.equal(uiUxHigh.visualReviewModels[0].id, "gpt-5-mini");
+  assert.equal(uiUxHigh.visualReviewModels[0].supported, true);
+  assert.ok(uiUxHigh.visualReviewNote.includes("screenshot"));
+
+  const uiUxBalanced = recommendModel({ domain: "ui-ux", level: "balanced" });
+  assert.ok(uiUxBalanced.candidates.some((candidate) => candidate.id === "claude-sonnet-5-5" && candidate.supported));
+
+  const uiUxCheap = recommendModel({ domain: "ui-ux", level: "cheap" });
+  assert.ok(uiUxCheap.candidates.some((candidate) => candidate.id === "claude-haiku-5-5" && candidate.supported));
 
   const devHigh = recommendModePackage({ mode: "dev", level: "high" });
   assert.equal(devHigh.selected.id, "gpt-6-sol");

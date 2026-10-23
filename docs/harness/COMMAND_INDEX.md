@@ -55,6 +55,31 @@ do not alter routing.
 - `npm run test:harness:adoption`
 - `npm run test:mcp:dispatch`
 
+## State and Gate Test Pilots
+
+Install development dependencies with `npm install --ignore-scripts` (Node >=20).
+The core suite includes the state model, security gate fixtures, and evaluator safety self-tests;
+Stryker execution remains opt-in.
+
+- `npm run test:harness:stage-state:model` runs 100 seeded sequential command sequences, at most 20 commands each, and prints failure/shrinking metadata.
+- `npm run test:harness:testing-adoption` checks mutant accounting, refusal bounds, environment filtering, and deadline termination without running Stryker.
+- `npm run harness:testing:adoption` evaluates both techniques with original and seeded-fault controls in disposable copies.
+- `npm run harness:testing:adoption -- --technique model` runs only the state controls, capped at 60 seconds total.
+- `npm run harness:testing:adoption -- --technique mutation` runs only the fresh comparison/logical/boolean gate pilot: at most 100 non-ignored mutants, one worker, and five minutes total.
+
+Reports are written to `.github/harness/runs/testing-adoption-*.json`, including source hashes,
+versions, timings, replay metadata, every selected/ignored mutant and its outcome. Only trusted
+first-party source copies execute, with an OS/path-only environment allowlist and no dashboard
+reporter. These copies are not a security sandbox. Timeout/compile/runtime outcomes are not kills;
+inconclusive execution or failed controls make the evaluator fail.
+
+For a recorded state failure, replay against the same source fault and tool version with
+`npm run test:harness:stage-state:model -- --seed <seed> --path <path> --replay-path <replayPath>`.
+A clean original is expected to pass, not reproduce the seeded failure. This is sequential
+metadata coverage, not concurrency or goal-completion proof. The mutation scope excludes CLI
+loading, the check helper, other operator families, and unrelated modules; a clean scoped score
+is not repository-wide coverage.
+
 ## Adoption and Maintenance Reports
 
 - `npm run harness:adoption:drift -- --canonical-root <path> --installed-root <path> [--json]` (report-only; generic file shape/hash drift, not semantic sidecar policy validation; defaults to `.github/skills` vs `.claude/skills`, explicit installed roots replace that default)

@@ -234,3 +234,60 @@ test("honours an explicitly pinned model and revision without probing", async ()
   assert.equal(scorer.metadata().source, "pinned-model");
   assert.equal(scorer.metadata().revision, "abc123");
 });
+
+test("json prompt style serialises one object and still ends in a letter answer", async () => {
+  const fetchImpl = stubFetch({
+    "/v1/models": modelsOk,
+    "/v1/chat/completions": () => response({ top: [{ token: "B", logprob: Math.log(0.9) }] }),
+  });
+  const scorer = await startedScorer(fetchImpl, { promptStyle: "json" });
+  const result = await scorer.score(row(2));
+
+  const messages = fetchImpl.calls.at(-1).body.messages;
+  assert.equal(messages.length, 1);
+  const payload = JSON.parse(messages[0].content.match(/\{[\s\S]*\}/)[0]);
+  assert.deepEqual(payload.options, { A: "option 0", B: "option 1" });
+  assert.deepEqual(payload.state, { task: "route this" });
+  assert.match(messages[0].content, /Answer:$/);
+  assert.ok(result.probabilities[1] > 0.99);
+});
+
+test("fails closed when option labels carry too little next-token mass", async () => {
+  const fetchImpl = stubFetch({
+    "/v1/models": modelsOk,
+    "/v1/chat/completions": () =>
+      response({
+        top: [
+          { token: "<think>", logprob: Math.log(0.97) },
+          { token: "B", logprob: Math.log(0.02) },
+          { token: "A", logprob: Math.log(0.001) },
+        ],
+      }),
+  });
+  const scorer = await startedScorer(fetchImpl);
+  await assert.rejects(
+    () => scorer.score(row(2)),
+    (error) => error instanceof BackendError && error.code === "low_label_mass",
+  );
+});
+
+test("rejects an out-of-range minimum label mass", () => {
+  assert.throws(
+    () => new OpenAiLogprobScorer({ fetchImpl: async () => ({}), minLabelMass: 1.5 }),
+    /minLabelMass/,
+  );
+});
+
+test("thinking suppression is opt-in", async () => {
+  const handlers = {
+    "/v1/models": modelsOk,
+    "/v1/chat/completions": () => response({ top: [{ token: "A", logprob: Math.log(0.9) }] }),
+  };
+  const plain = stubFetch(handlers);
+  await (await startedScorer(plain)).score(row(2));
+  assert.equal("reasoning_effort" in plain.calls.at(-1).body, false);
+
+  const suppressed = stubFetch(handlers);
+  await (await startedScorer(suppressed, { disableThinking: true })).score(row(2));
+  assert.equal(suppressed.calls.at(-1).body.reasoning_effort, "none");
+});

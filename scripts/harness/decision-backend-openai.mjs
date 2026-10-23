@@ -46,7 +46,21 @@ function chatPrompt(row) {
   ];
 }
 
-const PROMPT_STYLES = { jev: jevPrompt, chat: chatPrompt };
+// One JSON object per request; the answer is still a single letter token after "Answer:".
+function jsonPrompt(row) {
+  const options = Object.fromEntries(row.options.map((option, index) => [LABELS[index], option.description]));
+  const body = JSON.stringify({ state: row.state, question: row.question, options });
+  return [
+    {
+      role: "user",
+      content: `${JEV_PREAMBLE}\n\n${body}\n\nReply with the letter of one option.\nAnswer:`,
+    },
+  ];
+}
+
+const PROMPT_STYLES = { jev: jevPrompt, chat: chatPrompt, json: jsonPrompt };
+export const PROMPT_STYLE_NAMES = Object.keys(PROMPT_STYLES);
+const DEFAULT_MIN_LABEL_MASS = 0.5;
 
 export class BackendError extends Error {
   constructor(code, message) {
@@ -55,8 +69,9 @@ export class BackendError extends Error {
   }
 }
 
-function distributionFromLogprobs(entries, optionCount) {
+function distributionFromLogprobs(entries, optionCount, minLabelMass) {
   const mass = new Array(optionCount).fill(FLOOR_PROBABILITY);
+  let labelMass = 0;
   for (const entry of entries) {
     const token = typeof entry?.token === "string" ? entry.token.trim().toUpperCase() : "";
     if (token.length !== 1) continue;
@@ -65,6 +80,14 @@ function distributionFromLogprobs(entries, optionCount) {
     const logprob = entry.logprob;
     if (!Number.isFinite(logprob)) continue;
     mass[index] += Math.exp(logprob);
+    labelMass += Math.exp(logprob);
+  }
+  // Renormalising a tiny label mass would manufacture confidence the model never expressed.
+  if (labelMass < minLabelMass) {
+    throw new BackendError(
+      "low_label_mass",
+      `option labels carried ${labelMass.toFixed(3)} of next-token probability (minimum ${minLabelMass})`,
+    );
   }
   const total = mass.reduce((sum, value) => sum + value, 0);
   return mass.map((value) => value / total);
@@ -90,11 +113,18 @@ export class OpenAiLogprobScorer {
     requestTimeoutMs = 10000,
     warmup = false,
     promptStyle = "jev",
+    minLabelMass = DEFAULT_MIN_LABEL_MASS,
+    disableThinking = false,
     fetchImpl = globalThis.fetch,
     logger = process.stderr,
   } = {}) {
     if (typeof fetchImpl !== "function") throw new TypeError("a fetch implementation is required");
     if (!PROMPT_STYLES[promptStyle]) throw new TypeError(`unknown prompt style: ${promptStyle}`);
+    if (!Number.isFinite(minLabelMass) || minLabelMass < 0 || minLabelMass > 1) {
+      throw new TypeError("minLabelMass must be between zero and one");
+    }
+    this.minLabelMass = minLabelMass;
+    this.disableThinking = disableThinking === true;
     this.endpoint = endpoint.replace(/\/+$/, "");
     this.promptStyle = promptStyle;
     this.configuredModel = model;
@@ -201,6 +231,8 @@ export class OpenAiLogprobScorer {
       logprobs: true,
       // Always request the full top-k: a label absent from a narrow top-k floors to noise.
       top_logprobs: MAX_LOGPROB_OPTIONS,
+      // Hybrid reasoning models otherwise spend the single forced token on a thinking marker.
+      ...(this.disableThinking ? { reasoning_effort: "none" } : {}),
     });
     if (typeof payload?.model === "string" && payload.model !== model.source) {
       this.failed = new BackendError("model_identity_changed", "local model server switched models mid-session");
@@ -208,7 +240,7 @@ export class OpenAiLogprobScorer {
     }
     return {
       option_ids: row.options.map((option) => option.id),
-      probabilities: distributionFromLogprobs(topLogprobEntries(payload), optionCount),
+      probabilities: distributionFromLogprobs(topLogprobEntries(payload), optionCount, this.minLabelMass),
       input_tokens: Number.isInteger(payload?.usage?.prompt_tokens) ? payload.usage.prompt_tokens : 0,
       model,
     };

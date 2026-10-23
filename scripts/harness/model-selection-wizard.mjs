@@ -124,6 +124,10 @@ function recommendModel({ domain, level, config = loadConfig() }) {
   const candidates = modelsForSelection(wizardConfig, normalizedDomain, normalizedLevel).map((modelId) =>
     getModelAvailability(wizardConfig, modelId),
   );
+  const specialist = wizardConfig.domainSpecialists[normalizedDomain] ?? {};
+  const visualReviewModels = Array.isArray(specialist.visualReviewModels)
+    ? specialist.visualReviewModels.map((modelId) => getModelAvailability(wizardConfig, modelId))
+    : [];
   const selected = candidates.find((candidate) => candidate.supported && candidate.releaseStatus === "GA") ?? candidates[0];
 
   return {
@@ -135,6 +139,8 @@ function recommendModel({ domain, level, config = loadConfig() }) {
     performance: levelDetails.performance ?? "No performance note configured.",
     selected,
     candidates,
+    visualReviewModels,
+    visualReviewNote: specialist.visualReviewNote ?? null,
     docsSource: wizardConfig.docsSource,
     snapshotDate: wizardConfig.snapshotDate,
   };
@@ -183,6 +189,7 @@ function checkConfiguredModels(config = loadConfig()) {
     if (!details || typeof details !== "object") continue;
     if (typeof details.primary === "string") referenced.add(details.primary);
     if (Array.isArray(details.fallback)) details.fallback.forEach((model) => referenced.add(model));
+    if (Array.isArray(details.visualReviewModels)) details.visualReviewModels.forEach((model) => referenced.add(model));
   }
   for (const details of Object.values(wizardConfig.levels)) {
     if (Array.isArray(details?.defaultModels)) details.defaultModels.forEach((model) => referenced.add(model));
@@ -227,6 +234,9 @@ function renderRecommendation(result) {
       const retirement = candidate.retirementDate ? `; retires ${candidate.retirementDate}` : "";
       return `- ${candidate.name ?? candidate.id}: ${status}${retirement}`;
     }),
+    result.visualReviewModels?.length ? "Visual review models:" : null,
+    ...((result.visualReviewModels ?? []).map((candidate) => `- ${candidate.name ?? candidate.id}: ${candidate.supported ? candidate.releaseStatus : "not listed"}`)),
+    result.visualReviewNote,
   ].filter(Boolean);
   return `${lines.join("\n")}\n`;
 }

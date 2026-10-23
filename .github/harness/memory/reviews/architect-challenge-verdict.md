@@ -5,6 +5,30 @@ immutability: mutable
 
 # Architect Challenge Verdict
 
+## State Model and Gate Mutation Adoption (2026-10-23)
+
+Reviewed brief: [state-model-and-gate-mutation-adoption.md](../briefs/state-model-and-gate-mutation-adoption.md).
+This challenge was performed inline with the architect-challenge skill; no delegated execution
+or independently attested reviewer model identity is claimed.
+
+### Adoption Verdict
+
+APPROVED for the bounded development-only implementation. This author challenge does not
+establish an independent model review, mutation efficacy, clean dependency scans, or release clearance.
+
+### Adoption Evidence
+
+- The existing state and gate fixture commands both pass. Tests consume public APIs, leaving live-state ownership, run-journal completion authority, and gate approval semantics unchanged.
+- fast-check 4.10.2 supports Node >=12.17.0; Stryker 9.6.1 supports Node >=20.0.0. Rejecting Stryker 10 preserves the repository's Node >=20 floor. Dependency security is a required implementation gate, not inferred from these engine checks.
+- Disposable copies contain only the trusted first-party state module or extracted pure gate and local test. An explicit child-environment allowlist and disabled dashboard reporting preserve the no-credential boundary; a filesystem copy is not described as a security sandbox.
+- Original controls, two deliberately faulty controls per technique, state shrinking/replay, fresh mutation outcomes, and strict bounds provide falsifiable adoption criteria. Neither a mutation score nor a green metadata flag substitutes for those controls.
+- Scope excludes external skills, runtime changes, concurrency claims, repository-wide mutation thresholds, and unrelated dirty files. Exceeded bounds or incomplete tooling block the affected decision.
+
+### Adoption Required Revision or Unblock Step
+
+No design revision required. Implement the state slice and validate it before the mutation
+slice; retain raw per-mutant outcomes and final scanner/review limitations in the proof record.
+
 ## Verdict
 
 APPROVED
