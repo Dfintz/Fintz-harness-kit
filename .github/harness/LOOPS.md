@@ -98,6 +98,80 @@ re-examination — not a confirmation that the old findings are gone.
     output. Speed of review is imperative. (Adapted from
     [mattpocock/skills `loop-me`](https://github.com/mattpocock/skills/tree/main/skills/in-progress/loop-me))
 
+### Experiment Resume Identity
+
+`run-experiment.mjs --resume` checks a versioned SHA-256 configuration digest and a separate
+checkpoint digest before lease takeover, journal writes, metric execution, or agent invocation.
+Configuration covers the loop definition, resolved metric command, resolved target paths, effective
+iteration bound, agent command, commit/scratch-note modes, context-growth configuration, and
+declared `HARNESS_LLM_PROVIDER`, `HARNESS_LLM_HOST`, and `HARNESS_LLM_MODEL` values. The journal
+stores their digest, not the command or environment values. Arbitrary external agent files,
+provider weights, and undeclared environment inputs are not attested by this identity.
+
+Checkpoint identity binds current target bytes to recorded metrics and iteration progress. It is
+updated after a completed iteration; an iteration is marked in-flight before invoking the agent.
+Resume rejects missing/modified targets, changed progress/settings, unsupported legacy identities,
+and interrupted in-flight work. There is no automatic migration or restore: inspect the target
+files and start a new run. This preserves user edits and existing lease/CAS controls. Digests detect
+drift, not malicious rewriting of both a journal and its digest.
+
+### Offline Contrastive Pilot
+
+`npm run harness:eval:contrastive -- --spec pilot.local.json` reads a local JSON spec from
+`.github/harness/evolve/`. Run `npm run test:harness:contrastive-pilot` for offline mock/subprocess
+proof, and `npm run test:harness:experiment-identity` for helper and real-CLI resume proof.
+
+Example spec (operator-owned commands must implement the stdin contracts below):
+
+```json
+{
+   "target": ".github/harness/evolve/candidate-instructions.md",
+   "model": "operator-selected-model",
+   "revision": "immutable-model-revision",
+   "executor": ["node", "/absolute/path/to/executor.mjs"],
+   "proposer": ["node", "/absolute/path/to/proposer.mjs"],
+   "development": ["build-fix"],
+   "heldOut": ["metric-improve"],
+   "repeats": 3,
+   "timeoutMs": 30000,
+   "maxDurationMs": 600000,
+   "maxInvocations": 42,
+   "minDelta": 0.1,
+   "passEnv": []
+}
+```
+
+Choose representative, disjoint task IDs from `npm run harness:eval -- --list`; the example IDs
+illustrate the split, not evidence that these tasks measure a particular guidance change.
+Commands are argv arrays executed without a shell in fresh fixture/proposal directories. Use
+absolute script paths. The executor reads the task/guidance prompt on stdin and edits only its
+temporary task fixture. The proposer reads a development-evidence prompt on stdin and emits only
+JSON on stdout: `{"instruction":"complete proposed text","evidence":[{"id":"packet evidence ID",
+"observation":"observed behavior","edit":"specific retained edit"}]}`. Diagnostics go to stderr.
+Both receive `HARNESS_EVAL_MODEL` and `HARNESS_EVAL_MODEL_REVISION`. Model identity is declared,
+not runtime-attested. Only basic process environment and explicitly named `passEnv` variables are
+forwarded; forwarded values are redacted from retained process output and development artifacts.
+
+Depth is one: probe baseline, propose general/domain variants, probe each, compose, and probe the
+composition. The control receives three independent proposal calls and three development probes,
+matching the composition method's search-call budget. Select the control using development scores
+only. Freeze all candidates, then evaluate baseline/general/domain/composed/control on held-out
+tasks with identical repeat counts. Proposers receive no verifier results, held-out task material,
+or answer overlays. Proposed text and evidence remain untrusted and are never applied to the target.
+
+Invocation requirement is `6 + repeats * (7 * developmentCount + 5 * heldOutCount)`. The runner
+enforces invocation, per-process timeout, and total elapsed limits, and checks target/suite/protected
+file integrity around calls. Full protected-file hashing has filesystem overhead; budget for it.
+Temporary fixture directories are not OS/network security sandboxes. Use isolated execution and
+egress controls for sensitive or contamination-prone runs; do not run untrusted executor programs.
+
+Reports go to `.github/harness/runs/contrastive-pilot-*.json`. `promising` requires improvement
+beyond `minDelta` over both baseline and the independent control, no per-case baseline regression,
+and no safety flags. Other outcomes are `no-gain`, `rejected`, or `inconclusive`; failed calls never
+become zero-score successes. Reports are diagnostic, not promotion authority or significance tests.
+Token/USD costs are not measured or capped; call-count matching does not imply equal monetary cost.
+Exit codes: 0 completed comparison, 1 safety rejection, 2 invalid spec/setup, 4 inconclusive.
+
 ### Continuity State (Long-Running Work)
 
 For long-running harness work, live continuity metadata belongs in `stage-state`, while completed

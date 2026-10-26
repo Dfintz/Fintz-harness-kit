@@ -32,6 +32,7 @@ export const FORBIDDEN_GLOBS = [
   "scripts/harness/evolve-guard.mjs", // this guard
   "scripts/harness/harness-evolve.mjs", // the evolve runner
   "scripts/harness/run-experiment.mjs", // the keep-if-improved engine
+  "scripts/harness/experiment-identity.mjs",
   "scripts/harness/run-loop.mjs", // the convergence engine
   "scripts/harness/untrusted.mjs", // prompt-as-data boundary
   "scripts/harness/llm-provider.mjs", // provider adapter
@@ -150,7 +151,7 @@ function forbiddenFiles() {
 // RULE 2 baseline. Hash of all forbidden files' contents (tamper tripwire) + the eval suiteHash,
 // which is ALSO a health gate: if the suite self-test fails, we refuse to evolve against a broken
 // scorer. Spawns run-eval --self-test --json (deterministic, no agent, no network).
-export function computeIntegrity() {
+export function computeForbiddenHash() {
   const files = forbiddenFiles();
   const hash = createHash("sha256");
   for (const rel of files) {
@@ -159,7 +160,11 @@ export function computeIntegrity() {
     hash.update(readFileSync(join(repoRoot, rel)));
     hash.update("\0");
   }
-  const forbiddenHash = `sha256:${hash.digest("hex")}`;
+  return `sha256:${hash.digest("hex")}`;
+}
+
+export function computeIntegrity() {
+  const forbiddenHash = computeForbiddenHash();
 
   const evalRunner = join(
     repoRoot,
@@ -195,7 +200,7 @@ export function computeIntegrity() {
   return {
     ok: suiteOk,
     forbiddenHash,
-    forbiddenFileCount: files.length,
+    forbiddenFileCount: forbiddenFiles().length,
     suiteHash,
     suiteOk,
     suiteDetail,

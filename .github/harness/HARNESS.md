@@ -480,6 +480,12 @@ Run with:
 - `npm run harness:evolve:dry-run`
 - `npm run harness:evolve:check`
 
+The separate `npm run harness:eval:contrastive -- --spec <local-spec.json>` pilot compares
+general/domain proposal composition with an equal-search-call independent control. It is
+report-only: no checkout mutation, routing changes, or promotion. See
+[`LOOPS.md`](./LOOPS.md#offline-contrastive-pilot) for split, budget, subprocess, and isolation
+requirements. Experiment resume identity and legacy-journal behavior are documented there too.
+
 ### Phase 4 — Observability
 
 - Journals: `.github/harness/runs/*.jsonl`

@@ -48,6 +48,7 @@ import { resolveTokens, resolveValue } from './config.mjs';
 import { compactLineHistory } from './context-compaction.mjs';
 import { checkPromptSize } from './context-growth-guard.mjs';
 import { classifyGitCommand } from './git-guard.mjs';
+import { assertExperimentResume, executionIdentity, sealExperimentCheckpoint } from './experiment-identity.mjs';
 import {
   acquireLease,
   appendLeaseEvent,
@@ -450,7 +451,7 @@ function resolveResumeJournal(loopName, resumeValue) {
   return resolve(join(runsDir, resumeValue));
 }
 
-function loadResumableRecord(loopName, resumeValue) {
+function loadResumableRecord(loopName, resumeValue, expectedIdentity, targetFiles) {
   const journalPath = resolveResumeJournal(loopName, resumeValue);
   if (!existsSync(journalPath)) {
     fail(`Resume journal not found: ${journalPath}`);
@@ -476,6 +477,11 @@ function loadResumableRecord(loopName, resumeValue) {
   }
   if (!Array.isArray(record.iterations)) {
     fail('Resume journal is invalid: missing iterations array.');
+  }
+  try {
+    assertExperimentResume(repoRoot, targetFiles, record, expectedIdentity);
+  } catch (error) {
+    fail(error.message);
   }
   ensureLeaseHistory(record);
 
@@ -541,7 +547,21 @@ if (args.resume && args.measureOnly) {
   fail('--measure-only cannot be used with --resume.');
 }
 const resumed = Boolean(args.resume);
-const resumePayload = resumed ? loadResumableRecord(loop.name, args.resume) : null;
+const scratchNotesEnabled =
+  args.scratchNotes || resolveValue('contextGrowth.scratchNotes.enabled', false) === true ||
+  process.env.HARNESS_EXPERIMENT_SCRATCH_NOTES === 'true';
+const identity = executionIdentity({
+  loop: { ...loop, metric: { ...loop.metric, run: resolveTokens(loop.metric.run) } },
+  targetFiles: [...targetFiles].sort(),
+  maxIterations,
+  agentCmd,
+  commitOnImprove,
+  scratchNotesEnabled,
+  contextGrowth: resolveValue('contextGrowth', {}),
+  model: Object.fromEntries(['HARNESS_LLM_PROVIDER', 'HARNESS_LLM_HOST', 'HARNESS_LLM_MODEL']
+    .map(key => [key, process.env[key] ?? null])),
+});
+const resumePayload = resumed ? loadResumableRecord(loop.name, args.resume, identity, targetFiles) : null;
 const baseline = resumePayload?.record?.baseline ?? gitBaseline();
 const startedAt = resumed ? null : new Date();
 const journalFile =
@@ -552,9 +572,6 @@ const journalFile =
 // Default OFF; opt in per-run with --scratch-notes or HARNESS_EXPERIMENT_SCRATCH_NOTES=true.
 // Deliberately separate from the committed journal: this is the agent's own disposable working
 // file, not reviewed harness memory.
-const scratchNotesEnabled =
-  args.scratchNotes || resolveValue('contextGrowth.scratchNotes.enabled', false) === true ||
-  process.env.HARNESS_EXPERIMENT_SCRATCH_NOTES === 'true';
 const scratchNotesFile = scratchNotesEnabled
   ? `${journalFile}.notes.md`
   : null;
@@ -574,6 +591,7 @@ const record =
   {
     loop: loop.name,
     kind: 'experiment',
+    identity,
     startedAt: startedAt.toISOString(),
     baseline,
     recovery: {
@@ -664,6 +682,14 @@ if (resumePayload?.takeoverSnapshot) {
     if (!leaseSnapshotMatches(latest.lease, resumePayload.takeoverSnapshot)) {
       fail('Resume takeover aborted: journal lease changed during takeover attempt (active-lease conflict).');
     }
+    try {
+      assertExperimentResume(repoRoot, targetFiles, latest, identity);
+      if (JSON.stringify(latest.identity) !== JSON.stringify(record.identity)) {
+        fail('Resume takeover aborted: checkpoint changed during takeover.');
+      }
+    } catch (error) {
+      fail(error.message);
+    }
     return writeJournal(journalFile, record);
   });
   if (takeoverWriteError) {
@@ -750,6 +776,8 @@ if (resumed) {
   baseMetricValue = baseMeasure.value;
   best = baseMeasure.value;
   record.metric.baseline = baseMeasure.value;
+  record.metric.best = best;
+  sealExperimentCheckpoint(repoRoot, targetFiles, record);
   console.log(`[run-experiment] baseline ${record.metric.name} = ${best} (goal: ${direction})`);
 }
 
@@ -789,6 +817,9 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
     `[run-experiment] iteration ${iteration}/${maxIterations} — best ${record.metric.name}=${best}`
   );
   const preIteration = snapshotTargets(targetFiles);
+  record.identity.checkpoint = { state: 'in-flight' };
+  const pendingWriteError = writeJournal(journalFile, record);
+  if (pendingWriteError) fail('Could not persist in-flight checkpoint; agent was not invoked.');
 
   const improvementPrompt = composeImprovementPrompt(
     loop,
@@ -835,7 +866,9 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
   record.metric.best = best;
   record.metric.improvedBy = improvementDelta(direction, baseMetricValue, best);
   record.recovery.lastCheckpointAt = new Date().toISOString();
-  writeJournal(journalFile, record);
+  sealExperimentCheckpoint(repoRoot, targetFiles, record);
+  const checkpointWriteError = writeJournal(journalFile, record);
+  if (checkpointWriteError) fail('Could not persist completed experiment checkpoint.');
 
   if (!heartbeatCheckpoint(`iteration-${iteration}-post-checks`)) {
     break;

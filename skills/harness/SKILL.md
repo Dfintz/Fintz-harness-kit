@@ -97,6 +97,12 @@ npm run harness:docs:check                               # validate harness doc 
 
 ### Local-LLM loop agents (optional)
 
+For offline proposal/probe/composition comparisons, use `npm run harness:eval:contrastive --
+--spec <local-spec.json>`; read `.github/harness/LOOPS.md` for the spec and safety contract. This
+pilot is report-only and never applies candidate instructions or changes default routing.
+Generic experiment resume rejects incompatible settings, modified checkpoints, legacy journals
+without identity, and interrupted in-flight iterations; inspect files before starting a fresh run.
+
 Convergence loops only need an agent to *describe* a fix; experiment loops re-measure files on disk,
 so they need the **apply** agent that rewrites the single declared target. Both target Ollama
 (default) or LM Studio (`--provider lmstudio`):

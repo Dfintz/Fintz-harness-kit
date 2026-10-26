@@ -8,7 +8,7 @@ LLM**, and a live metrics dashboard.
 Extracted as a clean, reusable kit. See [`CREDITS.md`](CREDITS.md) for the prior work it builds on,
 and [`HARNESS_CARD.md`](HARNESS_CARD.md) for the one-page control/agency/runtime design summary.
 
-Latest release notes: [`RELEASE_NOTES_v3.12.0.md`](RELEASE_NOTES_v3.12.0.md).
+Latest release notes: [`RELEASE_NOTES_v3.13.0.md`](RELEASE_NOTES_v3.13.0.md).
 
 ## Install
 
@@ -270,6 +270,17 @@ Convergence and experiment runners support resumable execution via checkpointed 
 node scripts/harness/run-loop.mjs build-fix --resume latest
 node scripts/harness/run-experiment.mjs lint-debt-experiment --resume latest
 ```
+
+Experiment resume requires matching SHA-256 configuration and checkpoint identities. Changed
+settings, modified targets/progress, legacy journals without identity, and interrupted in-flight
+iterations fail closed before takeover or agent execution. Inspect your files and start a fresh
+run; the runner never restores checkpoint bytes over user changes.
+
+For report-only general/domain proposal composition, use `npm run harness:eval:contrastive --
+--spec pilot.local.json`. Specs live under `.github/harness/evolve/`; see
+[the pilot contract and spec](.github/harness/LOOPS.md#offline-contrastive-pilot). It compares
+composition with an equal-search-call independent control on disjoint held-out tasks. It never
+applies proposals to the checkout or changes routing defaults.
 
 Loop **execution** stays CLI-only on purpose: a loop invokes an agent and runs for minutes, so
 exposing it as an auto-callable MCP tool (when the MCP client _is_ the agent) would recurse and time
