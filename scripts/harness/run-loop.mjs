@@ -15,13 +15,16 @@ import { execSync, spawnSync } from "node:child_process";
 import {
   closeSync,
     existsSync,
+  fsyncSync,
     mkdirSync,
   openSync,
     readFileSync,
     readdirSync,
+  renameSync,
   unlinkSync,
     writeFileSync,
 } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { assertSafeCliCommand } from "./command-validation.mjs";
@@ -41,6 +44,7 @@ import {
   releaseLease,
 } from "./lease-envelope.mjs";
 import { wrapUntrusted } from "./untrusted.mjs";
+import { createManifestAllowlist } from "./manifest-allowlist.mjs";
 import { writeGoalProgress } from "./stage-state.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -108,12 +112,14 @@ function configureTestFixture(args) {
   if (process.env.NODE_ENV !== "test") {
     fail("--test-fixture-root is available only when NODE_ENV=test");
   }
-  const fixtureRoot = resolve(args.testFixtureRoot);
   const fixturesParent = join(repoRoot, ".github", "harness", "runs");
-  const relativeFixture = relative(fixturesParent, fixtureRoot);
-  if (!relativeFixture || relativeFixture === ".." || relativeFixture.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
-    fail("--test-fixture-root must be a temporary directory under .github/harness/runs");
+  const requestedFixture = resolve(args.testFixtureRoot);
+  const selected = readdirSync(fixturesParent, { withFileTypes: true }).find(entry =>
+    entry.isDirectory() && resolve(fixturesParent, entry.name) === requestedFixture);
+  if (!selected) {
+    fail("--test-fixture-root must select an existing temporary directory directly under .github/harness/runs");
   }
+  const fixtureRoot = join(fixturesParent, selected.name);
   loopsDir = join(fixtureRoot, "loops");
   runsDir = join(fixtureRoot, "runs");
 }
@@ -382,24 +388,35 @@ function invokeAgent(agentCmd, prompt) {
     input: prompt,
     stdio: ["pipe", "inherit", "inherit"],
   });
-  if (result.error)
-    fail(`Agent command failed to start: ${result.error.message}`);
-  if (result.status !== 0)
-    console.warn(
-      `[run-loop]   agent exited with code ${result.status}; re-checking anyway`,
-    );
+  return result;
 }
 
 function writeJournal(journalFile, record, { suppressWarning = false } = {}) {
+  let temporaryPath;
+  let ownsTemporary = false;
+  let descriptor;
   try {
+    const manifest = createManifestAllowlist({ rootDir: runsDir });
+    const journalRelative = manifest.toRelativePath(journalFile, "run journal");
+    const targetPath = manifest.materializeRelativePath(journalRelative, "run journal");
+    temporaryPath = manifest.materializeRelativePath(`${journalRelative}.${randomUUID()}.tmp`, "temporary run journal");
     mkdirSync(runsDir, { recursive: true });
-    writeFileSync(journalFile, JSON.stringify(record, null, 2));
+    descriptor = openSync(temporaryPath, "wx");
+    ownsTemporary = true;
+    writeFileSync(descriptor, JSON.stringify(record, null, 2));
+    fsyncSync(descriptor);
+    closeSync(descriptor);
+    descriptor = undefined;
+    renameSync(temporaryPath, targetPath);
     return null;
   } catch (err) {
     if (!suppressWarning) {
       console.warn(`[run-loop] could not write run journal: ${err.message}`);
     }
     return err;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+    if (ownsTemporary && existsSync(temporaryPath)) unlinkSync(temporaryPath);
   }
 }
 
@@ -573,6 +590,16 @@ function resolveResumeJournal(loopName, resumeValue) {
   return resolve(join(runsDir, resumeValue));
 }
 
+function validateRepairCheckpoint(iterations) {
+  const lastIteration = iterations.at(-1);
+  if (!lastIteration?.failedChecks?.length) return;
+  const repair = lastIteration.repair;
+  if (repair?.version !== 1 || repair.state !== "completed" || repair.exitCode !== 0
+    || !Number.isFinite(Date.parse(repair.completedAt))) {
+    fail("Cannot resume an interrupted repair or legacy ambiguous failed iteration; inspect preserved edits and start a fresh run after reconciliation.");
+  }
+}
+
 function loadResumableRecord(loopName, resumeValue) {
   const journalPath = resolveResumeJournal(loopName, resumeValue);
   if (!existsSync(journalPath)) {
@@ -604,6 +631,7 @@ function loadResumableRecord(loopName, resumeValue) {
   if (!Array.isArray(record.iterations)) {
     fail("Resume journal is invalid: missing iterations array.");
   }
+  validateRepairCheckpoint(record.iterations);
   ensureLeaseHistory(record);
 
   const nowIso = new Date().toISOString();
@@ -968,7 +996,32 @@ for (let iteration = startIteration; iteration <= maxIterations; iteration++) {
     : null;
   const prompt = composeFixPrompt(loop, lastFailures, iteration, record.iterations, priorReflexion, contextPack)
     .replace('__REFLEXION_PATH__', reflexionPath ?? '');
-  invokeAgent(agentCmd, prompt);
+  const iterationRecord = record.iterations.at(-1);
+  iterationRecord.repair = {
+    version: 1,
+    state: "in-flight",
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    exitCode: null,
+  };
+  if (writeJournal(journalFile, record)) {
+    finish("blocked", 1, "Repair start could not be persisted; agent was not invoked.", "repair-journal-write-failed");
+  }
+  let result;
+  try {
+    result = invokeAgent(agentCmd, prompt);
+  } catch (error) {
+    finish("blocked", 1, `Repair invocation failed: ${error.message}`, "repair-interrupted");
+  }
+  iterationRecord.repair.exitCode = result.status;
+  iterationRecord.repair.completedAt = new Date().toISOString();
+  iterationRecord.repair.state = result.status === 0 && !result.error ? "completed" : "interrupted";
+  if (iterationRecord.repair.state !== "completed") {
+    finish("blocked", 1, "Repair did not complete successfully; preserve edits and reconcile before a fresh run.", "repair-interrupted");
+  }
+  if (writeJournal(journalFile, record)) {
+    finish("blocked", 1, "Repair completion could not be persisted; effects require reconciliation.", "repair-journal-write-failed");
+  }
 }
 
 finish(

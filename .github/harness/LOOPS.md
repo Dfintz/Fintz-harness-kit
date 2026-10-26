@@ -350,8 +350,8 @@ The runner implements the native procedure above: it records the git baseline, p
 fix prompt (fixPrompt + guardrails + skill paths + the attempt journal + truncated failure output)
 to the agent command's stdin, re-runs the checks, and stops early when two consecutive iterations
 fail identically. Each run writes a JSON journal (baseline, per-iteration check results and
-durations, terminal state) to `.github/harness/runs/` (gitignored) for audit, with checkpoints after
-each iteration so interrupted runs can resume.
+durations, terminal state) to `.github/harness/runs/` (gitignored) for audit. Journal replacement is
+atomic and flushed before rename. Completed repair checkpoints may resume; uncertain repairs do not.
 
 Resume examples:
 
@@ -359,6 +359,81 @@ Resume examples:
 node scripts/harness/run-loop.mjs build-fix --resume latest
 node scripts/harness/run-loop.mjs test-fix --resume .github/harness/runs/test-fix-2026-07-19T15-00-00-000Z.json
 ```
+
+### Interrupted Repair Recovery
+
+Each failed iteration records `repair.version=1` and `repair.state=in-flight` before invoking the
+agent. Exit zero is recorded as `completed`; spawn failure, signal, nonzero exit, or a persistence
+failure blocks execution. A resumed failed iteration without a completed repair checkpoint is
+rejected before lease takeover, journal writes, checks, or another agent call. This includes legacy
+ambiguous journals. Successful check-only checkpoints retain their existing resume behavior.
+
+On rejection, inspect the journal and working-tree edits, reconcile any external effects, then
+start a fresh run. Never blindly replay the repair or automatically undo user edits. Lease expiry
+or forced lease reap does not override the interruption guard. Checkpoints establish recorded
+process completion, not exactly-once provider calls or effects. Filesystem flush/rename does not
+establish a distributed transaction or guarantee directory metadata durability after power loss.
+
+Proof: `npm run test:harness:run-loop-goal-progress` covers a repair that writes a fixture and kills
+its runner, rejection without changing the journal/effect, completed repair resume, legacy
+ambiguous checkpoints, and nonzero-exit effects.
+
+### Action-Bound Maintenance Approval
+
+The local `stage-state` maintenance guard uses the existing append-only approval log. A request
+binds canonical project root, run, operation, target scope, SHA-256 hashes of reviewed evidence
+files, pre/post refs, and expiry. Live state holds the active request pointer; a live `approved`
+flag alone is not authorization. Unbound legacy decisions remain historical records but cannot
+satisfy the maintenance guard. Legacy remote decision writers cannot approve a bound request.
+
+An operator-owned action JSON descriptor has this shape (example only):
+
+```json
+{
+   "runId": "maintenance-run",
+   "kind": "destructive-memory-maintenance",
+   "operation": "rebuild-memory-graph",
+   "targetPaths": [".understand-anything"],
+   "artifacts": ["AGENTS.md"],
+   "preStateRef": "reviewed-baseline",
+   "postStateRef": "proposed-result",
+   "expiresAt": "2026-10-27T00:00:00.000Z"
+}
+```
+
+Use actual reviewed manifests, source/configuration snapshots and evidence as `artifacts`; the
+example's `AGENTS.md` does not prove a real rebuild is safe. Paths must stay inside the project;
+evidence files are regular files, at most 1 MiB each, and lists contain 1 to 32 entries. The
+descriptor is at most 64 KiB. The run must already be active in stage state.
+
+```bash
+npm run harness:state -- request-maintenance --file <action.json>
+npm run harness:state -- approve --run-id <run-id> --decision approved --decided-by <operator> --approval-id <id> --action-digest <digest>
+npm run harness:state -- evaluate-maintenance --file <action.json> --approval-id <id> --action-digest <digest>
+npm run harness:state -- consume-maintenance --file <action.json> --approval-id <id> --action-digest <digest>
+```
+
+Use the returned id/digest unchanged. Decisions recheck evidence, duplicate approved delivery is
+idempotent, and rejection revokes an unclaimed approval. Expired, changed, superseded, rejected,
+or consumed requests cannot grant a claim. Evaluation is read-only and is not sufficient before
+an effect: use `consumeMaintenanceApproval`/`consume-maintenance` once, immediately before the
+caller performs the claimed action. These APIs/commands do not execute maintenance or deploys.
+
+Request, decision and claim writes use an exclusive local approval lock and flushed receipts.
+If a process dies while holding the lock, confirm its owner is gone and reconcile the log/effects
+before an operator removes the lock; there is no automatic reap. A corrupt or oversized approval
+log fails closed; the 8 MiB limit requires operator-reviewed archival. A consumed receipt means
+claimed, not completed. Crash after claiming requires reconciliation and a new reviewed request,
+not a second invocation under the old approval.
+
+This is a trusted-local-operator contract. `decidedBy` records attribution, not authentication.
+Remote approval entrypoints still require independent authentication and authorization. Callers
+must hold their resource lock, execute the reviewed immutable artifact and use downstream
+idempotency; post-claim file races and malicious local log rewriting are not solved by hashes.
+
+Proof: `npm run test:harness:stage-state` covers operation/run/project/evidence drift, expiry,
+rejection, duplicate decisions, repeated and concurrent claims, retained locks, corrupt logs,
+and the local CLI workflow.
 
 Local model example (optional) — works with **Ollama** (default) or **LM Studio**:
 

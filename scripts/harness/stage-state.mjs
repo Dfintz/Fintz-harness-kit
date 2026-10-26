@@ -24,16 +24,19 @@ import {
   appendFileSync,
   closeSync,
   existsSync,
+  fstatSync,
+  fsyncSync,
   mkdirSync,
   openSync,
   readFileSync,
+  realpathSync,
   renameSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const harnessDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(harnessDir, '..', '..');
@@ -267,6 +270,10 @@ export function writeApproval(approval, options) {
   if (!APPROVAL_STATUSES.has(approval.decision)) {
     throw new Error(`writeApproval: decision must be one of ${[...APPROVAL_STATUSES].join(', ')}`);
   }
+  const currentApproval = readStageState(options);
+  if (approval.actionDigest || (currentApproval?.approval?.bindingVersion === 1 && currentApproval.runId === approval.runId)) {
+    return writeBoundApprovalDecision(approval, options);
+  }
 
   const dir = resolveStateDir(options);
   ensureDir(dir);
@@ -404,17 +411,188 @@ export function evaluateMaintenanceApproval(request, options) {
     return { ok: true, approval: normalizeApprovalField(readStageState(options)?.approval) };
   }
 
-  const approval = normalizeApprovalField(readStageState(options)?.approval);
-  const approved = approval.required === true && approval.status === 'approved';
-  if (!approved) {
-    return {
-      ok: false,
-      reason: 'destructive memory maintenance requires approval',
-      approval,
-    };
+  try {
+    const { latest } = boundApprovalRecords(req, options);
+    if (latest.event === 'consumed') throw new Error('bound approval already consumed; reconcile effects before a new request');
+    if (latest.decision !== 'approved') throw new Error('destructive memory maintenance requires approval');
+    return { ok: true, approval: latest };
+  } catch (error) {
+    return { ok: false, reason: error.message, approval: normalizeApprovalField(readStageState(options)?.approval) };
   }
+}
 
-  return { ok: true, approval };
+function withApprovalLock(options, action) {
+  const dir = resolveStateDir(options);
+  ensureDir(dir);
+  const lockPath = join(dir, 'stage-state.approval.lock');
+  const descriptor = openSync(lockPath, 'wx');
+  try {
+    return action();
+  } finally {
+    closeSync(descriptor);
+    unlinkSync(lockPath);
+  }
+}
+
+function strictApprovalRecords(options) {
+  const path = approvalsPath(resolveStateDir(options));
+  if (!existsSync(path)) return [];
+  const descriptor = openSync(path, 'r');
+  try {
+    if (fstatSync(descriptor).size > 8 * 1024 * 1024) throw new Error('approval log exceeds size limit; archive under operator review');
+    return readFileSync(descriptor, 'utf8').split('\n').filter(line => line.trim()).map(line => {
+      const record = JSON.parse(line);
+      if (!record || typeof record !== 'object' || Array.isArray(record)) throw new Error('corrupt approval log');
+      return record;
+    });
+  } catch (error) {
+    throw new Error(`corrupt approval log: ${error.message}`);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function actionPath(projectRoot, value) {
+  if (typeof value !== 'string' || !value || value.length > 1024) throw new Error('invalid action path');
+  const path = value.replaceAll('\\', '/');
+  if (path.split('/').some(segment => !/^[A-Za-z0-9._ -]+$/.test(segment) || segment === '.' || segment === '..')) {
+    throw new Error('action path must be a safe project-relative path');
+  }
+  const candidate = resolve(projectRoot, path);
+  let ancestor = candidate;
+  while (!existsSync(ancestor)) ancestor = dirname(ancestor);
+  const scope = relative(projectRoot, realpathSync(ancestor));
+  if (scope === '..' || scope.startsWith('../') || scope.startsWith('..\\') || resolve(projectRoot, scope) !== realpathSync(ancestor)) {
+    throw new Error('action path escapes project root');
+  }
+  return { path, candidate };
+}
+
+function captureMaintenanceAction(request, options) {
+  const projectRoot = realpathSync(resolve(options?.repoRoot ?? repoRoot));
+  const allowedFields = new Set(['version', 'projectRoot', 'runId', 'kind', 'operation', 'targetPaths',
+    'artifacts', 'preStateRef', 'postStateRef', 'expiresAt', 'approvalId', 'actionDigest']);
+  if (Object.keys(request).some(key => !allowedFields.has(key))) throw new Error('unknown maintenance action field');
+  if ((request.version !== undefined && request.version !== 1)
+    || (request.projectRoot !== undefined && request.projectRoot !== projectRoot)) {
+    throw new Error('maintenance action project or version mismatch');
+  }
+  if (request.kind !== 'destructive-memory-maintenance' || typeof request.runId !== 'string' || !request.runId.trim()
+    || typeof request.operation !== 'string' || !/^[a-z][a-z0-9-]{0,79}$/.test(request.operation)) {
+    throw new Error('maintenance action requires run identity, kind and operation');
+  }
+  if (typeof request.expiresAt !== 'string' || !Number.isFinite(Date.parse(request.expiresAt)) || Date.parse(request.expiresAt) <= Date.now()) {
+    throw new Error('maintenance approval expiry must be in the future');
+  }
+  const paths = values => {
+    if (!Array.isArray(values) || values.length === 0 || values.length > 32) throw new Error('action paths require 1 to 32 entries');
+    return [...new Set(values.map(value => actionPath(projectRoot, value).path))]
+      .sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
+  };
+  const artifacts = paths(request.artifacts).map(path => {
+    const descriptor = openSync(actionPath(projectRoot, path).candidate, 'r');
+    try {
+      const stat = fstatSync(descriptor);
+      if (!stat.isFile() || stat.size > 1024 * 1024) throw new Error('approval evidence must be a regular file within the size limit');
+      return { path, digest: createHash('sha256').update(readFileSync(descriptor)).digest('hex') };
+    } finally {
+      closeSync(descriptor);
+    }
+  });
+  return {
+    version: 1, projectRoot, runId: request.runId, kind: request.kind, operation: request.operation,
+    targetPaths: paths(request.targetPaths), artifacts,
+    preStateRef: normalizeStringOrNull(request.preStateRef), postStateRef: normalizeStringOrNull(request.postStateRef),
+    expiresAt: new Date(request.expiresAt).toISOString(),
+  };
+}
+
+function actionDigest(action) {
+  return createHash('sha256').update(JSON.stringify(action)).digest('hex');
+}
+
+function requestFromAction(action) {
+  return { ...action, artifacts: action.artifacts.map(artifact => artifact.path) };
+}
+
+function boundApprovalRecords(request, options) {
+  const current = readStageState(options);
+  if (!request.approvalId || !request.actionDigest || current?.cleared || current?.runId !== request.runId
+    || current?.approval?.approvalId !== request.approvalId || current.approval.actionDigest !== request.actionDigest) {
+    throw new Error('bound approval identity does not match the active request');
+  }
+  const records = strictApprovalRecords(options).filter(record => record.approvalId === request.approvalId);
+  const pending = records[0];
+  const latest = records.at(-1);
+  if (pending?.event !== 'requested' || pending.actionDigest !== request.actionDigest
+    || records.some(record => record.actionDigest !== pending.actionDigest)
+    || actionDigest(captureMaintenanceAction(request, options)) !== pending.actionDigest) {
+    throw new Error('bound approval identity or evidence changed');
+  }
+  return { pending, latest };
+}
+
+function appendBoundApproval(record, options) {
+  const descriptor = openSync(approvalsPath(resolveStateDir(options)), 'a');
+  try {
+    writeFileSync(descriptor, JSON.stringify(record) + '\n');
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  writeStageState({ approval: {
+    required: true, status: record.decision, bindingVersion: 1,
+    approvalId: record.approvalId, actionDigest: record.actionDigest,
+    kind: record.action.kind, operation: record.action.operation,
+    expiresAt: record.action.expiresAt, consumedAt: record.event === 'consumed' ? record.decidedAt : null,
+    requestedAt: record.requestedAt, decidedAt: record.decidedAt, note: record.note ?? null,
+  } }, options);
+  return record;
+}
+
+export function requestMaintenanceApproval(request, options) {
+  return withApprovalLock(options, () => {
+    strictApprovalRecords(options);
+    const current = readStageState(options);
+    if (!current || current.cleared || current.runId !== request.runId) throw new Error('maintenance request must match the active run');
+    const action = captureMaintenanceAction(request, options);
+    return appendBoundApproval({
+      event: 'requested', approvalId: randomUUID(), actionDigest: actionDigest(action), action,
+      runId: action.runId, kind: action.kind, operation: action.operation,
+      decision: 'pending', requestedAt: nowIso(), decidedAt: null,
+    }, options);
+  });
+}
+
+function writeBoundApprovalDecision(decision, options) {
+  return withApprovalLock(options, () => {
+    const pending = strictApprovalRecords(options).find(record => record.event === 'requested' && record.approvalId === decision.approvalId);
+    if (!pending || !decision.actionDigest || decision.actionDigest !== pending.actionDigest) throw new Error('bound approval identity is required');
+    const request = { ...requestFromAction(pending.action), approvalId: pending.approvalId, actionDigest: pending.actionDigest };
+    if (decision.runId !== request.runId) throw new Error('bound approval run identity mismatch');
+    const { latest } = boundApprovalRecords(request, options);
+    if (latest.event === 'consumed') throw new Error('bound approval already consumed');
+    if (!['approved', 'rejected'].includes(decision.decision) || !normalizeStringOrNull(decision.decidedBy)) {
+      throw new Error('bound approval requires an explicit approved/rejected local operator decision');
+    }
+    if (latest.decision === decision.decision) return latest;
+    if (latest.decision === 'rejected') throw new Error('rejected approval requires a fresh request');
+    return appendBoundApproval({ ...pending, event: 'decision', decision: decision.decision,
+      decidedBy: decision.decidedBy.trim(), decidedAt: nowIso(), note: normalizeStringOrNull(decision.note) }, options);
+  });
+}
+
+export function consumeMaintenanceApproval(request, options) {
+  try {
+    return withApprovalLock(options, () => {
+      const { latest } = boundApprovalRecords(request, options);
+      if (latest.event === 'consumed' || latest.decision !== 'approved') throw new Error('bound approval is not approved or already consumed');
+      const receipt = appendBoundApproval({ ...latest, event: 'consumed', receiptId: randomUUID(), decidedAt: nowIso() }, options);
+      return { ok: true, receipt };
+    });
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
 }
 
 function normalizeApprovalField(raw) {
@@ -424,6 +602,11 @@ function normalizeApprovalField(raw) {
   return {
     required,
     status,
+    bindingVersion: a.bindingVersion === 1 ? 1 : null,
+    approvalId: normalizeStringOrNull(a.approvalId),
+    actionDigest: normalizeStringOrNull(a.actionDigest),
+    expiresAt: normalizeStringOrNull(a.expiresAt),
+    consumedAt: normalizeStringOrNull(a.consumedAt),
     note: typeof a.note === 'string' ? a.note : null,
     requestedAt: typeof a.requestedAt === 'string' ? a.requestedAt : null,
     decidedAt: typeof a.decidedAt === 'string' ? a.decidedAt : null,
@@ -464,6 +647,9 @@ function showHelp() {
       approvals: 'Print all approval records. Use --run-id <id> to filter.',
       write: 'Write or update live state. Flags include stage metadata plus metadata-only --goal-*, --continuation-*, and --refinement-* fields.',
       approve: 'Record an approval decision. Flags: --run-id, --decision, --note, --decided-by.',
+      'request-maintenance': 'Create an evidence-bound request from --file <project-relative action JSON>.',
+      'evaluate-maintenance': 'Check --file with --approval-id and --action-digest without claiming it.',
+      'consume-maintenance': 'Claim --file with --approval-id and --action-digest once; does not execute effects.',
       clear: 'Clear the live state file.',
     },
     env: {
@@ -526,6 +712,38 @@ function buildRefinementFromFlags(flags) {
   };
 }
 
+function handleMaintenanceCommand(command, flags) {
+  if (!['request-maintenance', 'evaluate-maintenance', 'consume-maintenance'].includes(command)) return false;
+  const path = actionPath(realpathSync(repoRoot), flags.file);
+  const descriptor = openSync(path.candidate, 'r');
+  let request;
+  try {
+    const stat = fstatSync(descriptor);
+    if (!stat.isFile() || stat.size > 64 * 1024) throw new Error('action descriptor exceeds size limit');
+    request = JSON.parse(readFileSync(descriptor, 'utf8'));
+  } finally {
+    closeSync(descriptor);
+  }
+  request = { ...request, approvalId: flags['approval-id'], actionDigest: flags['action-digest'] };
+  if (request.kind !== 'destructive-memory-maintenance') throw new Error('maintenance command requires a maintenance action descriptor');
+  if (command === 'request-maintenance') {
+    printJson({ ok: true, approval: requestMaintenanceApproval(request) });
+  } else {
+    const result = command === 'consume-maintenance' ? consumeMaintenanceApproval(request) : evaluateMaintenanceApproval(request);
+    printJson(result);
+    if (!result.ok) process.exitCode = 1;
+  }
+  return true;
+}
+
+function approvalFromFlags(flags) {
+  return {
+    runId: flags['run-id'] || undefined, decision: flags.decision,
+    note: flags.note || undefined, decidedBy: flags['decided-by'] || undefined,
+    approvalId: flags['approval-id'] || undefined, actionDigest: flags['action-digest'] || undefined,
+  };
+}
+
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
   const command = flags._[0];
@@ -558,17 +776,14 @@ async function main() {
     return;
   }
 
+  if (handleMaintenanceCommand(command, flags)) return;
+
   if (command === 'approve') {
     if (!flags.decision) {
       process.stderr.write('[stage-state] --decision required (approved|rejected|pending|not-required)\n');
       process.exit(2);
     }
-    const record = writeApproval({
-      runId: flags['run-id'] || undefined,
-      decision: flags.decision,
-      note: flags.note || undefined,
-      decidedBy: flags['decided-by'] || undefined,
-    });
+    const record = writeApproval(approvalFromFlags(flags));
     printJson({ ok: true, approval: record });
     return;
   }
